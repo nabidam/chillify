@@ -1,0 +1,144 @@
+/*
+ * Chillify token source of record.
+ *
+ * DESIGN.md defines role and usage rules by token name; this file owns the
+ * exact values. Product components reference these custom properties only —
+ * a raw color, length, font, shadow, duration, or easing value outside this
+ * file is a verification failure.
+ *
+ * V1 is a forced dark interface. A light token set is out of scope.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* Color — dark */
+  --color-background: #000000;
+  --color-surface: #121212;
+  --color-surface-raised: #181818;
+  --color-surface-hover: #242424;
+  --color-surface-selected: #2e2e2e;
+  --color-foreground: #ffffff;
+  --color-foreground-muted: #b3b3b3;
+  --color-foreground-subtle: #9a9a9a;
+  --color-accent: #2ee59d;
+  --color-accent-foreground: #06140e;
+  --color-destructive: #ff6b73;
+  --color-destructive-foreground: #190204;
+  --color-warning: #f6c85f;
+  --color-warning-foreground: #1a1200;
+  --color-info: #79c7ff;
+  --color-info-foreground: #001521;
+  --color-border: #333333;
+  --color-focus: #8bd5ff;
+  --color-progress-track: #4d4d4d;
+  --color-cover-placeholder: #282828;
+  --color-overlay: #000000;
+  --opacity-overlay: 0.72;
+  --opacity-disabled: 0.48;
+
+  /*
+   * Computed text and UI contrast ratios (WCAG 2.1 relative luminance).
+   * Every foreground/background pairing used in product code appears here and
+   * meets WCAG AA. Focus indicators use --color-focus and stay visible on
+   * canvas, surface, hover, and selected states.
+   *
+   *   foreground        / background          21.00:1  shell and player text
+   *   foreground        / surface             18.73:1  page text
+   *   foreground        / surface-raised      17.76:1  dialog and menu text
+   *   foreground        / surface-hover       15.52:1  hovered rows
+   *   foreground        / surface-selected    13.58:1  selected navigation, rows
+   *   foreground-muted  / background          10.02:1  player metadata
+   *   foreground-muted  / surface              8.93:1  track metadata
+   *   foreground-muted  / surface-raised       8.47:1  dialog help
+   *   foreground-muted  / surface-hover        7.40:1  row metadata
+   *   foreground-subtle / surface              6.66:1  timestamps
+   *   foreground-subtle / surface-raised       6.31:1  diagnostics metadata
+   *   foreground-subtle / surface-hover        5.52:1  quiet hovered metadata
+   *   foreground-subtle / surface-selected     4.83:1  disabled selected metadata
+   *   foreground-subtle / background           7.46:1  quiet player timestamps
+   *   accent-foreground / accent              11.50:1  primary button, badge
+   *   destructive-fg    / destructive          7.23:1  confirmed destructive button
+   *   destructive       / surface              6.78:1  inline error
+   *   warning-fg        / warning             11.81:1  degraded badge
+   *   warning           / surface             11.91:1  persistent degraded alert
+   *   info-foreground   / info                10.12:1  internet-source badge
+   *   info              / surface             10.19:1  provider status
+   *   focus             / background          13.06:1  focus indicator
+   *   focus             / surface             11.65:1  focus indicator
+   *   focus             / surface-raised      11.04:1  focus indicator
+   *   focus             / surface-hover        9.65:1  focus indicator
+   *   focus             / surface-selected     8.44:1  focus indicator
+   */
+
+  /* Typography */
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --type-display-size: 2rem;
+  --type-display-line: 2.5rem;
+  --type-display-weight: 700;
+  --type-title-size: 1.5rem;
+  --type-title-line: 2rem;
+  --type-title-weight: 700;
+  --type-section-size: 1.125rem;
+  --type-section-line: 1.5rem;
+  --type-section-weight: 700;
+  --type-body-size: 0.9375rem;
+  --type-body-line: 1.375rem;
+  --type-body-weight: 400;
+  --type-label-size: 0.875rem;
+  --type-label-line: 1.25rem;
+  --type-label-weight: 600;
+  --type-meta-size: 0.8125rem;
+  --type-meta-line: 1.125rem;
+  --type-meta-weight: 400;
+  --type-micro-size: 0.75rem;
+  --type-micro-line: 1rem;
+  --type-micro-weight: 600;
+
+  /* Space */
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+
+  /* Component and layout size */
+  --size-control-sm: 2rem;
+  --size-control: 2.5rem;
+  --size-control-lg: 3rem;
+  --size-row: 3.5rem;
+  --size-cover-sm: 2.5rem;
+  --size-cover-md: 5rem;
+  --size-cover-lg: 14rem;
+  --layout-sidebar: 15rem;
+  --layout-topbar: 4rem;
+  --layout-player: 5.5rem;
+  --layout-content-max: 100rem;
+  /*
+   * Breakpoints are defined in globals.css instead of here: Tailwind expands
+   * --breakpoint-* into media queries at build time, which requires a literal
+   * length rather than a var() reference. They remain part of this token
+   * source and are the only tokens that live in the theme block.
+   */
+
+  /* Radius and shadow */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-pill: 9999px;
+  --shadow-raised: 0 0.75rem 2.5rem rgb(0 0 0 / 0.45);
+  --shadow-listening:
+    0 0 0 0.125rem rgb(46 229 157 / 0.72), 0 0.5rem 1.5rem rgb(46 229 157 / 0.16);
+
+  /* Motion */
+  --motion-fast: 120ms;
+  --motion-standard: 180ms;
+  --motion-deliberate: 240ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+}

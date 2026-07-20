@@ -1,0 +1,225 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./tokens.css";
+
+/*
+ * Shadcn's new-york-v4 source reads a fixed set of semantic variable names.
+ * They are aliased onto the Chillify token source here so registry components
+ * are themed without editing their source and without introducing a second
+ * set of values. Note the deliberate remap: Shadcn's `--accent` is its
+ * neutral hover surface, while the Chillify accent (the listening glow) is
+ * Shadcn's `--primary`.
+ */
+:root {
+  --background: var(--color-surface);
+  --foreground: var(--color-foreground);
+  --card: var(--color-surface-raised);
+  --card-foreground: var(--color-foreground);
+  --popover: var(--color-surface-raised);
+  --popover-foreground: var(--color-foreground);
+  --primary: var(--color-accent);
+  --primary-foreground: var(--color-accent-foreground);
+  --secondary: var(--color-surface-hover);
+  --secondary-foreground: var(--color-foreground);
+  --muted: var(--color-surface-hover);
+  --muted-foreground: var(--color-foreground-muted);
+  --accent: var(--color-surface-hover);
+  --accent-foreground: var(--color-foreground);
+  --destructive: var(--color-destructive);
+  --destructive-foreground: var(--color-destructive-foreground);
+  --border: var(--color-border);
+  --input: var(--color-border);
+  --ring: var(--color-focus);
+  --radius: var(--radius-md);
+
+  --sidebar: var(--color-background);
+  --sidebar-foreground: var(--color-foreground-muted);
+  --sidebar-primary: var(--color-accent);
+  --sidebar-primary-foreground: var(--color-accent-foreground);
+  --sidebar-accent: var(--color-surface-hover);
+  --sidebar-accent-foreground: var(--color-foreground);
+  --sidebar-border: var(--color-border);
+  --sidebar-ring: var(--color-focus);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-canvas: var(--color-background);
+  --color-surface: var(--color-surface);
+  --color-surface-raised: var(--color-surface-raised);
+  --color-surface-hover: var(--color-surface-hover);
+  --color-surface-selected: var(--color-surface-selected);
+  --color-foreground-muted: var(--color-foreground-muted);
+  --color-foreground-subtle: var(--color-foreground-subtle);
+  --color-signal: var(--color-accent);
+  --color-signal-foreground: var(--color-accent-foreground);
+  --color-warning: var(--color-warning);
+  --color-warning-foreground: var(--color-warning-foreground);
+  --color-info: var(--color-info);
+  --color-info-foreground: var(--color-info-foreground);
+  --color-focus: var(--color-focus);
+  --color-progress-track: var(--color-progress-track);
+  --color-cover-placeholder: var(--color-cover-placeholder);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --spacing-0: var(--space-0);
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-8: var(--space-8);
+
+  --spacing-control-sm: var(--size-control-sm);
+  --spacing-control: var(--size-control);
+  --spacing-control-lg: var(--size-control-lg);
+  --spacing-row: var(--size-row);
+  --spacing-cover-sm: var(--size-cover-sm);
+  --spacing-cover-md: var(--size-cover-md);
+  --spacing-cover-lg: var(--size-cover-lg);
+  --spacing-sidebar: var(--layout-sidebar);
+  --spacing-topbar: var(--layout-topbar);
+  --spacing-player: var(--layout-player);
+  --spacing-content-max: var(--layout-content-max);
+
+  /* Literal by necessity — see the note in tokens.css. */
+  --breakpoint-desktop: 64rem;
+  --breakpoint-wide: 90rem;
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-pill: var(--radius-pill);
+
+  --shadow-raised: var(--shadow-raised);
+  --shadow-listening: var(--shadow-listening);
+
+  --ease-standard: var(--ease-standard);
+  --ease-exit: var(--ease-exit);
+}
+
+/* Typography scale. Product components use these classes, never raw values. */
+@utility type-display {
+  font-size: var(--type-display-size);
+  line-height: var(--type-display-line);
+  font-weight: var(--type-display-weight);
+}
+
+@utility type-title {
+  font-size: var(--type-title-size);
+  line-height: var(--type-title-line);
+  font-weight: var(--type-title-weight);
+}
+
+@utility type-section {
+  font-size: var(--type-section-size);
+  line-height: var(--type-section-line);
+  font-weight: var(--type-section-weight);
+}
+
+@utility type-body {
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  font-weight: var(--type-body-weight);
+}
+
+@utility type-label {
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-line);
+  font-weight: var(--type-label-weight);
+}
+
+@utility type-meta {
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line);
+  font-weight: var(--type-meta-weight);
+}
+
+@utility type-micro {
+  font-size: var(--type-micro-size);
+  line-height: var(--type-micro-line);
+  font-weight: var(--type-micro-weight);
+}
+
+/* The listening glow: the one deliberate signature, current media only. */
+@utility listening-glow {
+  box-shadow: var(--shadow-listening);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: var(--type-body-size);
+    line-height: var(--type-body-line);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 0.125rem solid var(--color-focus);
+    outline-offset: 0.125rem;
+  }
+
+  [disabled],
+  [aria-disabled="true"] {
+    opacity: var(--opacity-disabled);
+  }
+}
+
+/*
+ * Reduced motion removes translation and scale and keeps only immediate or
+ * fast opacity/color feedback. Motion never delays input.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: var(--motion-fast) !important;
+    transition-property: opacity, color, background-color, border-color !important;
+    scroll-behavior: auto !important;
+  }
+}

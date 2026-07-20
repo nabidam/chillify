@@ -1,0 +1,138 @@
+"""Generated OpenAPI and wire-envelope contract for the system routes.
+
+The app is exercised through its real lifespan against disposable mounted roots,
+so the documented shape and the served shape cannot drift apart.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+
+import pytest
+from alembic import command
+from alembic.config import Config
+from fastapi.testclient import TestClient
+
+pytestmark = pytest.mark.contract
+
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+STATUS_PATH = "/api/v1/system/status"
+
+
+@pytest.fixture
+def client(
+    valid_environment: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> Iterator[TestClient]:
+    for key, value in valid_environment.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("CHILLIFY_FIXTURE_ROOT", raising=False)
+
+    database_path = Path(valid_environment["CHILLIFY_DATA_ROOT"]) / "db" / "chillify.sqlite3"
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    config = Config(str(BACKEND_ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_ROOT / "migrations"))
+    config.set_main_option("sqlalchemy.url", f"sqlite+pysqlite:///{database_path}")
+    command.upgrade(config, "head")
+
+    from chillify.api.main import create_app
+
+    with TestClient(create_app()) as test_client:
+        yield test_client
+
+
+def _schema_for(document: dict[str, Any], path: str) -> dict[str, Any]:
+    reference = document["paths"][path]["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]["$ref"]
+    name = reference.rsplit("/", 1)[-1]
+    schema: dict[str, Any] = document["components"]["schemas"][name]
+    return schema
+
+
+class TestDocumentedShape:
+    def test_system_status_is_documented(self, client: TestClient) -> None:
+        document = client.get("/api/v1/openapi.json").json()
+
+        assert STATUS_PATH in document["paths"]
+        properties = _schema_for(document, STATUS_PATH)["properties"]
+        assert {
+            "ready",
+            "degraded",
+            "environment",
+            "checked_at",
+            "database",
+            "storage",
+            "redis",
+            "tools",
+            "providers",
+        } <= set(properties)
+
+    def test_error_envelope_is_documented(self, client: TestClient) -> None:
+        document = client.get("/api/v1/openapi.json").json()
+
+        error = document["components"]["schemas"]["ErrorBody"]["properties"]
+        assert {"code", "message", "field", "retryable", "request_id", "detail"} <= set(error)
+
+
+class TestServedShape:
+    def test_status_reports_readiness_and_degradation_separately(self, client: TestClient) -> None:
+        response = client.get(STATUS_PATH)
+
+        assert response.status_code == 200
+        body = response.json()
+        # A migrated database on writable roots is ready even when Redis and the
+        # external tools are absent from this environment.
+        assert body["ready"] is True
+        assert isinstance(body["degraded"], bool)
+        assert body["database"]["health"] == "ok"
+        assert body["environment"] == "production"
+
+    def test_status_enumerates_the_seeded_providers(self, client: TestClient) -> None:
+        body = client.get(STATUS_PATH).json()
+
+        providers = {provider["name"]: provider for provider in body["providers"]}
+        assert set(providers) == {"deezer", "spotdl", "yt_dlp", "lastfm"}
+        assert providers["deezer"]["enabled"] is True
+        assert providers["lastfm"]["enabled"] is False
+
+    def test_status_names_both_mounted_roots(self, client: TestClient) -> None:
+        body = client.get(STATUS_PATH).json()
+
+        assert {item["name"] for item in body["storage"]} == {"data_root", "music_root"}
+
+    def test_unreachable_redis_degrades_without_failing_readiness(self, client: TestClient) -> None:
+        body = client.get(STATUS_PATH).json()
+
+        # The test environment has no Redis on database 9 of the default host.
+        if body["redis"]["health"] != "ok":
+            assert body["degraded"] is True
+            assert body["ready"] is True
+
+    def test_health_probe_reports_ready(self, client: TestClient) -> None:
+        response = client.get("/api/v1/system/health")
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "ready"}
+
+    def test_missing_route_returns_the_documented_error_envelope(self, client: TestClient) -> None:
+        response = client.get("/api/v1/system/does-not-exist")
+
+        assert response.status_code == 404
+        error = response.json()["error"]
+        assert error["code"] == "not_found"
+        assert error["retryable"] is False
+        assert error["field"] is None
+        assert error["detail"] == {}
+        assert error["request_id"]
+
+    def test_every_response_carries_its_request_id(self, client: TestClient) -> None:
+        response = client.get(STATUS_PATH)
+
+        assert response.headers["X-Request-ID"]
+
+    def test_no_permissive_cors_policy_is_advertised(self, client: TestClient) -> None:
+        response = client.get(STATUS_PATH, headers={"Origin": "http://attacker.invalid"})
+
+        assert "access-control-allow-origin" not in {key.lower() for key in response.headers}

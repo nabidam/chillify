@@ -1,0 +1,107 @@
+TASK 1 — Boot/status API and persistent household shell
+Captured: 2026-07-20T21:21:12Z
+
+$ curl -s localhost:8788/api/v1/system/health
+{"status":"ready"}
+
+$ curl -s localhost:8788/api/v1/system/status
+{
+    "ready": true,
+    "degraded": true,
+    "environment": "production",
+    "checked_at": "2026-07-20T21:21:12.538Z",
+    "database": {
+        "name": "database",
+        "health": "ok",
+        "detail": "migrated to 0001_core"
+    },
+    "storage": [
+        {
+            "name": "data_root",
+            "health": "ok",
+            "detail": "23886 MiB free"
+        },
+        {
+            "name": "music_root",
+            "health": "ok",
+            "detail": "23886 MiB free"
+        }
+    ],
+    "redis": {
+        "name": "redis",
+        "health": "unavailable",
+        "detail": "queue transport is unreachable"
+    },
+    "tools": [
+        {
+            "name": "ffmpeg",
+            "health": "ok",
+            "detail": "ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers"
+        },
+        {
+            "name": "ffprobe",
+            "health": "ok",
+            "detail": "ffprobe version 8.1.2 Copyright (c) 2007-2026 the FFmpeg developers"
+        },
+        {
+            "name": "yt_dlp",
+            "health": "ok",
+            "detail": "2026.07.04"
+        },
+        {
+            "name": "spotdl",
+            "health": "ok",
+            "detail": "4.5.2"
+        },
+        {
+            "name": "deno",
+            "health": "ok",
+            "detail": "deno 2.9.3 (stable, release, x86_64-unknown-linux-gnu)"
+        }
+    ],
+    "providers": [
+        {
+            "name": "deezer",
+            "enabled": true,
+            "configured": true
+        },
+        {
+            "name": "spotdl",
+            "enabled": true,
+            "configured": true
+        },
+        {
+            "name": "yt_dlp",
+            "enabled": true,
+            "configured": true
+        },
+        {
+            "name": "lastfm",
+            "enabled": false,
+            "configured": false
+        }
+    ]
+}
+
+$ curl -s localhost:8788/api/v1/system/nope   # documented error envelope
+{
+    "error": {
+        "code": "not_found",
+        "message": "Not Found",
+        "field": null,
+        "retryable": false,
+        "request_id": "fb362d14fd9045cbaa19ee4ecacbe024",
+        "detail": {}
+    }
+}
+
+$ docker compose logs | grep -c "$CHILLIFY_SECRET_KEY"   # sentinel redaction
+0
+0
+
+$ curl -s localhost:8788/ | head -5   # SPA served same-origin by nginx
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />

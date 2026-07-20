@@ -1,0 +1,34 @@
+# Runtime artifacts — never committed
+.env
+.gate/
+media/
+data/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Task evidence and gate screenshots are committed deliberately: they are the
+# completion record the task and demo gates check.
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+backend/.pytest-roots/
+htmlcov/
+.coverage
+
+# Node
+node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
+frontend/.vite/
+
+# Editors and OS
+.DS_Store
+*.swp

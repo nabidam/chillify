@@ -1,0 +1,138 @@
+# Chillify production composition — the entry point for normal household use
+# and for every demo/release gate.
+#
+#   docker compose up -d
+#
+# There is deliberately no Redis service: Chillify uses the operator's existing
+# Redis through REDIS_URL. Losing it degrades acquisition only.
+
+name: chillify
+
+x-runtime-identity: &runtime-identity
+  user: "${CHILLIFY_UID:-1000}:${CHILLIFY_GID:-1000}"
+  restart: unless-stopped
+
+x-backend-environment: &backend-environment
+  CHILLIFY_DATA_ROOT: /var/lib/chillify/data
+  CHILLIFY_MUSIC_ROOT: /var/lib/chillify/music
+  CHILLIFY_BIND_PORT: "${CHILLIFY_BIND_PORT:-8787}"
+  REDIS_URL: "${REDIS_URL:?REDIS_URL is required}"
+  CHILLIFY_REDIS_PREFIX: "${CHILLIFY_REDIS_PREFIX:-chillify:}"
+  CHILLIFY_SECRET_KEY: "${CHILLIFY_SECRET_KEY:?CHILLIFY_SECRET_KEY is required}"
+  CHILLIFY_UID: "${CHILLIFY_UID:-1000}"
+  CHILLIFY_GID: "${CHILLIFY_GID:-1000}"
+  CHILLIFY_LOG_LEVEL: "${CHILLIFY_LOG_LEVEL:-INFO}"
+  CHILLIFY_ALLOWED_ORIGINS: "${CHILLIFY_ALLOWED_ORIGINS:-}"
+  CHILLIFY_ENV: "${CHILLIFY_ENV:-production}"
+  CHILLIFY_FIXTURE_ROOT: "${CHILLIFY_FIXTURE_ROOT:-}"
+  PYTHONUNBUFFERED: "1"
+
+# API and worker receive identical, explicit bind mounts.
+x-backend-volumes: &backend-volumes
+  - type: bind
+    source: "${CHILLIFY_DATA_ROOT:?CHILLIFY_DATA_ROOT is required}"
+    target: /var/lib/chillify/data
+  - type: bind
+    source: "${CHILLIFY_MUSIC_ROOT:?CHILLIFY_MUSIC_ROOT is required}"
+    target: /var/lib/chillify/music
+
+services:
+  # One-shot schema application. API and worker do not start until it succeeds,
+  # so no process ever serves an unmigrated database.
+  migrate:
+    build:
+      context: .
+      dockerfile: deploy/docker/backend.Dockerfile
+    <<: *runtime-identity
+    restart: "no"
+    environment: *backend-environment
+    volumes: *backend-volumes
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=16m
+    command: ["alembic", "upgrade", "head"]
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/docker/backend.Dockerfile
+    <<: *runtime-identity
+    environment: *backend-environment
+    volumes: *backend-volumes
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=64m
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command:
+      - uvicorn
+      - chillify.api.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --no-access-log
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          with urllib.request.urlopen(
+              "http://127.0.0.1:8000/api/v1/system/health", timeout=4
+          ) as response:
+              sys.exit(0 if response.status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  # Serial acquisition. Concurrency and prefetch are both one so household
+  # downloads never contend for the shared SQLite database or media root.
+  worker:
+    build:
+      context: .
+      dockerfile: deploy/docker/backend.Dockerfile
+    <<: *runtime-identity
+    environment: *backend-environment
+    volumes: *backend-volumes
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=2g
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: ["python", "-m", "chillify.worker.main"]
+    healthcheck:
+      test: ["CMD", "python", "-m", "chillify.worker.main", "--health"]
+      interval: 15s
+      timeout: 10s
+      retries: 4
+      start_period: 20s
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/docker/web.Dockerfile
+    <<: *runtime-identity
+    read_only: true
+    # nginx runs as the host identity, not root, so its writable tmpfs mounts
+    # need world-writable sticky permissions. A tmpfs defaults to root-owned
+    # 0700, which the unprivileged worker cannot write to.
+    tmpfs:
+      - /tmp:mode=1777,size=16m
+      - /var/cache/nginx:mode=1777,size=32m
+      - /var/run:mode=1777,size=8m
+    ports:
+      - "${CHILLIFY_BIND_PORT:-8787}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

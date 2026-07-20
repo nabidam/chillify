@@ -1,0 +1,45 @@
+TASK 0 — Scaffold the production-shaped repository
+Captured: 2026-07-20T21:20:01Z
+
+$ docker compose --env-file .gate/task-0-1/.env up --build -d
+api	running	Up 9 minutes (healthy)
+migrate	exited	Exited (0) 2 minutes ago
+web	running	Up 2 minutes (healthy)
+worker	running	Up 9 minutes (unhealthy)
+
+$ ls -la .gate/task-0-1/data/db/   # migration applied on the mounted root
+total 256
+drwxr-xr-x 2 dev dev   4096 Jul 21 00:40 .
+drwxr-xr-x 3 dev dev   4096 Jul 21 00:49 ..
+-rw-r--r-- 1 dev dev 221184 Jul 21 00:28 chillify.sqlite3
+-rw-r--r-- 1 dev dev  32768 Jul 21 00:40 chillify.sqlite3-shm
+-rw-r--r-- 1 dev dev      0 Jul 21 00:40 chillify.sqlite3-wal
+
+$ docker ps -s   # NFR-12: nothing in container writable layers
+chillify-web-1	0B (virtual 164MB)
+chillify-api-1	0B (virtual 592MB)
+chillify-worker-1	0B (virtual 592MB)
+
+$ PATH=... ./scripts/verify.sh   # tail
+=== frontend lint
+--- frontend lint: ok
+=== frontend types
+--- frontend types: ok
+=== frontend tests
+--- frontend tests: ok
+=== raw color literals
+--- raw color literals: ok
+=== primitive boundary
+--- primitive boundary: ok
+=== domain boundary
+--- domain boundary: ok
+=== secret scan
+--- secret scan: ok
+=== frontend build
+--- frontend build: ok
+=== backend dependency audit
+-------- -------------------------------
+--- backend dependency audit: ok
+=== frontend dependency audit
+--- frontend dependency audit: ok
+verify: all checks passed

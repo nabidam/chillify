@@ -1,0 +1,97 @@
+[project]
+name = "chillify"
+version = "0.1.0"
+description = "Downloader-first local music library for one trusted household"
+requires-python = "==3.14.*"
+dependencies = [
+    "fastapi==0.139.2",
+    "uvicorn==0.51.0",
+    "pydantic==2.13.4",
+    "pydantic-settings==2.14.2",
+    "SQLAlchemy==2.0.51",
+    "alembic==1.18.5",
+    "celery==5.6.3",
+    "redis==8.0.1",
+    "httpx[socks]==0.28.1",
+    "yt-dlp==2026.7.4",
+    # spotdl==4.5.2 is deliberately absent: it caps fastapi<0.104 and
+    # uvicorn<0.24. It is installed into an isolated environment in
+    # deploy/docker/backend.Dockerfile and invoked as an argument-vector
+    # subprocess. See the ARCHITECTURE Decision log, 2026-07-20.
+    "mutagen==1.48.1",
+    "pillow==12.3.0",
+    "python-multipart==0.0.32",
+    "tenacity==9.1.4",
+    "cryptography==49.0.0",
+    "pathvalidate==3.3.1",
+    "filelock==3.31.1",
+    "rich==15.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "respx==0.23.1",
+    "ruff==0.15.22",
+    "mypy==2.3.0",
+    # Dependency audit for ./scripts/verify.sh. Verification-only tooling, in
+    # the same category as ruff and mypy; it is never imported by the
+    # application. Recorded in the ARCHITECTURE Decision log, 2026-07-20.
+    "pip-audit==2.10.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chillify"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM",
+    "T20", "RET", "ARG", "PTH", "ERA", "TID", "RUF",
+]
+ignore = ["B008"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"print".msg = "Rich stdout logging is the only logging system; use logging.getLogger(__name__)."
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ARG001", "ARG002"]
+"migrations/**" = ["ERA001", "N999"]
+
+[tool.mypy]
+python_version = "3.14"
+files = ["src/chillify"]
+strict = true
+warn_unreachable = true
+disallow_any_generics = true
+no_implicit_reexport = true
+plugins = []
+
+[[tool.mypy.overrides]]
+module = ["celery.*", "spotdl.*", "yt_dlp.*", "mutagen.*", "pathvalidate.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+filterwarnings = [
+    "error",
+    # Starlette's TestClient now prefers httpx2. Chillify pins httpx 0.28.1 for
+    # outbound provider traffic and respx mocks that client, so the test client
+    # deliberately stays on the same httpx rather than adding a second HTTP
+    # stack for tests alone. Revisit when the outbound pin moves.
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+]
+markers = [
+    "unit: pure logic without process or filesystem dependencies",
+    "integration: real SQLite, filesystem, or service seams",
+    "contract: wire, OpenAPI, or script interface shape",
+]

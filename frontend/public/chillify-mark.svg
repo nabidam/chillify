@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Chillify">
+  <title>Chillify</title>
+  <rect width="32" height="32" rx="8" fill="#000000" />
+  <path
+    d="M20.5 7.5v11.2a4.3 4.3 0 1 1-2.6-3.95V10.9l-6.4 1.5v8.9a4.3 4.3 0 1 1-2.6-3.95V10.4z"
+    fill="#2EE59D"
+  />
+</svg>
