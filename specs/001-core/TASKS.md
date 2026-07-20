@@ -93,6 +93,12 @@ gate = 1
 
 Context pack (hint): ARCHITECTURE §§4–5, 8–10; `UX.md` S1/S2; `DESIGN.md`.
 
+- **Done:** `150d380` — evidence `specs/001-core/evidence/task-2.txt`
+  The `[e2e@gate-1]` criterion is Task 5's demo gate and is not claimed here.
+  Two dependency-plan decisions were taken with the user and recorded in the
+  ARCHITECTURE Decision log: `typescript` moves to the 5 line, and a scoped
+  `js-yaml` override clears GHSA-52cp-r559-cp3m.
+
 ## Task 3 — Local-first search and durable serial download queue
 
 ```toml
