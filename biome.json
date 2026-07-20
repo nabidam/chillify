@@ -33,7 +33,6 @@
     "enabled": true,
     "rules": {
       "recommended": true,
-      "a11y": { "recommended": true },
       "correctness": {
         "noUnusedImports": "error",
         "noUnusedVariables": "error",
@@ -59,9 +58,15 @@
       "includes": ["frontend/src/components/ui/**", "frontend/src/hooks/use-mobile.ts"],
       "linter": {
         "rules": {
-          "suspicious": { "noExplicitAny": "off", "noDocumentCookie": "off" },
+          "suspicious": {
+            "noExplicitAny": "off",
+            "noDocumentCookie": "off",
+            "noDoubleEquals": "off",
+            "noArrayIndexKey": "off"
+          },
           "style": { "noNonNullAssertion": "off" },
-          "correctness": { "useExhaustiveDependencies": "off" }
+          "correctness": { "useExhaustiveDependencies": "off" },
+          "a11y": { "useSemanticElements": "off" }
         }
       }
     },

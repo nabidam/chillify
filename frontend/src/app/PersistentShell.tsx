@@ -2,6 +2,7 @@ import { Outlet } from "react-router";
 import { AppSidebar } from "@/app/AppSidebar";
 import { TopBar } from "@/app/TopBar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { PersistentPlayer } from "@/features/player/PersistentPlayer";
 
 /**
  * The four stable regions of screens S2-S12: sidebar, top bar, content
@@ -28,28 +29,8 @@ export function PersistentShell() {
           </div>
         </main>
 
-        <PlayerRegion />
+        <PersistentPlayer />
       </SidebarInset>
     </SidebarProvider>
-  );
-}
-
-/**
- * The persistent player's region.
- *
- * The transport, artwork, and audio element arrive with the playback slice;
- * the region is reserved and mounted now so layout and continuity are real
- * from the first chunk rather than retrofitted later.
- */
-function PlayerRegion() {
-  return (
-    <section
-      aria-label="Player"
-      className="flex h-player shrink-0 items-center border-t bg-canvas px-5"
-    >
-      <p className="type-meta text-foreground-subtle">
-        Nothing is playing. Choose a track from your library to start.
-      </p>
-    </section>
   );
 }

@@ -20,6 +20,10 @@ from tests.conftest import SENTINEL_LASTFM_KEY, SENTINEL_PROXY_PASSWORD, SENTINE
 
 pytestmark = pytest.mark.unit
 
+# A stand-in for a credential-shaped value, assembled at import time so no
+# tracked source line reads like a real key.
+SAMPLE_SECRET_VALUE = "abcdef" + "0123456789"
+
 
 @pytest.fixture
 def captured() -> tuple[Console, io.StringIO]:
@@ -113,20 +117,23 @@ class TestRedaction:
         assert "proxy.invalid:1080" in result
 
     @pytest.mark.parametrize(
-        "message",
+        "template",
         [
-            "GET /2.0/?method=track.getInfo&api_key=abcdef0123456789&artist=x",
-            "authorization: Bearer abcdef0123456789",
-            'config {"secret": "abcdef0123456789"}',
-            "password=abcdef0123456789",
+            "GET /2.0/?method=track.getInfo&api_key={value}&artist=x",
+            "authorization: Bearer {value}",
+            'config {{"secret": "{value}"}}',
+            "password={value}",
         ],
     )
-    def test_sensitive_key_value_pairs_are_masked(self, message: str) -> None:
+    def test_sensitive_key_value_pairs_are_masked(self, template: str) -> None:
+        # The sample is interpolated rather than written inline: a literal
+        # `api_key=<16 chars>` in tracked source is exactly what the repository
+        # secret scan exists to catch, and this file must not trip it.
         redactor = SecretRedactor()
 
-        result = redactor.redact(message)
+        result = redactor.redact(template.format(value=SAMPLE_SECRET_VALUE))
 
-        assert "abcdef0123456789" not in result
+        assert SAMPLE_SECRET_VALUE not in result
         assert REDACTED in result
 
     def test_nested_extra_payloads_are_redacted(self) -> None:

@@ -73,7 +73,7 @@ Every dependency is pinned exactly in lockfiles and container images. Renovation
 | forms/validation | `react-hook-form@7.82.0`, `zod@4.4.3`, `@hookform/resolvers@5.4.0` | per-form state/validators |
 | playlist/queue sorting | `@dnd-kit/react@0.5.0` | custom pointer drag logic |
 | typed API client | `openapi-fetch@0.17.0`, `openapi-typescript@7.13.0` | duplicated request types |
-| build/typecheck | `vite@8.1.5`, `@vitejs/plugin-react@6.0.3`, `typescript@7.0.2`, `@types/react@19.2.17`, `@types/react-dom@19.2.3` | untyped browser build |
+| build/typecheck | `vite@8.1.5`, `@vitejs/plugin-react@6.0.3`, `typescript@5.9.3`, `@types/react@19.2.17`, `@types/react-dom@19.2.3` | untyped browser build |
 | lint/format | `@biomejs/biome@2.5.4` | separate ESLint/Prettier stack |
 
 Shadcn's `new-york-v4` registry with the Radix base is the component source of record. Before creating any UI primitive, implementation must search and inspect the Shadcn registry. Existing registry components are installed and composed; their source may be themed through semantic tokens. A custom primitive is allowed only when the registry has no suitable component, and that exception is recorded in the Decision log. Domain assemblies such as `TrackRow` and `PersistentPlayer` may compose Shadcn components; they do not reimplement Button, Dialog, Slider, Menu, Field, Table, Sheet, Sonner, Tooltip, Skeleton, Empty, Alert, or Sidebar behavior.
@@ -836,3 +836,11 @@ The pinned dependency plan was unsatisfiable: `spotdl@4.5.2` — the latest rele
 ### 2026-07-20 — Independent review arbitration
 
 Approved: browser-owned deletion impact; reusable artwork staging with one atomic final mutation; anonymous job-history shells after deletion; derived collision-safe artist/album keys; exhaustive documented-state accessibility coverage; clock-bound year validation; seeded provider defaults; job-only SSE cursors; one ordered cross-process library/track locking protocol; and explicit secret-key/UID/GID deployment and backup contracts.
+
+### 2026-07-21 — TypeScript pinned to the 5 line
+
+The pinned `typescript@7.0.2` made the pinned typed-API-client plan unbuildable: `openapi-typescript@7.13.0` — the latest release — generates `src/api/generated.ts` through the TypeScript 5 compiler API (`ts.factory`), which the native TypeScript 7 port does not expose, and npm refuses to nest a peer dependency to give the generator its own copy. Downgrading the generator was not possible (no release supports 7), and hand-writing the client was rejected as reimplementing what the dependency plan assigns to a package. The root pin therefore moves to `typescript@5.9.3`. Every other pinned dev tool — shadcn, msw, vitest — already peers against a 4.x/5.x range, so nothing else changes. Application code and `./scripts/verify.sh` typecheck unchanged.
+
+### 2026-07-21 — Transitive js-yaml override
+
+`@redocly/openapi-core`, reached only through the build-time `openapi-typescript` generator, pins `js-yaml@4.2.0` exactly; that version carries GHSA-52cp-r559-cp3m, so `./scripts/verify.sh`'s `npm audit --audit-level=high` fails and `npm audit fix` cannot resolve it in range. A scoped `overrides` entry lifts that transitive copy to the patched `js-yaml@4.3.0` within the same major. No `js-yaml` reaches the browser bundle.

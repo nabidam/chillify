@@ -5,6 +5,7 @@
  * path without importing the router that renders them.
  */
 export const routes = {
+  profiles: "/profiles",
   library: "/library",
   search: "/search",
   playlists: "/playlists",

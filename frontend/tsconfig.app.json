@@ -23,6 +23,8 @@
     "erasableSyntaxOnly": true,
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src", "tests"],
-  "exclude": ["src/api/generated.ts"]
+  // The generated API types are part of the program: excluding them would make
+  // every import of them a compile error. They stay out of Biome's formatting
+  // and linting instead, which is what "never hand-edited" actually requires.
+  "include": ["src", "tests"]
 }

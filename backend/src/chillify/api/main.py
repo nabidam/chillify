@@ -20,9 +20,10 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from chillify.api.errors import ErrorResponse, error_payload
-from chillify.api.routes import system
+from chillify.api.routes import library, profiles, system, tracks
 from chillify.composition import build_composition
 from chillify.config import ConfigurationError, load_settings
+from chillify.domain.errors import ChillifyError
 from chillify.infrastructure.logging.setup import SERVICE_API, configure_logging, request_context
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,29 @@ def create_app() -> FastAPI:
             ),
         )
 
+    @app.exception_handler(ChillifyError)
+    async def handle_domain_error(request: Request, exc: ChillifyError) -> JSONResponse:
+        """Map the closed domain error set onto the one wire envelope.
+
+        The mapping is a property of each error class, not a table maintained
+        here, so a new domain error cannot be added without deciding its status.
+        """
+        if exc.status_code >= 500:
+            logger.error(
+                "domain failure", extra={"error_code": exc.code, "status": exc.status_code}
+            )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=error_payload(
+                code=exc.code,
+                message=exc.message,
+                request_id=_request_id(request),
+                retryable=exc.retryable,
+                field=exc.field,
+                detail=dict(exc.context),
+            ),
+        )
+
     @app.exception_handler(ConfigurationError)
     async def handle_configuration_error(request: Request, exc: ConfigurationError) -> JSONResponse:
         logger.error("configuration error", extra={"error_code": exc.code})
@@ -139,6 +163,9 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(system.router, prefix=API_PREFIX)
+    app.include_router(profiles.router, prefix=API_PREFIX)
+    app.include_router(library.router, prefix=API_PREFIX)
+    app.include_router(tracks.router, prefix=API_PREFIX)
     _configure_origins(app)
     return app
 

@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import shutil
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from cryptography.fernet import Fernet
+from fastapi.testclient import TestClient
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -63,6 +66,52 @@ def valid_environment(storage_roots: tuple[Path, Path], secret_key: str) -> dict
         "CHILLIFY_SECRET_KEY": secret_key,
         "CHILLIFY_ENV": "production",
     }
+
+
+@pytest.fixture
+def migrated_environment(
+    valid_environment: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> dict[str, str]:
+    """A valid environment whose disposable database is already migrated.
+
+    The real Alembic migration runs, so tests exercise the schema the household
+    deployment actually gets rather than a metadata-created approximation.
+    """
+    for key, value in valid_environment.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("CHILLIFY_FIXTURE_ROOT", raising=False)
+
+    database_path = Path(valid_environment["CHILLIFY_DATA_ROOT"]) / "db" / "chillify.sqlite3"
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    config = Config(str(BACKEND_ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_ROOT / "migrations"))
+    config.set_main_option("sqlalchemy.url", f"sqlite+pysqlite:///{database_path}")
+    command.upgrade(config, "head")
+    return valid_environment
+
+
+@pytest.fixture
+def start_api(migrated_environment: dict[str, str]) -> Iterator[Callable[[], TestClient]]:
+    """Start the real application, as many times as one test needs.
+
+    Restarting is a first-class operation here: the household restarts Compose,
+    and every durable claim in this suite must survive that.
+    """
+    from chillify.api.main import create_app
+
+    running: list[TestClient] = []
+
+    def start() -> TestClient:
+        client = TestClient(create_app())
+        client.__enter__()
+        running.append(client)
+        return client
+
+    try:
+        yield start
+    finally:
+        for client in reversed(running):
+            client.__exit__(None, None, None)
 
 
 @pytest.fixture

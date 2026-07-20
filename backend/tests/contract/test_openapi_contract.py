@@ -69,6 +69,50 @@ class TestDocumentedShape:
             "providers",
         } <= set(properties)
 
+    def test_the_library_and_profile_resources_are_documented(self, client: TestClient) -> None:
+        paths = client.get("/api/v1/openapi.json").json()["paths"]
+
+        assert "post" in paths["/api/v1/profiles"]
+        assert "get" in paths["/api/v1/profiles"]
+        assert "get" in paths["/api/v1/library/tracks"]
+        assert "get" in paths["/api/v1/tracks/{track_id}/stream"]
+
+    def test_collections_share_one_page_envelope(self, client: TestClient) -> None:
+        document = client.get("/api/v1/openapi.json").json()
+
+        for path in ("/api/v1/profiles", "/api/v1/library/tracks"):
+            properties = _schema_for(document, path)["properties"]
+            assert {"items", "next_cursor"} <= set(properties)
+
+    def test_the_track_summary_documents_playability_and_context_keys(
+        self, client: TestClient
+    ) -> None:
+        document = client.get("/api/v1/openapi.json").json()
+
+        summary = document["components"]["schemas"]["TrackSummaryModel"]["properties"]
+        assert {
+            "id",
+            "title",
+            "artist",
+            "album",
+            "release_year",
+            "duration_ms",
+            "artist_key",
+            "album_key",
+            "availability",
+            "is_playable",
+            "revision",
+        } <= set(summary)
+        # A path in a documented response shape would be a path in a real one.
+        assert not {"file_relpath", "artwork_relpath", "content_sha256"} & set(summary)
+
+    def test_the_stream_route_documents_its_audio_responses(self, client: TestClient) -> None:
+        document = client.get("/api/v1/openapi.json").json()
+
+        responses = document["paths"]["/api/v1/tracks/{track_id}/stream"]["get"]["responses"]
+        assert "audio/mpeg" in responses["200"]["content"]
+        assert "audio/mpeg" in responses["206"]["content"]
+
     def test_error_envelope_is_documented(self, client: TestClient) -> None:
         document = client.get("/api/v1/openapi.json").json()
 

@@ -1,0 +1,68 @@
+Task 2 — Profile, library stream, and persistent playback
+Captured 2026-07-21T01:56:24+03:30 on 001-core
+
+=== ./scripts/verify.sh
+=== domain boundary
+--- domain boundary: ok
+
+=== secret scan
+--- secret scan: ok
+
+=== frontend build
+vite v8.1.5 building client environment for production...
+[2Ktransforming...✓ 2026 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.64 kB │ gzip:   0.37 kB
+dist/assets/index-dvqhve_Y.css   63.70 kB │ gzip:  11.77 kB
+dist/assets/index-CdxxyTyC.js   487.24 kB │ gzip: 151.18 kB │ map: 2,320.91 kB
+
+✓ built in 730ms
+--- frontend build: ok
+
+=== backend dependency audit
+No known vulnerabilities found
+Name     Skip Reason
+-------- -------------------------------
+chillify distribution marked as editable
+--- backend dependency audit: ok
+
+=== frontend dependency audit
+found 0 vulnerabilities
+--- frontend dependency audit: ok
+
+verify: all checks passed
+
+=== live acceptance run against uvicorn (bash live_check.sh)
+== seed one managed track and its file
+seeded 32772 bytes
+== start uvicorn
+== GET /system/health
+{"status":"ready"}
+== POST /profiles
+{"id":"019f81a3-ea42-774d-bb5e-dab48540403b","name":"Household","created_at":"2026-07-20T22:27:11.042000Z","updated_at":"2026-07-20T22:27:11.042000Z"}
+== POST /profiles (duplicate)
+{"error":{"code":"duplicate_record","message":"A profile with that name already exists in this household.","field":"name","retryable":false,"request_id":"5b0a17771ca34ef5b2288b441f19d900","detail":{}}}  HTTP 409
+== GET /profiles
+{"items":[{"id":"019f81a3-ea42-774d-bb5e-dab48540403b","name":"Household","created_at":"2026-07-20T22:27:11.042000Z","updated_at":"2026-07-20T22:27:11.042000Z"}],"next_cursor":null}
+== GET /library/tracks
+{"items":[{"id":"019f81a3-dde0-7250-82ad-645c2593a5a1","title":"Hoppipolla","artist":"Sigur Rós","album":"Takk...","release_year":2005,"disc_number":1,"track_number":4,"duration_ms":268000,"artist_key":"c2lndXIgcm9z","album_key":"c2lndXIgcm9zAHRha2s","availability":"available","is_playable":true,"revision":1,"created_at":"2026-07-20T22:27:07.871000Z","updated_at":"2026-07-20T22:27:07.871000Z"}],"next_cursor":null}
+== GET /library/tracks?q=Sigur%20Rós (accent-folded search)
+matches: 1
+== GET /tracks/{id}/stream (full)
+HTTP/1.1 200 OK
+etag: "1-32772-1784586427"
+accept-ranges: bytes
+content-type: audio/mpeg
+content-length: 32772
+== GET /tracks/{id}/stream (Range: bytes=100-199)
+HTTP/1.1 206 Partial Content
+content-length: 100
+content-range: bytes 100-199/32772
+  received 100 bytes
+== restart the API, then read the same data back
+  profiles after restart: ['Household']
+  tracks after restart:   ['Hoppipolla']
+== delete the managed file, then stream it
+{"error":{"code":"track_file_missing","message":"That track's file is no longer on disk.","field":null,"retryable":false,"request_id":"0a282bb52b3e4586b9844967d4b8a7ab","detail":{}}}  HTTP 410
+  availability now: missing is_playable= False

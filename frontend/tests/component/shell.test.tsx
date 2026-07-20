@@ -4,10 +4,14 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { AppProviders } from "@/app/AppProviders";
-import { systemStatusFixture } from "../msw/handlers";
+import { ACTIVE_PROFILE_STORAGE_KEY } from "@/app/activeProfile";
+import { profileFixture, systemStatusFixture } from "../msw/handlers";
 import { server } from "../msw/server";
 
 function renderShell() {
+  // The shell is only reachable with a profile chosen; S1 owns that choice and
+  // is exercised in its own suite.
+  window.localStorage.setItem(ACTIVE_PROFILE_STORAGE_KEY, profileFixture().id);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: 0 } },
   });

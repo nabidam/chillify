@@ -27,6 +27,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from chillify.application.library import LibraryService
 from chillify.config import Settings, preflight_mounted_roots
 from chillify.infrastructure.db.engine import create_database_engine, create_session_factory
 from chillify.infrastructure.logging.setup import redactor
@@ -102,6 +103,15 @@ class Composition:
 
     def dispose(self) -> None:
         self.engine.dispose()
+
+    # -- use cases --------------------------------------------------------
+
+    def library_service(self) -> LibraryService:
+        """Bind the profile, library, and stream use cases to this process."""
+        return LibraryService(
+            session_factory=self.session_factory,
+            music_root=self.settings.music_root,
+        )
 
     # -- status -----------------------------------------------------------
 
