@@ -128,6 +128,21 @@ gate = 1
 
 Context pack (hint): ARCHITECTURE §§5–7, 10–11; `UX.md` S3/S11; `DESIGN.md`.
 
+- **Done:** `1527746` — evidence `specs/001-core/evidence/task-3.txt`
+  The `[e2e@gate-1]` criterion is Task 5's demo gate and is not claimed here;
+  its behaviour was exercised out of process against the running app (Redis,
+  uvicorn, and `python -m chillify.worker.main`) and recorded in the evidence.
+  Two adjustments to the predicted file set: the Deezer wire translation lives
+  in `infrastructure/providers/deezer_wire.py` so a production adapter and a
+  fixture adapter cannot disagree about the payload, and the job/idempotency
+  rows joined `infrastructure/db/{models,repositories}.py` rather than growing
+  a second persistence path.
+  Two defects inherited from earlier tasks were repaired here because this task
+  could not be committed correctly without them: the unanchored `media/` ignore
+  rule had kept `infrastructure/media/storage.py` out of every commit since
+  Task 2, and `scripts/gate/prepare.sh` created an empty fixture root that the
+  gate adapters cannot read.
+
 ## Task 4 — Atomic correction, playlists, and gate safety scripts
 
 ```toml
