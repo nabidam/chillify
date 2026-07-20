@@ -1,8 +1,13 @@
-# Runtime artifacts — never committed
+# Runtime artifacts — never committed.
+#
+# The media and data roots are anchored to the repository root on purpose: an
+# unanchored `media/` also matches `backend/src/chillify/infrastructure/media/`
+# and `backend/tests/fixtures/media/`, which silently kept application source
+# and a test fixture out of every commit.
 .env
 .gate/
-media/
-data/
+/media/
+/data/
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm

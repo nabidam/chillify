@@ -52,6 +52,9 @@ mkdir -p "$GATE_ROOT/data" "$GATE_ROOT/music" "$GATE_ROOT/fixtures"
 if [[ "$MODE" == "gate" ]]; then
     REDIS_PREFIX="chillify:gate:${NAME}:"
     FIXTURE_ROOT="$GATE_ROOT/fixtures"
+    # Seed the fixture adapters' recorded payloads. They are copied rather
+    # than referenced so a gate run reads only from its own disposable tree.
+    cp -R "$REPO_ROOT/backend/tests/fixtures/." "$GATE_ROOT/fixtures/"
 else
     REDIS_PREFIX="chillify:"
     FIXTURE_ROOT=""

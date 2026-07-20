@@ -15,38 +15,25 @@ import logging
 import sys
 from typing import Final
 
-from celery import Celery
-
+from chillify.application.downloads import DownloadService
 from chillify.composition import Composition, Health, build_composition
-from chillify.config import ConfigurationError, Settings, load_settings
+from chillify.config import ConfigurationError, load_settings
 from chillify.infrastructure.logging.setup import SERVICE_WORKER, configure_logging
+from chillify.infrastructure.queue.celery_app import QUEUE_NAME, create_celery_app
+from chillify.infrastructure.queue.tasks import register_tasks
 
 logger = logging.getLogger(__name__)
 
-QUEUE_NAME: Final = "acquisition"
+# The lease owner recorded on every job this process runs, so a job's history
+# says which process performed it.
+WORKER_IDENTITY: Final = "worker"
 
 _composition: Composition | None = None
 
 
-def create_celery_app(settings: Settings) -> Celery:
-    app = Celery("chillify")
-    app.conf.update(
-        broker_url=settings.redis_url,
-        result_backend=None,
-        task_default_queue=f"{settings.redis_prefix}{QUEUE_NAME}",
-        # Serial execution: one task in flight, one reserved, never more.
-        worker_concurrency=1,
-        worker_prefetch_multiplier=1,
-        task_acks_late=True,
-        task_reject_on_worker_lost=True,
-        broker_connection_retry_on_startup=True,
-        timezone="UTC",
-        enable_utc=True,
-        # Chillify configures logging; Celery must not install its own handlers.
-        worker_hijack_root_logger=False,
-        worker_redirect_stdouts=False,
-    )
-    return app
+def download_service() -> DownloadService:
+    """The worker's acquisition use cases, bound to this process."""
+    return composition().download_service(worker_identity=WORKER_IDENTITY)
 
 
 def composition() -> Composition:
@@ -97,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
 
     composition()
     celery_app = create_celery_app(settings)
+    register_tasks(celery_app, download_service)
     celery_app.worker_main(
         [
             "worker",

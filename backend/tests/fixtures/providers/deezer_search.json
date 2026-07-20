@@ -1,0 +1,51 @@
+{
+  "data": [
+    {
+      "id": 3135556,
+      "title": "Harder Better Faster Stronger",
+      "duration": 224,
+      "isrc": "GBDUW0000059",
+      "artist": { "id": 27, "name": "Daft Punk" },
+      "album": {
+        "id": 302127,
+        "title": "Discovery",
+        "cover_xl": "https://cdn.invalid/deezer/302127/xl.jpg",
+        "cover_big": "https://cdn.invalid/deezer/302127/big.jpg"
+      }
+    },
+    {
+      "id": 916424,
+      "title": "Hoppipolla",
+      "duration": 268,
+      "isrc": "GBAYE0500860",
+      "artist": { "id": 1273, "name": "Sigur Ros" },
+      "album": {
+        "id": 91205,
+        "title": "Takk",
+        "cover_big": "https://cdn.invalid/deezer/91205/big.jpg"
+      }
+    },
+    {
+      "id": 1109731,
+      "title": "Teardrop",
+      "duration": 330,
+      "isrc": "",
+      "artist": { "id": 1010, "name": "Massive Attack" },
+      "album": { "id": 118554, "title": "Mezzanine" }
+    },
+    {
+      "id": 555001,
+      "title": "Untagged Instrumental",
+      "duration": 0,
+      "artist": { "id": 4242, "name": "Fixture Ensemble" },
+      "album": { "id": 4243, "title": "" }
+    },
+    {
+      "id": null,
+      "title": "Malformed Row Without An Identifier",
+      "duration": 100,
+      "artist": { "name": "Nobody" }
+    }
+  ],
+  "total": 5
+}

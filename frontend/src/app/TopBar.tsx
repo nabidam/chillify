@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { GlobalJobIndicator } from "@/features/downloads/GlobalJobIndicator";
 
 const titles: Record<string, string> = {
   "/library": "Your Library",
@@ -67,6 +68,7 @@ export function TopBar() {
       <p className="type-label truncate text-foreground">{title}</p>
 
       <div className="ml-auto flex items-center gap-2">
+        <GlobalJobIndicator />
         <StatusSummary
           isPending={isPending}
           isError={isError}

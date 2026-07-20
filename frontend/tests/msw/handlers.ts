@@ -1,6 +1,8 @@
 import { HttpResponse, http } from "msw";
 import type { Profile, TrackSummary } from "@/api/client";
 import type { SystemStatus } from "@/app/useSystemStatus";
+import type { DownloadJob } from "@/features/downloads/downloadJobs";
+import type { RemoteResult, TrackCandidate } from "@/features/search/remoteSearch";
 
 export function systemStatusFixture(overrides: Partial<SystemStatus> = {}): SystemStatus {
   return {
@@ -62,6 +64,57 @@ export function trackSummaryFixture(overrides: Partial<TrackSummary> = {}): Trac
   };
 }
 
+export function remoteResultFixture(
+  overrides: Partial<RemoteResult> = {},
+  candidateOverrides: Partial<TrackCandidate> = {},
+): RemoteResult {
+  return {
+    candidate: {
+      provider: "deezer",
+      source_id: "3135556",
+      source_url: "https://www.deezer.com/track/3135556",
+      title: "Harder Better Faster Stronger",
+      artist: "Daft Punk",
+      album: "Discovery",
+      release_year: null,
+      disc_number: null,
+      track_number: null,
+      duration_ms: 224000,
+      isrc: "GBDUW0000059",
+      artwork_url: null,
+      acquisition_locator: "ytsearch1:Daft Punk Harder Better Faster Stronger",
+      raw_fingerprint: null,
+      ...candidateOverrides,
+    },
+    is_playable: false,
+    existing_track_id: null,
+    ...overrides,
+  };
+}
+
+export function jobFixture(overrides: Partial<DownloadJob> = {}): DownloadJob {
+  return {
+    id: "019f8000-0000-7000-8000-0000000000b1",
+    provider: "yt_dlp",
+    source_type: "deezer_result",
+    state: "queued",
+    display_state: "queued",
+    phase: "accepted",
+    progress_percent: null,
+    restart_count: 0,
+    parent_job_id: null,
+    error_code: null,
+    error_message: null,
+    result_track_id: null,
+    version: 1,
+    created_at: "2026-07-20T12:00:00.000Z",
+    started_at: null,
+    finished_at: null,
+    updated_at: "2026-07-20T12:00:00.000Z",
+    ...overrides,
+  };
+}
+
 export const handlers = [
   http.get("/api/v1/system/status", () => HttpResponse.json(systemStatusFixture())),
   http.get("/api/v1/profiles", () =>
@@ -70,4 +123,9 @@ export const handlers = [
   http.get("/api/v1/library/tracks", () =>
     HttpResponse.json({ items: [trackSummaryFixture()], next_cursor: null }),
   ),
+  http.get("/api/v1/search/deezer", () =>
+    HttpResponse.json({ items: [remoteResultFixture()], next_cursor: null }),
+  ),
+  http.get("/api/v1/downloads", () => HttpResponse.json({ items: [], next_cursor: null })),
+  http.post("/api/v1/downloads", () => HttpResponse.json(jobFixture(), { status: 201 })),
 ];

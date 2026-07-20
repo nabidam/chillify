@@ -23,14 +23,19 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
+from celery import Celery
 from sqlalchemy import Engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from chillify.application.downloads import DownloadService
 from chillify.application.library import LibraryService
+from chillify.application.search import SearchService
 from chillify.config import Settings, preflight_mounted_roots
 from chillify.infrastructure.db.engine import create_database_engine, create_session_factory
 from chillify.infrastructure.logging.setup import redactor
+from chillify.infrastructure.providers.registry import ProviderRegistry, build_registry
+from chillify.infrastructure.queue.celery_app import create_celery_app, make_dispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +104,9 @@ class Composition:
     settings: Settings
     engine: Engine
     session_factory: sessionmaker[Session]
+    registry: ProviderRegistry = field(default_factory=ProviderRegistry)
     _tool_cache: dict[str, ComponentStatus] = field(default_factory=dict)
+    _celery_app: Celery | None = None
 
     def dispose(self) -> None:
         self.engine.dispose()
@@ -112,6 +119,36 @@ class Composition:
             session_factory=self.session_factory,
             music_root=self.settings.music_root,
         )
+
+    def search_service(self) -> SearchService:
+        """Bind explicit online discovery to the adapters this environment allows."""
+        return SearchService(session_factory=self.session_factory, registry=self.registry)
+
+    def download_service(self, *, worker_identity: str = "api") -> DownloadService:
+        """Bind the acquisition use cases.
+
+        The API and the worker build the same service against the same
+        database; only the lease owner differs, so a job's history records
+        which process performed it.
+        """
+        return DownloadService(
+            session_factory=self.session_factory,
+            registry=self.registry,
+            music_root=self.settings.music_root,
+            dispatch=make_dispatcher(self.celery_app(), self.settings),
+            queue_reachable=self.is_queue_reachable,
+            worker_identity=worker_identity,
+        )
+
+    def celery_app(self) -> Celery:
+        """The process's Celery application, built once and reused."""
+        if self._celery_app is None:
+            self._celery_app = create_celery_app(self.settings)
+        return self._celery_app
+
+    def is_queue_reachable(self) -> bool:
+        """Whether the queue transport can accept work right now."""
+        return self._redis_status().health is Health.OK
 
     # -- status -----------------------------------------------------------
 
@@ -304,6 +341,7 @@ def build_composition(settings: Settings, *, verify_mounts: bool = True) -> Comp
         settings=settings,
         engine=engine,
         session_factory=create_session_factory(engine),
+        registry=build_registry(settings),
     )
 
 

@@ -81,3 +81,72 @@ class TrackFileMissingError(ChillifyError):
     code = "track_file_missing"
     status_code = 410
     retryable = False
+
+
+class UnsupportedEntityError(ChillifyError):
+    """The submitted source names something Chillify does not acquire."""
+
+    code = "unsupported_entity"
+    status_code = 400
+    retryable = False
+
+
+class ProviderDisabledError(ChillifyError):
+    """The provider the request needs is switched off or not bound."""
+
+    code = "provider_disabled"
+    status_code = 503
+    retryable = False
+
+
+class ProviderResponseError(ChillifyError):
+    """A provider answered with something outside its documented contract.
+
+    The message names the provider and nothing else: the response body itself
+    is exactly the thing that must not be echoed back.
+    """
+
+    code = "provider_response_invalid"
+    status_code = 502
+    retryable = True
+
+
+class QueueUnavailableError(ChillifyError):
+    """Redis could not accept the dispatch. The durable job survives regardless."""
+
+    code = "queue_unavailable"
+    status_code = 503
+    retryable = True
+
+
+class AcquisitionFailedError(ChillifyError):
+    """An adapter could not produce one valid MP3 for the candidate.
+
+    This is recorded on the job rather than returned to a request, so its safe
+    message is written for the Downloads screen.
+    """
+
+    code = "acquisition_failed"
+    status_code = 502
+    retryable = True
+
+
+class AcquisitionCancelledError(ChillifyError):
+    """The person asked to cancel while an adapter was working.
+
+    It is a closed domain value rather than a control-flow exception from
+    nowhere: the worker has to tell "stopped on request" apart from "failed",
+    and the Downloads screen shows the two differently.
+    """
+
+    code = "acquisition_cancelled"
+    status_code = 409
+    retryable = False
+
+
+class StorageUnwritableError(ChillifyError):
+    """The managed media root refused a write the acquisition needed."""
+
+    code = "storage_unwritable"
+    status_code = 503
+    retryable = True

@@ -3,8 +3,10 @@ import { useActiveProfile } from "@/app/activeProfile";
 import { PendingScreen } from "@/app/PendingScreen";
 import { PersistentShell } from "@/app/PersistentShell";
 import { routes } from "@/app/routes";
+import { DownloadsPage } from "@/features/downloads/DownloadsPage";
 import { LibraryPage } from "@/features/library/LibraryPage";
 import { ProfileChooser } from "@/features/profiles/ProfileChooser";
+import { SearchPage } from "@/features/search/SearchPage";
 
 /**
  * Route table for the persistent shell.
@@ -22,9 +24,9 @@ export function AppRoutes() {
         <Route element={<PersistentShell />}>
           <Route index element={<Navigate to={routes.library} replace />} />
           <Route path={routes.library} element={<LibraryPage />} />
-          <Route path={routes.search} element={<PendingScreen title="Search" />} />
+          <Route path={routes.search} element={<SearchPage />} />
           <Route path={routes.playlists} element={<PendingScreen title="Playlists" />} />
-          <Route path={routes.downloads} element={<PendingScreen title="Downloads" />} />
+          <Route path={routes.downloads} element={<DownloadsPage />} />
           <Route path={routes.settings} element={<PendingScreen title="Settings" />} />
           <Route path="*" element={<PendingScreen title="Not found" />} />
         </Route>

@@ -17,6 +17,11 @@ from alembic.config import Config
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
+from chillify.application.downloads import DownloadService
+from chillify.composition import Composition, build_composition
+from chillify.config import load_settings
+from chillify.domain.jobs import JobId
+
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 # Mounted roots must be normal durable filesystems, and pytest's tmp_path is
@@ -120,3 +125,96 @@ def repo_root(disposable_root: Path) -> Path:
     root = disposable_root / "repo"
     (root / ".gate").mkdir(parents=True)
     return root
+
+
+@pytest.fixture
+def gate_composition(disposable_root: Path, secret_key: str) -> Iterator[Composition]:
+    """A migrated composition running in gate mode with the fixture adapters bound.
+
+    The disposable tree mimics a repository `.gate/` directory, because the
+    gate-safety rules refuse fixture adapters anywhere else. That refusal is the
+    point: a test that wants fixtures has to satisfy the same conditions a gate
+    run does.
+    """
+    repo_root = disposable_root / "repo"
+    gate_root = repo_root / ".gate" / "suite"
+    data_root = gate_root / "data"
+    music_root = gate_root / "music"
+    fixture_root = gate_root / "fixtures"
+    for path in (data_root, music_root, fixture_root):
+        path.mkdir(parents=True)
+    shutil.copytree(BACKEND_ROOT / "tests" / "fixtures", fixture_root, dirs_exist_ok=True)
+
+    environment = {
+        "CHILLIFY_DATA_ROOT": str(data_root),
+        "CHILLIFY_MUSIC_ROOT": str(music_root),
+        "CHILLIFY_FIXTURE_ROOT": str(fixture_root),
+        "REDIS_URL": "redis://127.0.0.1:6379/9",
+        "CHILLIFY_REDIS_PREFIX": "chillify:gate:suite:",
+        "CHILLIFY_SECRET_KEY": secret_key,
+        "CHILLIFY_ENV": "gate",
+    }
+    settings = load_settings(environment, repo_root=repo_root)
+
+    config = Config(str(BACKEND_ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_ROOT / "migrations"))
+    config.set_main_option("sqlalchemy.url", f"sqlite+pysqlite:///{settings.database_path}")
+    settings.database_path.parent.mkdir(parents=True, exist_ok=True)
+    command.upgrade(config, "head")
+
+    composition = build_composition(settings)
+    try:
+        yield composition
+    finally:
+        composition.dispose()
+
+
+@pytest.fixture
+def dispatched_jobs() -> list[str]:
+    """Job IDs a stub dispatcher was asked to publish."""
+    return []
+
+
+@pytest.fixture
+def gate_downloads(gate_composition: Composition, dispatched_jobs: list[str]) -> DownloadService:
+    """Acquisition use cases with the broker replaced by a recording stub.
+
+    The queue is stubbed rather than mocked away: dispatch is the one step that
+    genuinely needs a broker, and the test asserts on what was handed to it.
+    """
+
+    def dispatch(job_id: JobId) -> str:
+        dispatched_jobs.append(str(job_id))
+        return f"task-{job_id}"
+
+    return DownloadService(
+        session_factory=gate_composition.session_factory,
+        registry=gate_composition.registry,
+        music_root=gate_composition.settings.music_root,
+        dispatch=dispatch,
+        queue_reachable=lambda: True,
+        worker_identity="test-worker",
+    )
+
+
+@pytest.fixture
+def gate_api(
+    gate_composition: Composition, gate_downloads: DownloadService
+) -> Iterator[TestClient]:
+    """The real application bound to the gate composition.
+
+    The lifespan is deliberately not entered: it would load household
+    configuration from the process environment and replace the disposable
+    composition this test owns.
+    """
+    from chillify.api.dependencies import get_download_service
+    from chillify.api.main import create_app
+
+    app = create_app()
+    app.state.composition = gate_composition
+    app.dependency_overrides[get_download_service] = lambda: gate_downloads
+    client = TestClient(app)
+    try:
+        yield client
+    finally:
+        app.dependency_overrides.clear()

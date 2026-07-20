@@ -4,6 +4,61 @@
  */
 
 export interface paths {
+    "/api/v1/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List downloads, newest first */
+        get: operations["list_downloads_api_v1_downloads_get"];
+        put?: never;
+        /**
+         * Queue one acquisition
+         * @description Validate, durably queue, and dispatch one download.
+         */
+        post: operations["create_download_api_v1_downloads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/downloads/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one download and its event history */
+        get: operations["read_download_api_v1_downloads__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stream job, library, and system invalidations */
+        get: operations["stream_events_api_v1_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/tracks": {
         parameters: {
             query?: never;
@@ -39,6 +94,30 @@ export interface paths {
         put?: never;
         /** Create a household profile */
         post: operations["create_profile_api_v1_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search/deezer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Deezer for matching tracks
+         * @description Return normalized, non-playable candidates and their duplicate links.
+         *
+         *     The page is deliberately single: ARCHITECTURE ignores Deezer pagination
+         *     beyond the first page in v1, so `next_cursor` is always null rather than a
+         *     cursor that cannot be honoured.
+         */
+        get: operations["search_deezer_api_v1_search_deezer_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -132,6 +211,22 @@ export interface components {
              */
             name: string;
         };
+        /**
+         * DownloadRequestModel
+         * @description One immutable acquisition request.
+         *
+         *     The candidate is echoed back from a search result rather than re-fetched:
+         *     what the person saw when they pressed Download is exactly what is stored
+         *     and later acquired.
+         */
+        DownloadRequestModel: {
+            candidate: components["schemas"]["TrackCandidateModel"];
+            /**
+             * Source Type
+             * @enum {string}
+             */
+            source_type: "deezer_result" | "spotify_track" | "youtube_video";
+        };
         /** ErrorBody */
         ErrorBody: {
             /**
@@ -183,15 +278,145 @@ export interface components {
             status: "ready" | "not_ready";
         };
         /**
+         * JobDetailModel
+         * @description One job together with its complete replayable history.
+         */
+        JobDetailModel: {
+            /** Events */
+            events: components["schemas"]["JobEventModel"][];
+            job: components["schemas"]["JobModel"];
+        };
+        /**
+         * JobEventModel
+         * @description One durable, replayable step in a job's history.
+         */
+        JobEventModel: {
+            /**
+             * Id
+             * @description The SSE event ID. The browser's cursor tracks this sequence.
+             */
+            id: number;
+            /** Job Id */
+            job_id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Payload */
+            payload: {
+                [key: string]: string | number | boolean;
+            };
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "accepted" | "inspecting" | "queued" | "restarted" | "downloading" | "converting" | "enriching" | "tagging" | "organizing" | "completed" | "failed" | "cancelled";
+            /** Progress Percent */
+            progress_percent: number | null;
+            /** Sequence */
+            sequence: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "completed" | "failed" | "cancelled";
+        };
+        /**
+         * JobModel
+         * @description One download as the Downloads screen and the job indicator render it.
+         */
+        JobModel: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Display State
+             * @description Derived state: distinguishes a retry and a restart from a first attempt.
+             * @enum {string}
+             */
+            display_state: "queued" | "retrying" | "restarted" | "running" | "completed" | "failed" | "cancelled";
+            /** Error Code */
+            error_code: string | null;
+            /** Error Message */
+            error_message: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Id */
+            id: string;
+            /** Parent Job Id */
+            parent_job_id: string | null;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "accepted" | "inspecting" | "queued" | "restarted" | "downloading" | "converting" | "enriching" | "tagging" | "organizing" | "completed" | "failed" | "cancelled";
+            /**
+             * Progress Percent
+             * @description Null when the provider reports no real percentage. Never invented.
+             */
+            progress_percent: number | null;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "deezer" | "spotdl" | "yt_dlp";
+            /** Restart Count */
+            restart_count: number;
+            /** Result Track Id */
+            result_track_id: string | null;
+            /**
+             * Source Type
+             * @enum {string}
+             */
+            source_type: "deezer_result" | "spotify_track" | "youtube_video";
+            /** Started At */
+            started_at: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "completed" | "failed" | "cancelled";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /**
          * LibrarySort
          * @description The orderings `GET /library/tracks` accepts.
          * @enum {string}
          */
         LibrarySort: "recent" | "title" | "artist";
+        /** PageModel[JobModel] */
+        PageModel_JobModel_: {
+            /** Items */
+            items: components["schemas"]["JobModel"][];
+            /**
+             * Next Cursor
+             * @description Opaque cursor for the next page, or null when this page is the last.
+             */
+            next_cursor?: string | null;
+        };
         /** PageModel[ProfileModel] */
         PageModel_ProfileModel_: {
             /** Items */
             items: components["schemas"]["ProfileModel"][];
+            /**
+             * Next Cursor
+             * @description Opaque cursor for the next page, or null when this page is the last.
+             */
+            next_cursor?: string | null;
+        };
+        /** PageModel[RemoteResultModel] */
+        PageModel_RemoteResultModel_: {
+            /** Items */
+            items: components["schemas"]["RemoteResultModel"][];
             /**
              * Next Cursor
              * @description Opaque cursor for the next page, or null when this page is the last.
@@ -238,6 +463,25 @@ export interface components {
             name: string;
         };
         /**
+         * RemoteResultModel
+         * @description One search result, and the local track it duplicates when there is one.
+         */
+        RemoteResultModel: {
+            candidate: components["schemas"]["TrackCandidateModel"];
+            /**
+             * Existing Track Id
+             * @description The local track this result already duplicates, if any.
+             */
+            existing_track_id?: string | null;
+            /**
+             * Is Playable
+             * @description Always false. A remote result has no local file, so no screen offers Play.
+             * @default false
+             * @constant
+             */
+            is_playable: false;
+        };
+        /**
          * SystemStatusModel
          * @description The documented `GET /system/status` success envelope.
          */
@@ -270,6 +514,40 @@ export interface components {
             storage: components["schemas"]["ComponentStatusModel"][];
             /** Tools */
             tools: components["schemas"]["ComponentStatusModel"][];
+        };
+        /**
+         * TrackCandidateModel
+         * @description One normalized remote candidate, from any provider, in one shape.
+         */
+        TrackCandidateModel: {
+            /** Acquisition Locator */
+            acquisition_locator: string;
+            /** Album */
+            album: string | null;
+            /** Artist */
+            artist: string;
+            /** Artwork Url */
+            artwork_url: string | null;
+            /** Disc Number */
+            disc_number: number | null;
+            /** Duration Ms */
+            duration_ms: number | null;
+            /** Isrc */
+            isrc: string | null;
+            /** Provider */
+            provider: string;
+            /** Raw Fingerprint */
+            raw_fingerprint: string | null;
+            /** Release Year */
+            release_year: number | null;
+            /** Source Id */
+            source_id: string | null;
+            /** Source Url */
+            source_url: string;
+            /** Title */
+            title: string;
+            /** Track Number */
+            track_number: number | null;
         };
         /**
          * TrackSummaryModel
@@ -334,6 +612,141 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_downloads_api_v1_downloads_get: {
+        parameters: {
+            query?: {
+                /** @description Restrict the listing to these durable states. */
+                state?: ("queued" | "running" | "completed" | "failed" | "cancelled")[] | null;
+                /** @description Cursor from a previous page. */
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageModel_JobModel_"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_download_api_v1_downloads_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DownloadRequestModel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_download_api_v1_downloads__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetailModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    stream_events_api_v1_events_get: {
+        parameters: {
+            query?: {
+                /** @description Cursor fallback for clients that cannot set the header. */
+                last_event_id?: string | null;
+            };
+            header?: {
+                "Last-Event-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_library_tracks_api_v1_library_tracks_get: {
         parameters: {
             query?: {
@@ -420,6 +833,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProfileModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    search_deezer_api_v1_search_deezer_get: {
+        parameters: {
+            query: {
+                /** @description The submitted query. */
+                q: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageModel_RemoteResultModel_"];
                 };
             };
             /** @description Error envelope */

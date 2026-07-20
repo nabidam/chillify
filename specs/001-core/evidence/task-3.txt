@@ -1,0 +1,67 @@
+Task 3 — Local-first search and durable serial download queue
+captured 2026-07-20T23:29:28Z on branch 001-core
+
+== $ ./scripts/verify.sh (full: build + dependency audit + secret scan) ==
+=== backend lint
+All checks passed!
+--- backend lint: ok
+=== backend format
+--- backend format: ok
+=== backend types
+--- backend types: ok
+=== backend tests
+210 passed in 41.12s
+--- backend tests: ok
+=== frontend lint
+--- frontend lint: ok
+=== frontend types
+--- frontend types: ok
+=== frontend tests
+ Test Files  5 passed (5)
+      Tests  44 passed (44)
+--- frontend tests: ok
+=== raw color literals
+--- raw color literals: ok
+=== primitive boundary
+--- primitive boundary: ok
+=== domain boundary
+--- domain boundary: ok
+=== secret scan
+--- secret scan: ok
+=== frontend build
+--- frontend build: ok
+=== backend dependency audit
+-------- -------------------------------
+--- backend dependency audit: ok
+=== frontend dependency audit
+--- frontend dependency audit: ok
+verify: all checks passed
+
+== live acceptance run: docker redis + uvicorn + python -m chillify.worker.main ==
+$ ./scripts/gate/prepare.sh task3 gate   # disposable .gate/task3 with fixture adapters
+$ curl -sN localhost:8791/api/v1/events &
+$ curl -s -X POST localhost:8791/api/v1/downloads -H 'Idempotency-Key: task3-evidence' -d '{"source_type":"deezer_result","candidate":<deezer result>}'
+job 019f81db-da36-766f-a38b-3ab3f25b39e7 accepted as state=queued display_state=queued
+
+-- durable job after the worker ran it (browser stream already closed) --
+state: completed display: completed progress: 100.0
+phases: ['accepted', 'downloading' x7, 'converting', 'enriching', 'tagging', 'organizing', 'completed']
+
+-- library, stream, and the file on the mounted root --
+019f81db-dea9-77ad-9e7d-45b5ee4f7684 | Daft Punk - Harder Better Faster Stronger | playable: True
+HTTP/1.1 206 Partial Content  content-type: audio/mpeg  accept-ranges: bytes  content-length: 1024
+.gate/task3/music/Music/Daft Punk/Discovery/Harder Better Faster Stronger.mp3
+
+-- last SSE frames (durable events carry an id; transient ones do not) --
+event: job.changed
+data: {"id":13,"job_id":"019f81db-da36-766f-a38b-3ab3f25b39e7","occurred_at":"2026-07-20T23:28:18.089000Z","payload":{},"phase":"completed","progress_percent":100.0,"sequence":13,"state":"completed"}
+
+event: library.changed
+data: {"job_id":"019f81db-da36-766f-a38b-3ab3f25b39e7"}
+
+: heartbeat
+
+-- repeat POST with the same Idempotency-Key --
+replay status: 201 (same job, no second dispatch)
+-- the same Deezer result after publication --
+existing_track_id: 019f81db-dea9-77ad-9e7d-45b5ee4f7684 | is_playable: False

@@ -11,7 +11,7 @@ identically as strings.
 
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -67,3 +67,65 @@ class TrackSourceRow(Base):
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     raw_fingerprint: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class DownloadJobRow(Base):
+    __tablename__ = "download_jobs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    provider: Mapped[str] = mapped_column(String, nullable=False)
+    source_type: Mapped[str] = mapped_column(String, nullable=False)
+    source_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    dedupe_key: Mapped[str] = mapped_column(Text, nullable=False)
+    request_json: Mapped[str] = mapped_column(Text, nullable=False)
+    candidate_json: Mapped[str | None] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(String, nullable=False)
+    phase: Mapped[str] = mapped_column(String, nullable=False)
+    progress_percent: Mapped[float | None] = mapped_column(Float)
+    celery_task_id: Mapped[str | None] = mapped_column(String)
+    lease_owner: Mapped[str | None] = mapped_column(String)
+    lease_expires_at: Mapped[str | None] = mapped_column(String)
+    heartbeat_at: Mapped[str | None] = mapped_column(String)
+    parent_job_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("download_jobs.id", ondelete="SET NULL")
+    )
+    restart_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cancel_requested_at: Mapped[str | None] = mapped_column(String)
+    error_code: Mapped[str | None] = mapped_column(String)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    error_detail: Mapped[str | None] = mapped_column(Text)
+    result_track_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("tracks.id", ondelete="SET NULL")
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    started_at: Mapped[str | None] = mapped_column(String)
+    finished_at: Mapped[str | None] = mapped_column(String)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class JobEventRow(Base):
+    __tablename__ = "job_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(
+        String, ForeignKey("download_jobs.id", ondelete="CASCADE"), nullable=False
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    state: Mapped[str] = mapped_column(String, nullable=False)
+    phase: Mapped[str] = mapped_column(String, nullable=False)
+    progress_percent: Mapped[float | None] = mapped_column(Float)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    occurred_at: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class ApiIdempotencyRow(Base):
+    __tablename__ = "api_idempotency"
+
+    scope: Mapped[str] = mapped_column(String, primary_key=True)
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    request_sha256: Mapped[str] = mapped_column(String, nullable=False)
+    status_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    response_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    expires_at: Mapped[str] = mapped_column(String, nullable=False)
