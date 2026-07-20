@@ -32,6 +32,9 @@ layer = "contract"
 
 Context pack (hint): `specs/001-core/FILE_STRUCTURE.md`, `CONVENTIONS.md`, `DESIGN.md` token source, and ARCHITECTURE §§2–4, 12, 14. UI screen: persistent shell foundation.
 
+- **Done:** `7a1e852` — evidence `specs/001-core/evidence/task-0.txt`
+  Tasks 0 and 1 were implemented as one batch and share this commit; chunk 1 is one coherent outcome under the CONVENTIONS commit rule.
+
 ## Task 1 — Boot/status API and persistent household shell
 
 Objective: finish Chunk 1’s validated composition, status envelope, redacted logging, health behavior, and route-outlet shell.
@@ -58,6 +61,9 @@ layer = "contract"
 ```
 
 Context pack (hint): Task 0 files, `ARCHITECTURE.md` §§5, 11–12, 14–15, `UX.md` persistent shell/operator surfaces, `DESIGN.md`. UI screens: shell/S2–S12.
+
+- **Done:** `7a1e852` — evidence `specs/001-core/evidence/task-1.txt`
+  Shares the Task 0 commit; see the note there.
 
 ## Task 2 — Profile, library stream, and persistent playback
 
