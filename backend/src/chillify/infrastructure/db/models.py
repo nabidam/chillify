@@ -69,6 +69,62 @@ class TrackSourceRow(Base):
     created_at: Mapped[str] = mapped_column(String, nullable=False)
 
 
+class PlaylistRow(Base):
+    __tablename__ = "playlists"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    profile_id: Mapped[str] = mapped_column(
+        String, ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    name_folded: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class PlaylistTrackRow(Base):
+    __tablename__ = "playlist_tracks"
+
+    playlist_id: Mapped[str] = mapped_column(
+        String, ForeignKey("playlists.id", ondelete="CASCADE"), primary_key=True
+    )
+    track_id: Mapped[str] = mapped_column(
+        String, ForeignKey("tracks.id", ondelete="CASCADE"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    added_at: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class ArtworkStageRow(Base):
+    __tablename__ = "artwork_stages"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    file_relpath: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    mime_type: Mapped[str] = mapped_column(String, nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    origin: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    expires_at: Mapped[str] = mapped_column(String, nullable=False)
+    consumed_at: Mapped[str | None] = mapped_column(String)
+
+
+class MediaMutationRow(Base):
+    __tablename__ = "media_mutations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    track_id: Mapped[str | None] = mapped_column(String)
+    operation: Mapped[str] = mapped_column(String, nullable=False)
+    state: Mapped[str] = mapped_column(String, nullable=False)
+    old_record_json: Mapped[str] = mapped_column(Text, nullable=False)
+    new_record_json: Mapped[str | None] = mapped_column(Text)
+    recovery_json: Mapped[str] = mapped_column(Text, nullable=False)
+    error_detail: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
+
+
 class DownloadJobRow(Base):
     __tablename__ = "download_jobs"
 

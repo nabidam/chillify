@@ -20,7 +20,17 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from chillify.api.errors import ErrorResponse, error_payload
-from chillify.api.routes import downloads, events, library, profiles, search, system, tracks
+from chillify.api.routes import (
+    artwork,
+    downloads,
+    events,
+    library,
+    playlists,
+    profiles,
+    search,
+    system,
+    tracks,
+)
 from chillify.composition import build_composition
 from chillify.config import ConfigurationError, load_settings
 from chillify.domain.errors import ChillifyError
@@ -166,9 +176,14 @@ def create_app() -> FastAPI:
     app.include_router(profiles.router, prefix=API_PREFIX)
     app.include_router(library.router, prefix=API_PREFIX)
     app.include_router(tracks.router, prefix=API_PREFIX)
+    app.include_router(artwork.router, prefix=API_PREFIX)
+    app.include_router(playlists.router, prefix=API_PREFIX)
     app.include_router(search.router, prefix=API_PREFIX)
     app.include_router(downloads.router, prefix=API_PREFIX)
     app.include_router(events.router, prefix=API_PREFIX)
+    # Managed media bytes sit outside the versioned API on the path nginx
+    # passes through unbuffered, alongside the audio stream.
+    app.include_router(artwork.media_router)
     _configure_origins(app)
     return app
 

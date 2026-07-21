@@ -1,7 +1,17 @@
-import { PlayIcon } from "lucide-react";
+import { ListPlus, MoreHorizontal, Pencil, PlayIcon } from "lucide-react";
+import { useState } from "react";
 import type { TrackSummary } from "@/api/client";
+import { useActiveProfile } from "@/app/activeProfile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -12,7 +22,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { TrackEditorDialog } from "@/features/metadata/TrackEditorDialog";
 import { selectCurrentTrackId, usePlayerStore } from "@/features/player/playerStore";
+import { useAddTrackToPlaylist, usePlaylists } from "@/features/playlists/playlistQueries";
 import { cn } from "@/lib/cn";
 import { formatMilliseconds } from "@/lib/format";
 
@@ -31,77 +43,148 @@ export function TrackTable({
   onPlay: (index: number) => void;
 }) {
   const currentTrackId = usePlayerStore(selectCurrentTrackId);
+  const { activeProfileId } = useActiveProfile();
+  const playlists = usePlaylists(activeProfileId);
+  const addToPlaylist = useAddTrackToPlaylist();
+  const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-control-lg">
-            <span className="sr-only">Play</span>
-          </TableHead>
-          <TableHead>Title</TableHead>
-          <TableHead>Artist</TableHead>
-          <TableHead>Album</TableHead>
-          <TableHead className="w-16 text-right">Year</TableHead>
-          <TableHead className="w-20 text-right">Length</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {tracks.map((track, index) => {
-          const isCurrent = track.id === currentTrackId;
-          return (
-            <TableRow
-              key={track.id}
-              data-state={isCurrent ? "selected" : undefined}
-              className="h-row"
-            >
-              <TableCell>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Play ${track.title}`}
-                      disabled={!track.is_playable}
-                      onClick={() => onPlay(index)}
-                    >
-                      <PlayIcon />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {track.is_playable
-                      ? `Play ${track.title}`
-                      : "This track's file is missing from the library folder."}
-                  </TooltipContent>
-                </Tooltip>
-              </TableCell>
-              <TableCell>
-                <span
-                  className={cn("type-label", isCurrent ? "text-signal" : "text-foreground")}
-                >
-                  {track.title}
-                </span>
-                {!track.is_playable ? (
-                  <Badge variant="outline" className="ml-2 align-middle">
-                    File missing
-                  </Badge>
-                ) : null}
-              </TableCell>
-              <TableCell className="type-meta text-foreground-muted">{track.artist}</TableCell>
-              <TableCell className="type-meta text-foreground-muted">
-                {track.album ?? "Unknown album"}
-              </TableCell>
-              <TableCell className="type-meta text-right text-foreground-subtle tabular-nums">
-                {track.release_year ?? "—"}
-              </TableCell>
-              <TableCell className="type-meta text-right text-foreground-subtle tabular-nums">
-                {formatMilliseconds(track.duration_ms)}
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+    <>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-control-lg">
+              <span className="sr-only">Play</span>
+            </TableHead>
+            <TableHead>Title</TableHead>
+            <TableHead>Artist</TableHead>
+            <TableHead>Album</TableHead>
+            <TableHead className="w-16 text-right">Year</TableHead>
+            <TableHead className="w-20 text-right">Length</TableHead>
+            <TableHead className="w-control-lg">
+              <span className="sr-only">Track actions</span>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {tracks.map((track, index) => {
+            const isCurrent = track.id === currentTrackId;
+            return (
+              <TableRow
+                key={track.id}
+                data-state={isCurrent ? "selected" : undefined}
+                className="h-row"
+              >
+                <TableCell>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Play ${track.title}`}
+                        disabled={!track.is_playable}
+                        onClick={() => onPlay(index)}
+                      >
+                        <PlayIcon />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {track.is_playable
+                        ? `Play ${track.title}`
+                        : "This track's file is missing from the library folder."}
+                    </TooltipContent>
+                  </Tooltip>
+                </TableCell>
+                <TableCell>
+                  <span
+                    className={cn("type-label", isCurrent ? "text-signal" : "text-foreground")}
+                  >
+                    {track.title}
+                  </span>
+                  {!track.is_playable ? (
+                    <Badge variant="outline" className="ml-2 align-middle">
+                      File missing
+                    </Badge>
+                  ) : null}
+                </TableCell>
+                <TableCell className="type-meta text-foreground-muted">
+                  {track.artist}
+                </TableCell>
+                <TableCell className="type-meta text-foreground-muted">
+                  {track.album ?? "Unknown album"}
+                </TableCell>
+                <TableCell className="type-meta text-right text-foreground-subtle tabular-nums">
+                  {track.release_year ?? "—"}
+                </TableCell>
+                <TableCell className="type-meta text-right text-foreground-subtle tabular-nums">
+                  {formatMilliseconds(track.duration_ms)}
+                </TableCell>
+                <TableCell>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Actions for ${track.title}`}
+                      >
+                        <MoreHorizontal />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onSelect={() => setEditingTrackId(track.id)}>
+                        <Pencil aria-hidden="true" />
+                        Edit details
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      {/* A flat section rather than a submenu: a household has
+                          a handful of playlists, and one keystroke reaches any
+                          of them instead of two. */}
+                      <DropdownMenuLabel className="flex items-center gap-2">
+                        <ListPlus className="size-4" aria-hidden="true" />
+                        Add to playlist
+                      </DropdownMenuLabel>
+                      {(playlists.data ?? []).length === 0 ? (
+                        <DropdownMenuItem disabled>
+                          {playlists.isPending
+                            ? "Loading playlists…"
+                            : "No playlists on this profile yet"}
+                        </DropdownMenuItem>
+                      ) : (
+                        (playlists.data ?? []).map((playlist) => (
+                          <DropdownMenuItem
+                            key={playlist.id}
+                            disabled={addToPlaylist.isPending}
+                            onSelect={() => {
+                              addToPlaylist.mutate({
+                                playlistId: playlist.id,
+                                trackId: track.id,
+                                revision: playlist.revision,
+                              });
+                            }}
+                          >
+                            {playlist.name}
+                          </DropdownMenuItem>
+                        ))
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+
+      <TrackEditorDialog
+        trackId={editingTrackId}
+        open={editingTrackId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingTrackId(null);
+          }
+        }}
+      />
+    </>
   );
 }
 

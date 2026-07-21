@@ -22,6 +22,11 @@ NORMALIZER_VERSION: Final = 1
 
 PROFILE_NAME_MIN_LENGTH: Final = 1
 PROFILE_NAME_MAX_LENGTH: Final = 40
+PLAYLIST_NAME_MIN_LENGTH: Final = 1
+PLAYLIST_NAME_MAX_LENGTH: Final = 100
+METADATA_TEXT_MAX_LENGTH: Final = 200
+DISC_OR_TRACK_NUMBER_MIN: Final = 1
+DISC_OR_TRACK_NUMBER_MAX: Final = 999
 RELEASE_YEAR_MIN: Final = 1000
 
 # Deterministic stand-ins for absent metadata. A real album literally named
@@ -96,6 +101,72 @@ def validate_profile_name(raw: str) -> str:
             context={"max_length": PROFILE_NAME_MAX_LENGTH},
         )
     return name
+
+
+def validate_playlist_name(raw: str) -> str:
+    """Return the storable playlist name or raise the field-level failure.
+
+    Length is measured on the collapsed form, which is also what the uniqueness
+    fold sees, so a name accepted here is a name the constraint can hold.
+    """
+    name = collapse_whitespace(unicodedata.normalize("NFKC", raw))
+    if len(name) < PLAYLIST_NAME_MIN_LENGTH:
+        raise ValidationFailedError("A playlist name cannot be empty.", field="name")
+    if len(name) > PLAYLIST_NAME_MAX_LENGTH:
+        raise ValidationFailedError(
+            f"A playlist name may be at most {PLAYLIST_NAME_MAX_LENGTH} characters.",
+            field="name",
+            context={"max_length": PLAYLIST_NAME_MAX_LENGTH},
+        )
+    return name
+
+
+def validate_required_text(raw: str, *, field: str, label: str) -> str:
+    """Return a collapsed, non-empty metadata value bounded by the column."""
+    value = collapse_whitespace(unicodedata.normalize("NFKC", raw))
+    if not value:
+        raise ValidationFailedError(f"{label} cannot be empty.", field=field)
+    if len(value) > METADATA_TEXT_MAX_LENGTH:
+        raise ValidationFailedError(
+            f"{label} may be at most {METADATA_TEXT_MAX_LENGTH} characters.",
+            field=field,
+            context={"max_length": METADATA_TEXT_MAX_LENGTH},
+        )
+    return value
+
+
+def validate_optional_text(raw: str | None, *, field: str, label: str) -> str | None:
+    """Return a collapsed optional value, treating a blank string as absence.
+
+    A cleared album field arrives as `""`, and an absent one arrives as null.
+    Both mean the same thing to a person, so both become None here rather than
+    letting an empty string reach a `length >= 1` column check.
+    """
+    if raw is None:
+        return None
+    value = collapse_whitespace(unicodedata.normalize("NFKC", raw))
+    if not value:
+        return None
+    if len(value) > METADATA_TEXT_MAX_LENGTH:
+        raise ValidationFailedError(
+            f"{label} may be at most {METADATA_TEXT_MAX_LENGTH} characters.",
+            field=field,
+            context={"max_length": METADATA_TEXT_MAX_LENGTH},
+        )
+    return value
+
+
+def validate_ordinal(value: int | None, *, field: str, label: str) -> int | None:
+    """Bound a disc or track number to the range the column accepts."""
+    if value is None:
+        return None
+    if value < DISC_OR_TRACK_NUMBER_MIN or value > DISC_OR_TRACK_NUMBER_MAX:
+        raise ValidationFailedError(
+            f"{label} must be between {DISC_OR_TRACK_NUMBER_MIN} and {DISC_OR_TRACK_NUMBER_MAX}.",
+            field=field,
+            context={"minimum": DISC_OR_TRACK_NUMBER_MIN, "maximum": DISC_OR_TRACK_NUMBER_MAX},
+        )
+    return value
 
 
 def validate_release_year(value: int | None, *, now: datetime) -> int | None:

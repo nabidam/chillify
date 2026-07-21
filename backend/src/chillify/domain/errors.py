@@ -63,6 +63,63 @@ class RecordNotFoundError(ChillifyError):
     retryable = False
 
 
+class RecordChangedError(ChillifyError):
+    """The submitted revision is not the one currently stored.
+
+    Optimistic concurrency, not a lock: the other browser tab in the house
+    already saved, so this write is refused rather than silently overwriting an
+    edit nobody saw.
+    """
+
+    code = "record_changed"
+    status_code = 409
+    retryable = False
+
+
+class MutationLockedError(ChillifyError):
+    """Another edit, publication, or deletion holds the media lock right now.
+
+    Retryable by design: the holder finishes in bounded time, so repeating the
+    same request is the correct response rather than an error to report.
+    """
+
+    code = "mutation_locked"
+    status_code = 423
+    retryable = True
+
+
+class ArtworkStageUnavailableError(ChillifyError):
+    """The referenced artwork stage is expired, missing, or already consumed.
+
+    A stage is single-use and short-lived, so all three conditions are one
+    thing from the browser's side: stage the image again.
+    """
+
+    code = "artwork_stage_unavailable"
+    status_code = 409
+    retryable = False
+
+
+class ArtworkTooLargeError(ChillifyError):
+    """The submitted cover image exceeds the accepted byte size."""
+
+    code = "artwork_too_large"
+    status_code = 413
+    retryable = False
+
+
+class ArtworkUnreadableError(ChillifyError):
+    """The submitted bytes are not an image Chillify can normalize.
+
+    The message never quotes the decoder: a malformed upload is ordinary input,
+    and a decoder's complaint is not written for a person.
+    """
+
+    code = "artwork_unreadable"
+    status_code = 400
+    retryable = False
+
+
 class UnsafeMediaPathError(ChillifyError):
     """A stored relative path does not resolve inside its managed root.
 

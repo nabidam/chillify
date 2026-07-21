@@ -1,0 +1,44 @@
+verify: all checks passed   (./scripts/verify.sh, full run: lint, format, types,
+        tests, a11y-capable build, boundary checks, secret scan, dependency audits)
+        backend 291 passed · frontend 67 passed (7 files)
+
+== live acceptance run against the real app ==
+$ ./scripts/gate/prepare.sh task4 gate && ./scripts/gate/seed.sh task4
+$ uv run uvicorn chillify.api.main:app --port 8794
+
+== 1. play: the seeded track streams ==
+   HTTP/1.1 206 Partial Content accept-ranges: bytes content-type: audio/mpeg content-range: bytes 0-1023/50119
+== 2. correct metadata and art in one save ==
+   staged cover 019f83de-9e22-7330-8be6-ee215847157e (2453 bytes, image/jpeg)
+   200 -> Daft Punk - Harder, Better, Faster, Stronger rev=2 art=True playable=True
+   file on disk: Music/Daft Punk/Discovery/05 - Harder, Better, Faster, Stronger.mp3 exists=True
+   old path gone: True
+   id3 title='Harder, Better, Faster, Stronger' album='Discovery'
+   embedded cover: 1 frame(s), mime=image/jpeg
+   published art: Artwork/019f83de-4b61-720c-9850-018bbed79937.jpg exists=True
+== 3. a colliding rename is refused before any file moves ==
+   409 duplicate_record -> existing 019f83de-4b61-720c-9850-018bbed79937
+   untouched: 'Digital Love' rev=1 file still there=True
+== 3b. the stale revision is refused, old version stays authoritative ==
+   409 record_changed
+   still: 'Harder, Better, Faster, Stronger'
+== 4. create a playlist, add the track, play it ==
+   201 playlist 'Sunday Morning' rev=1 tracks=0
+   duplicate name -> 409 duplicate_record field=name
+   added -> 200 order=['Harder, Better, Faster, Stronger']
+   same track twice -> 409 duplicate_record field=track_id
+   playlist detail: [('Harder, Better, Faster, Stronger', True)]
+== 5. the corrected file is what the playlist plays ==
+   HTTP/1.1 200 OK etag: "2-52619-1784623832" content-type: audio/mpeg
+   cover: HTTP/1.1 200 OK content-type: image/jpeg
+== 6. no residue: staging, recovery, or journal ==
+   recovery entries: []
+   staging mp3s: []
+   media_mutations rows=0 unconsumed stages=0
+
+$ pkill uvicorn && uv run uvicorn chillify.api.main:app --port 8794   # a real restart
+== after a restart, the durable state is unchanged ==
+   playlist 'Sunday Morning' tracks=1 rev=2
+     track 'Harder, Better, Faster, Stronger' playable=True rev=2
+   files: ['04 - Digital Love.mp3', '05 - Harder, Better, Faster, Stronger.mp3']
+   artwork: ['019f83de-4b61-720c-9850-018bbed79937.jpg']

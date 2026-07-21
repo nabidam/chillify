@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from chillify.config import Settings
 from chillify.domain.errors import ProviderDisabledError
 from chillify.domain.jobs import JobProvider
-from chillify.domain.protocols import AcquisitionProvider, DiscoveryProvider
+from chillify.domain.protocols import AcquisitionProvider, ArtworkFetcher, DiscoveryProvider
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,10 @@ class ProviderRegistry:
 
     discovery: dict[str, DiscoveryProvider] = field(default_factory=dict)
     acquisition: dict[JobProvider, AcquisitionProvider] = field(default_factory=dict)
+    # Keyed by the artwork origin it serves — `url` for a submitted link,
+    # `lastfm` for the enricher's best match — so the staging use case asks for
+    # a capability rather than naming an adapter.
+    artwork: dict[str, ArtworkFetcher] = field(default_factory=dict)
 
     def require_discovery(self, name: str) -> DiscoveryProvider:
         provider = self.discovery.get(name)

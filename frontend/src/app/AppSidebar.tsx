@@ -1,5 +1,6 @@
 import { Download, Library, ListMusic, Plus, Search, Settings, UserRound } from "lucide-react";
 import { NavLink, useLocation } from "react-router";
+import { useActiveProfile } from "@/app/activeProfile";
 import { routes } from "@/app/routes";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +15,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { usePlaylists } from "@/features/playlists/playlistQueries";
 import { cn } from "@/lib/cn";
 
 const navigation = [
@@ -34,6 +36,8 @@ const navigation = [
  */
 export function AppSidebar() {
   const location = useLocation();
+  const { activeProfileId } = useActiveProfile();
+  const playlists = usePlaylists(activeProfileId).data ?? [];
 
   return (
     <Sidebar collapsible="offcanvas">
@@ -84,9 +88,32 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupLabel>Your playlists</SidebarGroupLabel>
           <SidebarGroupContent>
-            <p className="px-2 type-meta text-foreground-subtle">
-              Playlist shortcuts appear once a profile is selected.
-            </p>
+            {activeProfileId === null ? (
+              <p className="px-2 type-meta text-foreground-subtle">
+                Playlist shortcuts appear once a profile is selected.
+              </p>
+            ) : playlists.length === 0 ? (
+              <p className="px-2 type-meta text-foreground-subtle">
+                No playlists on this profile yet.
+              </p>
+            ) : (
+              <SidebarMenu>
+                {playlists.map((playlist) => {
+                  const to = `${routes.playlists}/${playlist.id}`;
+                  const isCurrent = location.pathname === to;
+                  return (
+                    <SidebarMenuItem key={playlist.id}>
+                      <SidebarMenuButton asChild isActive={isCurrent}>
+                        <NavLink to={to} aria-current={isCurrent ? "page" : undefined}>
+                          <ListMusic className="size-4" aria-hidden="true" />
+                          <span className="truncate">{playlist.name}</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            )}
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

@@ -5,6 +5,8 @@ import { PersistentShell } from "@/app/PersistentShell";
 import { routes } from "@/app/routes";
 import { DownloadsPage } from "@/features/downloads/DownloadsPage";
 import { LibraryPage } from "@/features/library/LibraryPage";
+import { PlaylistPage } from "@/features/playlists/PlaylistPage";
+import { PlaylistsPage } from "@/features/playlists/PlaylistsPage";
 import { ProfileChooser } from "@/features/profiles/ProfileChooser";
 import { SearchPage } from "@/features/search/SearchPage";
 
@@ -25,7 +27,8 @@ export function AppRoutes() {
           <Route index element={<Navigate to={routes.library} replace />} />
           <Route path={routes.library} element={<LibraryPage />} />
           <Route path={routes.search} element={<SearchPage />} />
-          <Route path={routes.playlists} element={<PendingScreen title="Playlists" />} />
+          <Route path={routes.playlists} element={<PlaylistsPage />} />
+          <Route path={`${routes.playlists}/:playlistId`} element={<PlaylistPage />} />
           <Route path={routes.downloads} element={<DownloadsPage />} />
           <Route path={routes.settings} element={<PendingScreen title="Settings" />} />
           <Route path="*" element={<PendingScreen title="Not found" />} />

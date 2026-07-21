@@ -11,8 +11,11 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
+from chillify.application.artwork import ArtworkService
 from chillify.application.downloads import DownloadService, IdempotencyGuard
 from chillify.application.library import LibraryService
+from chillify.application.metadata import MetadataService
+from chillify.application.playlists import PlaylistService
 from chillify.application.search import SearchService
 from chillify.composition import Composition
 
@@ -38,6 +41,24 @@ def get_download_service(
     composition: Annotated[Composition, Depends(get_composition)],
 ) -> DownloadService:
     return composition.download_service()
+
+
+def get_metadata_service(
+    composition: Annotated[Composition, Depends(get_composition)],
+) -> MetadataService:
+    return composition.metadata_service()
+
+
+def get_playlist_service(
+    composition: Annotated[Composition, Depends(get_composition)],
+) -> PlaylistService:
+    return composition.playlist_service()
+
+
+def get_artwork_service(
+    composition: Annotated[Composition, Depends(get_composition)],
+) -> ArtworkService:
+    return composition.artwork_service()
 
 
 def get_idempotency_guard(

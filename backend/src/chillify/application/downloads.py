@@ -53,8 +53,8 @@ from chillify.infrastructure.media.storage import (
     organized_relpath,
     publish_audio,
     remove_workspace,
-    write_audio_tags,
 )
+from chillify.infrastructure.media.tags import write_audio_tags
 from chillify.infrastructure.providers.registry import ProviderRegistry
 
 logger = logging.getLogger(__name__)

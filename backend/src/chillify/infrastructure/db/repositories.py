@@ -15,7 +15,12 @@ from sqlalchemy import Select, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
-from chillify.domain.errors import DuplicateRecordError, RecordNotFoundError
+from chillify.domain.errors import (
+    ArtworkStageUnavailableError,
+    DuplicateRecordError,
+    RecordChangedError,
+    RecordNotFoundError,
+)
 from chillify.domain.jobs import (
     DownloadJob,
     JobEvent,
@@ -28,13 +33,21 @@ from chillify.domain.jobs import (
 )
 from chillify.domain.models import (
     AUDIO_MIME_TYPE,
+    ArtworkOrigin,
+    ArtworkStage,
+    ArtworkStageId,
     Availability,
     LibrarySort,
     Page,
+    Playlist,
+    PlaylistDetail,
+    PlaylistId,
     Profile,
     ProfileId,
     Track,
+    TrackDetail,
     TrackId,
+    TrackSource,
     from_rfc3339,
     normalize_metadata,
     to_rfc3339,
@@ -43,8 +56,12 @@ from chillify.domain.normalization import fold_name, normalize_key
 from chillify.domain.ordering import decode_cursor, encode_cursor
 from chillify.infrastructure.db.models import (
     ApiIdempotencyRow,
+    ArtworkStageRow,
     DownloadJobRow,
     JobEventRow,
+    MediaMutationRow,
+    PlaylistRow,
+    PlaylistTrackRow,
     ProfileRow,
     TrackRow,
     TrackSourceRow,
@@ -152,6 +169,14 @@ class ProfileRepository:
                 "A profile with that name already exists in this household.", field="name"
             ) from exc
         return _to_profile(row)
+
+
+def _to_source(row: TrackSourceRow) -> TrackSource:
+    return TrackSource(
+        provider=row.provider,
+        source_id=row.source_id,
+        source_url=row.source_url,
+    )
 
 
 class TrackRepository:
@@ -287,6 +312,122 @@ class TrackRepository:
             raise DuplicateRecordError("That track is already in this library.") from exc
         return _to_track(row)
 
+    def get_detail(self, track_id: TrackId) -> TrackDetail | None:
+        """One track plus the provider identities it was acquired from."""
+        row = self._session.get(TrackRow, str(track_id))
+        if row is None:
+            return None
+        sources = self._session.scalars(
+            select(TrackSourceRow)
+            .where(TrackSourceRow.track_id == str(track_id))
+            .order_by(TrackSourceRow.created_at, TrackSourceRow.id)
+        ).all()
+        return TrackDetail(track=_to_track(row), sources=tuple(_to_source(s) for s in sources))
+
+    def find_conflict(
+        self, *, track_id: TrackId, normalized_artist: str, normalized_title: str
+    ) -> Track | None:
+        """Another track already holding this edit's normalized identity.
+
+        Checked before the mutation touches a file so a colliding rename is
+        reported as the duplicate it is, rather than surfacing as an integrity
+        error after the old file has already been moved.
+        """
+        row = self._session.scalars(
+            select(TrackRow)
+            .where(TrackRow.normalized_artist == normalized_artist)
+            .where(TrackRow.normalized_title == normalized_title)
+            .where(TrackRow.id != str(track_id))
+        ).first()
+        return None if row is None else _to_track(row)
+
+    def begin_mutation(self, track_id: TrackId, *, expected_revision: int) -> Track:
+        """Mark the track unplayable for the duration of one edit.
+
+        The revision is deliberately not bumped: it is the value the caller
+        already matched with `If-Match`, and the edit's own commit is what
+        earns the next one.
+        """
+        row = self._require_track(track_id)
+        if row.revision != expected_revision:
+            raise RecordChangedError(
+                "Somebody else saved this track first. Reload it and try again.",
+                context={"current_revision": row.revision},
+            )
+        row.availability = str(Availability.MUTATING)
+        self._session.flush()
+        return _to_track(row)
+
+    def end_mutation(self, track_id: TrackId) -> None:
+        """Return a track to `available` after an edit rolled back."""
+        row = self._session.get(TrackRow, str(track_id))
+        if row is None or row.availability != str(Availability.MUTATING):
+            return
+        row.availability = str(Availability.AVAILABLE)
+        self._session.flush()
+
+    def apply_edit(
+        self,
+        track_id: TrackId,
+        *,
+        expected_revision: int,
+        title: str,
+        artist: str,
+        album: str | None,
+        release_year: int | None,
+        disc_number: int | None,
+        track_number: int | None,
+        file_relpath: str,
+        artwork_relpath: str | None,
+        file_size_bytes: int,
+        content_sha256: str,
+        now: datetime,
+    ) -> Track:
+        """Write the complete corrected record in one statement.
+
+        Every field is assigned, including the derived normalized columns: they
+        are this normalizer's cache, so an edit that changed the title and left
+        them alone would leave the track findable only under its old name.
+        """
+        row = self._require_track(track_id)
+        if row.revision != expected_revision:
+            raise RecordChangedError(
+                "Somebody else saved this track first. Reload it and try again.",
+                context={"current_revision": row.revision},
+            )
+
+        normalized = normalize_metadata(artist=artist, title=title, album=album)
+        row.title = title
+        row.artist = artist
+        row.album = album
+        row.release_year = release_year
+        row.disc_number = disc_number
+        row.track_number = track_number
+        row.normalized_artist = normalized.normalized_artist
+        row.normalized_title = normalized.normalized_title
+        row.normalized_album = normalized.normalized_album
+        row.file_relpath = file_relpath
+        row.artwork_relpath = artwork_relpath
+        row.file_size_bytes = file_size_bytes
+        row.content_sha256 = content_sha256
+        row.availability = str(Availability.AVAILABLE)
+        row.revision += 1
+        row.updated_at = to_rfc3339(now)
+        try:
+            self._session.flush()
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise DuplicateRecordError(
+                "Another track in this library already has that artist and title."
+            ) from exc
+        return _to_track(row)
+
+    def _require_track(self, track_id: TrackId) -> TrackRow:
+        row = self._session.get(TrackRow, str(track_id))
+        if row is None:
+            raise RecordNotFoundError("That track is not in this library.")
+        return row
+
     def list_tracks(
         self,
         *,
@@ -363,6 +504,338 @@ class TrackRepository:
         if sort is LibrarySort.RECENT:
             return statement.where(pair < bound)
         return statement.where(pair > bound)
+
+
+def _to_playlist(row: PlaylistRow, track_count: int) -> Playlist:
+    return Playlist(
+        id=PlaylistId(row.id),
+        profile_id=ProfileId(row.profile_id),
+        name=row.name,
+        name_folded=row.name_folded,
+        track_count=track_count,
+        revision=row.revision,
+        created_at=from_rfc3339(row.created_at),
+        updated_at=from_rfc3339(row.updated_at),
+    )
+
+
+class PlaylistRepository:
+    """Reads and writes one profile's playlists and their saved order.
+
+    A playlist belongs to exactly one profile. Every read is scoped by that
+    profile, so one household member's list can never be addressed through
+    another's — not as a permission check, which this app deliberately has
+    none of, but because a playlist means nothing outside its owner.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def list_for_profile(self, profile_id: ProfileId) -> tuple[Playlist, ...]:
+        """Every playlist of one profile, most recently changed first."""
+        self._require_profile(profile_id)
+        rows = self._session.scalars(
+            select(PlaylistRow)
+            .where(PlaylistRow.profile_id == str(profile_id))
+            .order_by(PlaylistRow.updated_at.desc(), PlaylistRow.id.desc())
+        ).all()
+        counts = self._track_counts(tuple(row.id for row in rows))
+        return tuple(_to_playlist(row, counts.get(row.id, 0)) for row in rows)
+
+    def create(self, profile_id: ProfileId, name: str, *, now: datetime | None = None) -> Playlist:
+        """Insert one playlist, or report the name this profile already uses.
+
+        The `(profile_id, name_folded)` unique index is the race-safe guard, so
+        two tabs pressing Create at once produce one playlist and one clear
+        conflict rather than two identically named lists.
+        """
+        self._require_profile(profile_id)
+        moment = to_rfc3339(now or datetime.now(UTC))
+        row = PlaylistRow(
+            id=new_id(),
+            profile_id=str(profile_id),
+            name=name,
+            name_folded=fold_name(name),
+            created_at=moment,
+            updated_at=moment,
+            revision=1,
+        )
+        self._session.add(row)
+        try:
+            self._session.flush()
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise DuplicateRecordError(
+                "This profile already has a playlist with that name.", field="name"
+            ) from exc
+        return _to_playlist(row, 0)
+
+    def get_detail(self, playlist_id: PlaylistId) -> PlaylistDetail:
+        """One playlist and its tracks in saved order."""
+        row = self._require(playlist_id)
+        rows = self._session.execute(
+            select(TrackRow)
+            .join(PlaylistTrackRow, PlaylistTrackRow.track_id == TrackRow.id)
+            .where(PlaylistTrackRow.playlist_id == str(playlist_id))
+            .order_by(PlaylistTrackRow.position, TrackRow.id)
+        ).scalars()
+        tracks = tuple(_to_track(track_row) for track_row in rows)
+        return PlaylistDetail(playlist=_to_playlist(row, len(tracks)), tracks=tracks)
+
+    def rename(
+        self,
+        playlist_id: PlaylistId,
+        *,
+        name: str,
+        expected_revision: int,
+        now: datetime | None = None,
+    ) -> Playlist:
+        row = self._require(playlist_id)
+        if row.revision != expected_revision:
+            raise RecordChangedError(
+                "Somebody else changed this playlist first. Reload it and try again.",
+                context={"current_revision": row.revision},
+            )
+        row.name = name
+        row.name_folded = fold_name(name)
+        row.revision += 1
+        row.updated_at = to_rfc3339(now or datetime.now(UTC))
+        try:
+            self._session.flush()
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise DuplicateRecordError(
+                "This profile already has a playlist with that name.", field="name"
+            ) from exc
+        return _to_playlist(row, self._track_counts((row.id,)).get(row.id, 0))
+
+    def add_track(
+        self,
+        playlist_id: PlaylistId,
+        track_id: TrackId,
+        *,
+        expected_revision: int,
+        now: datetime | None = None,
+    ) -> PlaylistDetail:
+        """Append one track to the end of the saved order.
+
+        A track already in the playlist is a conflict rather than a silent
+        no-op: the person pressed Add expecting a change, and reporting nothing
+        happened is more honest than pretending something did.
+        """
+        row = self._require(playlist_id)
+        if row.revision != expected_revision:
+            raise RecordChangedError(
+                "Somebody else changed this playlist first. Reload it and try again.",
+                context={"current_revision": row.revision},
+            )
+        if self._session.get(TrackRow, str(track_id)) is None:
+            raise RecordNotFoundError("That track is not in this library.")
+
+        moment = to_rfc3339(now or datetime.now(UTC))
+        highest = self._session.scalar(
+            select(func.max(PlaylistTrackRow.position)).where(
+                PlaylistTrackRow.playlist_id == str(playlist_id)
+            )
+        )
+        position = 0 if highest is None else highest + 1
+        self._session.add(
+            PlaylistTrackRow(
+                playlist_id=str(playlist_id),
+                track_id=str(track_id),
+                position=position,
+                added_at=moment,
+            )
+        )
+        row.revision += 1
+        row.updated_at = moment
+        try:
+            self._session.flush()
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise DuplicateRecordError(
+                "That track is already in this playlist.", field="track_id"
+            ) from exc
+        return self.get_detail(playlist_id)
+
+    def _track_counts(self, playlist_ids: tuple[str, ...]) -> dict[str, int]:
+        if not playlist_ids:
+            return {}
+        rows = self._session.execute(
+            select(PlaylistTrackRow.playlist_id, func.count())
+            .where(PlaylistTrackRow.playlist_id.in_(playlist_ids))
+            .group_by(PlaylistTrackRow.playlist_id)
+        ).all()
+        return {str(playlist_id): int(count) for playlist_id, count in rows}
+
+    def _require(self, playlist_id: PlaylistId) -> PlaylistRow:
+        row = self._session.get(PlaylistRow, str(playlist_id))
+        if row is None:
+            raise RecordNotFoundError("That playlist does not exist.")
+        return row
+
+    def _require_profile(self, profile_id: ProfileId) -> ProfileRow:
+        row = self._session.get(ProfileRow, str(profile_id))
+        if row is None:
+            raise RecordNotFoundError("That profile is not in this household.")
+        return row
+
+
+def _to_artwork_stage(row: ArtworkStageRow) -> ArtworkStage:
+    return ArtworkStage(
+        id=ArtworkStageId(row.id),
+        file_relpath=row.file_relpath,
+        mime_type=row.mime_type,
+        content_sha256=row.content_sha256,
+        size_bytes=row.size_bytes,
+        origin=ArtworkOrigin(row.origin),
+        created_at=from_rfc3339(row.created_at),
+        expires_at=from_rfc3339(row.expires_at),
+        consumed_at=_optional_moment(row.consumed_at),
+    )
+
+
+class ArtworkStageRepository:
+    """Short-lived, single-use cover images awaiting a save.
+
+    A stage is not a track change. It exists so the browser can show the person
+    the cover they picked before anything is committed, and so the save that
+    finally commits has one already-validated file to consume.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def create(
+        self,
+        *,
+        stage_id: str,
+        file_relpath: str,
+        mime_type: str,
+        content_sha256: str,
+        size_bytes: int,
+        origin: ArtworkOrigin,
+        now: datetime,
+        lifetime: timedelta,
+    ) -> ArtworkStage:
+        row = ArtworkStageRow(
+            id=stage_id,
+            file_relpath=file_relpath,
+            mime_type=mime_type,
+            content_sha256=content_sha256,
+            size_bytes=size_bytes,
+            origin=str(origin),
+            created_at=to_rfc3339(now),
+            expires_at=to_rfc3339(now + lifetime),
+            consumed_at=None,
+        )
+        self._session.add(row)
+        self._session.flush()
+        return _to_artwork_stage(row)
+
+    def require_consumable(self, stage_id: ArtworkStageId, *, now: datetime) -> ArtworkStage:
+        """The stage this save may consume, or the one failure all three cases share."""
+        row = self._session.get(ArtworkStageRow, str(stage_id))
+        if row is None:
+            raise ArtworkStageUnavailableError(
+                "That cover image is no longer available. Choose it again."
+            )
+        stage = _to_artwork_stage(row)
+        if not stage.is_consumable(now=now):
+            raise ArtworkStageUnavailableError(
+                "That cover image is no longer available. Choose it again."
+            )
+        return stage
+
+    def consume(self, stage_id: ArtworkStageId, *, now: datetime) -> None:
+        """Mark the stage used, inside the same transaction as the save itself."""
+        row = self._session.get(ArtworkStageRow, str(stage_id))
+        if row is None or row.consumed_at is not None:
+            raise ArtworkStageUnavailableError(
+                "That cover image is no longer available. Choose it again."
+            )
+        row.consumed_at = to_rfc3339(now)
+        self._session.flush()
+
+    def expired(self, *, now: datetime) -> tuple[ArtworkStage, ...]:
+        """Unconsumed stages past their hour, for opportunistic cleanup."""
+        rows = self._session.scalars(
+            select(ArtworkStageRow)
+            .where(ArtworkStageRow.consumed_at.is_(None))
+            .where(ArtworkStageRow.expires_at <= to_rfc3339(now))
+        ).all()
+        return tuple(_to_artwork_stage(row) for row in rows)
+
+    def delete(self, stage_id: ArtworkStageId) -> None:
+        row = self._session.get(ArtworkStageRow, str(stage_id))
+        if row is not None:
+            self._session.delete(row)
+            self._session.flush()
+
+
+class MediaMutationRepository:
+    """The recovery journal for every change that moves managed media.
+
+    A row here is written before the filesystem is touched and removed only
+    after the change is complete, so an interrupted edit always leaves a record
+    saying what was half-done and which files can undo it.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def open_edit(
+        self,
+        *,
+        track_id: TrackId,
+        old_record: dict[str, object],
+        new_record: dict[str, object],
+        now: datetime,
+    ) -> str:
+        mutation_id = new_id()
+        moment = to_rfc3339(now)
+        self._session.add(
+            MediaMutationRow(
+                id=mutation_id,
+                track_id=str(track_id),
+                operation="edit",
+                state="prepared",
+                old_record_json=json.dumps(old_record, separators=(",", ":"), sort_keys=True),
+                new_record_json=json.dumps(new_record, separators=(",", ":"), sort_keys=True),
+                recovery_json="{}",
+                created_at=moment,
+                updated_at=moment,
+            )
+        )
+        self._session.flush()
+        return mutation_id
+
+    def advance(
+        self,
+        mutation_id: str,
+        *,
+        state: str,
+        now: datetime,
+        recovery: dict[str, str] | None = None,
+        error_detail: str | None = None,
+    ) -> None:
+        row = self._session.get(MediaMutationRow, mutation_id)
+        if row is None:
+            raise RecordNotFoundError("That change is no longer being tracked.")
+        row.state = state
+        if recovery is not None:
+            row.recovery_json = json.dumps(recovery, separators=(",", ":"), sort_keys=True)
+        if error_detail is not None:
+            row.error_detail = error_detail
+        row.updated_at = to_rfc3339(now)
+        self._session.flush()
+
+    def close(self, mutation_id: str) -> None:
+        """Remove a finished journal row; nothing is left to recover from it."""
+        row = self._session.get(MediaMutationRow, mutation_id)
+        if row is not None:
+            self._session.delete(row)
+            self._session.flush()
 
 
 def _to_job(row: DownloadJobRow) -> DownloadJob:

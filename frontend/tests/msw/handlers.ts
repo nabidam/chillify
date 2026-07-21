@@ -1,5 +1,5 @@
 import { HttpResponse, http } from "msw";
-import type { Profile, TrackSummary } from "@/api/client";
+import type { ArtworkStage, Playlist, Profile, TrackDetail, TrackSummary } from "@/api/client";
 import type { SystemStatus } from "@/app/useSystemStatus";
 import type { DownloadJob } from "@/features/downloads/downloadJobs";
 import type { RemoteResult, TrackCandidate } from "@/features/search/remoteSearch";
@@ -115,8 +115,51 @@ export function jobFixture(overrides: Partial<DownloadJob> = {}): DownloadJob {
   };
 }
 
+export function playlistFixture(overrides: Partial<Playlist> = {}): Playlist {
+  return {
+    id: "019f8000-0000-7000-8000-0000000000c1",
+    profile_id: profileFixture().id,
+    name: "Sunday Morning",
+    track_count: 0,
+    revision: 1,
+    created_at: "2026-07-20T12:00:00.000Z",
+    updated_at: "2026-07-20T12:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function trackDetailFixture(overrides: Partial<TrackDetail> = {}): TrackDetail {
+  return {
+    track: trackSummaryFixture(),
+    has_artwork: false,
+    sources: [
+      {
+        provider: "deezer",
+        source_id: "3135556",
+        source_url: "https://www.deezer.com/track/3135556",
+      },
+    ],
+    ...overrides,
+  };
+}
+
+export function artworkStageFixture(overrides: Partial<ArtworkStage> = {}): ArtworkStage {
+  return {
+    id: "019f8000-0000-7000-8000-0000000000d1",
+    mime_type: "image/jpeg",
+    size_bytes: 24_576,
+    origin: "upload",
+    created_at: "2026-07-20T12:00:00.000Z",
+    expires_at: "2026-07-20T13:00:00.000Z",
+    ...overrides,
+  };
+}
+
 export const handlers = [
   http.get("/api/v1/system/status", () => HttpResponse.json(systemStatusFixture())),
+  http.get("/api/v1/profiles/:profileId/playlists", () =>
+    HttpResponse.json({ items: [], next_cursor: null }),
+  ),
   http.get("/api/v1/profiles", () =>
     HttpResponse.json({ items: [profileFixture()], next_cursor: null }),
   ),

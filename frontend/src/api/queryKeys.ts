@@ -25,8 +25,15 @@ export const queryKeys = {
   deezerSearch: (submission: string) => ["search", "deezer", submission] as const,
   downloads: (state?: string) => ["downloads", "list", state ?? "all"] as const,
   download: (jobId: string) => ["downloads", "detail", jobId] as const,
+  /**
+   * Playlists are the one resource scoped to a profile, so their key carries
+   * the profile ID: switching profiles must not read another person's cache.
+   */
+  playlists: (profileId: string) => ["playlists", "list", profileId] as const,
+  playlist: (playlistId: string) => ["playlists", "detail", playlistId] as const,
 } as const;
 
 /** Everything invalidated when a download changes the library. */
 export const LIBRARY_QUERY_PREFIX = ["library"] as const;
 export const DOWNLOADS_QUERY_PREFIX = ["downloads"] as const;
+export const PLAYLISTS_QUERY_PREFIX = ["playlists"] as const;

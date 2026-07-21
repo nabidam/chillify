@@ -27,7 +27,11 @@ function apiBaseUrl(): string {
 }
 
 export type TrackSummary = components["schemas"]["TrackSummaryModel"];
+export type TrackDetail = components["schemas"]["TrackDetailModel"];
 export type Profile = components["schemas"]["ProfileModel"];
+export type Playlist = components["schemas"]["PlaylistModel"];
+export type PlaylistDetail = components["schemas"]["PlaylistDetailModel"];
+export type ArtworkStage = components["schemas"]["ArtworkStageModel"];
 export type LibrarySort = components["schemas"]["LibrarySort"];
 export type ApiError = components["schemas"]["ErrorBody"];
 
@@ -98,4 +102,20 @@ export function unwrap<Data>(result: {
 /** The stream URL for one track. The `<audio>` element loads this directly. */
 export function trackStreamUrl(trackId: string): string {
   return `/api/v1/tracks/${encodeURIComponent(trackId)}/stream`;
+}
+
+/**
+ * The cover URL for one track.
+ *
+ * `revision` is carried as a query parameter so a corrected cover replaces the
+ * one the browser already cached: the managed filename is derived from the
+ * track ID and therefore never changes on its own.
+ */
+export function trackArtworkUrl(trackId: string, revision: number): string {
+  return `/media/artwork/tracks/${encodeURIComponent(trackId)}?v=${revision}`;
+}
+
+/** The preview URL for a staged cover, before any save has consumed it. */
+export function artworkStageUrl(stageId: string): string {
+  return `/media/artwork/stages/${encodeURIComponent(stageId)}`;
 }

@@ -28,8 +28,11 @@ from sqlalchemy import Engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from chillify.application.artwork import ArtworkService
 from chillify.application.downloads import DownloadService
 from chillify.application.library import LibraryService
+from chillify.application.metadata import MetadataService
+from chillify.application.playlists import PlaylistService
 from chillify.application.search import SearchService
 from chillify.config import Settings, preflight_mounted_roots
 from chillify.infrastructure.db.engine import create_database_engine, create_session_factory
@@ -118,6 +121,25 @@ class Composition:
         return LibraryService(
             session_factory=self.session_factory,
             music_root=self.settings.music_root,
+        )
+
+    def metadata_service(self) -> MetadataService:
+        """Bind the recoverable track-correction use case to this process."""
+        return MetadataService(
+            session_factory=self.session_factory,
+            music_root=self.settings.music_root,
+        )
+
+    def playlist_service(self) -> PlaylistService:
+        """Bind the per-profile playlist use cases."""
+        return PlaylistService(session_factory=self.session_factory)
+
+    def artwork_service(self) -> ArtworkService:
+        """Bind cover staging to the adapters this environment allows."""
+        return ArtworkService(
+            session_factory=self.session_factory,
+            music_root=self.settings.music_root,
+            registry=self.registry,
         )
 
     def search_service(self) -> SearchService:

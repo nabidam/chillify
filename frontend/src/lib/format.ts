@@ -26,3 +26,29 @@ export function formatMilliseconds(milliseconds: number | null | undefined): str
     ? "--:--"
     : formatDuration(milliseconds / 1000);
 }
+
+/**
+ * Render a stored timestamp as a coarse "how long ago".
+ *
+ * Deliberately coarse: a household listing playlists wants "3 days ago", and a
+ * precise timestamp would only invite the reader to compare clocks.
+ */
+export function formatRelativeTime(timestamp: string): string {
+  const moment = Date.parse(timestamp);
+  if (Number.isNaN(moment)) {
+    return "recently";
+  }
+  const minutes = Math.floor((Date.now() - moment) / 60_000);
+  if (minutes < 1) {
+    return "just now";
+  }
+  if (minutes < 60) {
+    return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}

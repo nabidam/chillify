@@ -19,9 +19,6 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from mutagen import MutagenError
-from mutagen.easyid3 import EasyID3
-from mutagen.id3 import ID3NoHeaderError
 from pathvalidate import sanitize_filename
 
 from chillify.domain.errors import (
@@ -220,37 +217,3 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def write_audio_tags(
-    path: Path,
-    *,
-    title: str,
-    artist: str,
-    album: str | None,
-    release_year: int | None,
-    track_number: int | None,
-) -> None:
-    """Write the ID3 tags a music player reads, using Mutagen.
-
-    The file is tagged in the workspace, before publication, so the copy that
-    becomes part of the library is already correct and no published file is
-    ever rewritten in place by this path.
-    """
-    try:
-        tags = EasyID3(path)  # type: ignore[no-untyped-call]
-    except ID3NoHeaderError:
-        tags = EasyID3()  # type: ignore[no-untyped-call]
-
-    tags["title"] = title
-    tags["artist"] = artist
-    tags["album"] = album or UNKNOWN_ALBUM_DIRECTORY
-    if release_year is not None:
-        tags["date"] = str(release_year)
-    if track_number is not None:
-        tags["tracknumber"] = str(track_number)
-
-    try:
-        tags.save(path)
-    except (OSError, MutagenError) as exc:
-        raise StorageUnwritableError("The downloaded file could not be tagged.") from exc

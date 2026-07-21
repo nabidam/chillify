@@ -20,6 +20,8 @@ from chillify.domain.normalization import (
 
 ProfileId = NewType("ProfileId", str)
 TrackId = NewType("TrackId", str)
+PlaylistId = NewType("PlaylistId", str)
+ArtworkStageId = NewType("ArtworkStageId", str)
 
 AUDIO_MIME_TYPE: Final = "audio/mpeg"
 
@@ -101,6 +103,94 @@ class Track:
     @property
     def is_playable(self) -> bool:
         return self.availability is Availability.AVAILABLE
+
+
+@dataclass(frozen=True, slots=True)
+class TrackSource:
+    """One provider identity a track was acquired from."""
+
+    provider: str
+    source_id: str | None
+    source_url: str
+
+
+@dataclass(frozen=True, slots=True)
+class TrackDetail:
+    """One track with everything S13 edits and everything it discloses."""
+
+    track: Track
+    sources: tuple[TrackSource, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TrackEdit:
+    """The complete intended record one save applies.
+
+    Every editable field is present rather than optional: a partial patch would
+    make "clear the album" and "leave the album alone" the same request, and the
+    edit has to rewrite the file's tags either way.
+    """
+
+    title: str
+    artist: str
+    album: str | None
+    release_year: int | None
+    disc_number: int | None
+    track_number: int | None
+    artwork_stage_id: ArtworkStageId | None = None
+
+
+class ArtworkOrigin(StrEnum):
+    """Where a staged cover image came from."""
+
+    UPLOAD = "upload"
+    URL = "url"
+    LASTFM = "lastfm"
+
+
+@dataclass(frozen=True, slots=True)
+class ArtworkStage:
+    """One validated, normalized JPEG waiting to be consumed by a save.
+
+    A stage is single-use and expires: it holds an image the person chose but
+    has not committed, so nothing about a track changes until the save that
+    consumes it commits.
+    """
+
+    id: ArtworkStageId
+    file_relpath: str
+    mime_type: str
+    content_sha256: str
+    size_bytes: int
+    origin: ArtworkOrigin
+    created_at: datetime
+    expires_at: datetime
+    consumed_at: datetime | None
+
+    def is_consumable(self, *, now: datetime) -> bool:
+        return self.consumed_at is None and self.expires_at > now
+
+
+@dataclass(frozen=True, slots=True)
+class Playlist:
+    """One profile's manually ordered collection of local tracks."""
+
+    id: PlaylistId
+    profile_id: ProfileId
+    name: str
+    name_folded: str
+    track_count: int
+    revision: int
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class PlaylistDetail:
+    """One playlist together with its tracks in saved order."""
+
+    playlist: Playlist
+    tracks: tuple[Track, ...]
 
 
 @dataclass(frozen=True, slots=True)

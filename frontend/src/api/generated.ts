@@ -4,6 +4,63 @@
  */
 
 export interface paths {
+    "/api/v1/artwork/stages/lastfm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stage Last.fm's best cover for one track */
+        post: operations["stage_artwork_from_lastfm_api_v1_artwork_stages_lastfm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/artwork/stages/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stage an uploaded cover image
+         * @description Validate and normalize one uploaded image into a single-use stage.
+         *
+         *     The upload is bounded before it is read whole: an oversized file is refused
+         *     from its declared size rather than after the server has buffered it.
+         */
+        post: operations["stage_uploaded_artwork_api_v1_artwork_stages_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/artwork/stages/url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stage a cover image from a link */
+        post: operations["stage_artwork_from_url_api_v1_artwork_stages_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/downloads": {
         parameters: {
             query?: never;
@@ -76,6 +133,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/playlists/{playlist_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one playlist and its tracks in saved order */
+        get: operations["read_playlist_api_v1_playlists__playlist_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename one playlist
+         * @description Rename under the submitted revision, so a concurrent rename is visible.
+         */
+        patch: operations["rename_playlist_api_v1_playlists__playlist_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/playlists/{playlist_id}/tracks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add one track to the end of a playlist */
+        post: operations["add_playlist_track_api_v1_playlists__playlist_id__tracks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/profiles": {
         parameters: {
             query?: never;
@@ -94,6 +189,30 @@ export interface paths {
         put?: never;
         /** Create a household profile */
         post: operations["create_profile_api_v1_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/profiles/{profile_id}/playlists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List one profile's playlists
+         * @description Every playlist of one profile, most recently changed first.
+         *
+         *     The list is bounded by household use, so it is served whole; the page
+         *     envelope is present for shape consistency, never for paging.
+         */
+        get: operations["list_playlists_api_v1_profiles__profile_id__playlists_get"];
+        put?: never;
+        /** Create a playlist for one profile */
+        post: operations["create_playlist_api_v1_profiles__profile_id__playlists_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -164,6 +283,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tracks/{track_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one complete editable track
+         * @description Everything S13 needs before it enables its fields.
+         */
+        get: operations["read_track_api_v1_tracks__track_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Correct one track atomically
+         * @description Apply the complete corrected record — tags, art, path, and row — as one change.
+         *
+         *     `If-Match` is required rather than optional: without it a save would
+         *     silently overwrite whatever the other browser tab in the house just wrote,
+         *     and this is the one mutation that also rewrites a file on disk.
+         */
+        patch: operations["update_track_api_v1_tracks__track_id__patch"];
+        trace?: never;
+    };
     "/api/v1/tracks/{track_id}/stream": {
         parameters: {
             query?: never;
@@ -181,10 +328,119 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/media/artwork/stages/{stage_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve one staged cover for preview
+         * @description The image the person picked, so S13 can show it before anything is saved.
+         */
+        get: operations["read_staged_artwork_media_artwork_stages__stage_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/artwork/tracks/{track_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve one track's managed cover
+         * @description The cover for one track, resolved through the same containment rules as audio.
+         */
+        get: operations["read_track_artwork_media_artwork_tracks__track_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AddPlaylistTrackRequest
+         * @description One row action: append a local track to the end of the saved order.
+         */
+        AddPlaylistTrackRequest: {
+            /** Revision */
+            revision: number;
+            /** Track Id */
+            track_id: string;
+        };
+        /**
+         * ArtworkLastfmRequest
+         * @description Stage Last.fm's best cover for one track's identity.
+         */
+        ArtworkLastfmRequest: {
+            /** Album */
+            album?: string | null;
+            /** Artist */
+            artist: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ArtworkStageModel
+         * @description One staged cover image, waiting to be consumed by a save.
+         */
+        ArtworkStageModel: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description After this moment the stage is gone and the image must be chosen again.
+             */
+            expires_at: string;
+            /** Id */
+            id: string;
+            /**
+             * Mime Type
+             * @constant
+             */
+            mime_type: "image/jpeg";
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "upload" | "url" | "lastfm";
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /**
+         * ArtworkUrlRequest
+         * @description Stage the image at one submitted link.
+         */
+        ArtworkUrlRequest: {
+            /** Url */
+            url: string;
+        };
+        /** Body_stage_uploaded_artwork_api_v1_artwork_stages_upload_post */
+        Body_stage_uploaded_artwork_api_v1_artwork_stages_upload_post: {
+            /**
+             * File
+             * @description The cover image to stage.
+             */
+            file: string;
+        };
         /** ComponentStatusModel */
         ComponentStatusModel: {
             /**
@@ -201,6 +457,14 @@ export interface components {
              * Name
              * @description Stable component identifier.
              */
+            name: string;
+        };
+        /**
+         * CreatePlaylistRequest
+         * @description S16, creating. Only the name is editable.
+         */
+        CreatePlaylistRequest: {
+            /** Name */
             name: string;
         };
         /** CreateProfileRequest */
@@ -403,6 +667,16 @@ export interface components {
              */
             next_cursor?: string | null;
         };
+        /** PageModel[PlaylistModel] */
+        PageModel_PlaylistModel_: {
+            /** Items */
+            items: components["schemas"]["PlaylistModel"][];
+            /**
+             * Next Cursor
+             * @description Opaque cursor for the next page, or null when this page is the last.
+             */
+            next_cursor?: string | null;
+        };
         /** PageModel[ProfileModel] */
         PageModel_ProfileModel_: {
             /** Items */
@@ -432,6 +706,44 @@ export interface components {
              * @description Opaque cursor for the next page, or null when this page is the last.
              */
             next_cursor?: string | null;
+        };
+        /**
+         * PlaylistDetailModel
+         * @description One playlist and its tracks in saved order.
+         */
+        PlaylistDetailModel: {
+            playlist: components["schemas"]["PlaylistModel"];
+            /** Tracks */
+            tracks: components["schemas"]["TrackSummaryModel"][];
+        };
+        /**
+         * PlaylistModel
+         * @description One playlist as the sidebar and S9 render it.
+         */
+        PlaylistModel: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Profile Id */
+            profile_id: string;
+            /**
+             * Revision
+             * @description Supply as `revision` on the next change to this playlist.
+             */
+            revision: number;
+            /** Track Count */
+            track_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * ProfileModel
@@ -480,6 +792,16 @@ export interface components {
              * @constant
              */
             is_playable: false;
+        };
+        /**
+         * RenamePlaylistRequest
+         * @description S16, renaming. The revision is what makes a concurrent rename visible.
+         */
+        RenamePlaylistRequest: {
+            /** Name */
+            name: string;
+            /** Revision */
+            revision: number;
         };
         /**
          * SystemStatusModel
@@ -550,6 +872,35 @@ export interface components {
             track_number: number | null;
         };
         /**
+         * TrackDetailModel
+         * @description The complete editable record S13 loads before it enables its fields.
+         */
+        TrackDetailModel: {
+            /**
+             * Has Artwork
+             * @description Whether a managed cover exists. Its bytes are served by the artwork route.
+             */
+            has_artwork: boolean;
+            /** Sources */
+            sources: components["schemas"]["TrackSourceModel"][];
+            track: components["schemas"]["TrackSummaryModel"];
+        };
+        /**
+         * TrackSourceModel
+         * @description One provider identity a track was acquired from.
+         *
+         *     Disclosed on S13 because a person correcting metadata benefits from seeing
+         *     where the file came from; it is never used to address the track.
+         */
+        TrackSourceModel: {
+            /** Provider */
+            provider: string;
+            /** Source Id */
+            source_id: string | null;
+            /** Source Url */
+            source_url: string;
+        };
+        /**
          * TrackSummaryModel
          * @description One local track as the library, search, and context views render it.
          */
@@ -603,6 +954,33 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * UpdateTrackRequest
+         * @description The complete intended record for one save.
+         *
+         *     Every editable field is required rather than optional: a partial patch
+         *     would make "clear the album" and "leave the album alone" indistinguishable,
+         *     and the save has to rewrite the file's tags either way.
+         */
+        UpdateTrackRequest: {
+            /** Album */
+            album?: string | null;
+            /** Artist */
+            artist: string;
+            /**
+             * Artwork Stage Id
+             * @description A staged cover to consume atomically with this save.
+             */
+            artwork_stage_id?: string | null;
+            /** Disc Number */
+            disc_number?: number | null;
+            /** Release Year */
+            release_year?: number | null;
+            /** Title */
+            title: string;
+            /** Track Number */
+            track_number?: number | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -612,6 +990,105 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    stage_artwork_from_lastfm_api_v1_artwork_stages_lastfm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArtworkLastfmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtworkStageModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    stage_uploaded_artwork_api_v1_artwork_stages_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_stage_uploaded_artwork_api_v1_artwork_stages_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtworkStageModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    stage_artwork_from_url_api_v1_artwork_stages_url_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArtworkUrlRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtworkStageModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_downloads_api_v1_downloads_get: {
         parameters: {
             query?: {
@@ -784,6 +1261,110 @@ export interface operations {
             };
         };
     };
+    read_playlist_api_v1_playlists__playlist_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Playlist ID. */
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistDetailModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rename_playlist_api_v1_playlists__playlist_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Playlist ID. */
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenamePlaylistRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    add_playlist_track_api_v1_playlists__playlist_id__tracks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Playlist ID. */
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddPlaylistTrackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistDetailModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_profiles_api_v1_profiles_get: {
         parameters: {
             query?: never;
@@ -833,6 +1414,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProfileModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_playlists_api_v1_profiles__profile_id__playlists_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Profile ID. */
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageModel_PlaylistModel_"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_playlist_api_v1_profiles__profile_id__playlists_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Profile ID. */
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePlaylistRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistModel"];
                 };
             };
             /** @description Error envelope */
@@ -940,6 +1589,77 @@ export interface operations {
             };
         };
     };
+    read_track_api_v1_tracks__track_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Track ID. */
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackDetailModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_track_api_v1_tracks__track_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The track's current `revision`. */
+                "If-Match"?: string | null;
+            };
+            path: {
+                /** @description Track ID. */
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTrackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackDetailModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     stream_track_api_v1_tracks__track_id__stream_get: {
         parameters: {
             query?: never;
@@ -968,6 +1688,70 @@ export interface operations {
                 };
                 content: {
                     "audio/mpeg": unknown;
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_staged_artwork_media_artwork_stages__stage_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Artwork stage ID. */
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The staged image. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_track_artwork_media_artwork_tracks__track_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Track ID. */
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cover image. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
                 };
             };
             /** @description Error envelope */
