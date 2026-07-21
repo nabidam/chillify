@@ -264,6 +264,24 @@ layer = "integration"
 Context pack (hint): `deploy/docker/web.Dockerfile`; `scripts/verify.sh`;
 `CONVENTIONS.md` verification section.
 
+- **Done:** `1391e16` — evidence `specs/001-core/evidence/task-4a.txt`
+  The lock was regenerated inside the web image's base rather than on the host.
+  No dependency version changed: the diff is only the optional wasm entries npm
+  expects recorded for `@tailwindcss/oxide-wasm32-wasi` and
+  `@rolldown/binding-wasm32-wasi`. The drift step now runs `npm ci --dry-run`
+  in that image, reads the image reference out of `web.Dockerfile` so the two
+  cannot drift apart, copies the two files in rather than bind-mounting them
+  writable, runs `--network none`, and fails closed when docker is absent.
+  Verified by restoring the old lock and watching the step fail on exactly what
+  it used to pass.
+  Two observations recorded rather than acted on, both outside this fix's
+  scope: `package.json` pins `engines.npm` to 12.0.1 while the image base ships
+  11.16.0, so every `npm` call in the build logs an `EBADENGINE` warning; and
+  `npm audit` now reports 3 moderate advisories against
+  `@modelcontextprotocol/sdk` via `shadcn` that were absent earlier the same
+  day. Neither is caused by the lock change — the package versions are
+  unchanged — and `--audit-level=high` passes moderate by design.
+
 ## Task 6 — Direct-link inspection and reviewed YouTube acquisition
 
 ```toml
