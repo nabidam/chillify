@@ -222,6 +222,48 @@ task = 4
 
 Preflight: run `./scripts/gate/prepare.sh gate-1 kernel` first; it must reject paths outside `.gate/gate-1/` and a non-gate Redis prefix. Record the human walkthrough outcome in the evidence file before marking this task done.
 
+- **GATE BLOCKED** — the preflight cannot launch the app, so no walkthrough was
+  offered. `docker compose --env-file .gate/gate-1/.env up --build -d` fails
+  building the `web` image: `npm ci` reports `@emnapi/core@1.11.2` and
+  `@emnapi/runtime@1.11.2` missing from `frontend/package-lock.json`. The lock
+  pins those transitive wasm dependencies at `1.11.1` under
+  `@rolldown/binding-wasm32-wasi`. It is a toolchain split, not a dependency
+  change: the same two files pass `npm ci --dry-run` under the host's npm
+  11.6.1 and fail under the npm 11.16.0 in `node:24.18.0-trixie-slim`. That
+  makes `verify.sh`'s frontend lockfile-drift step a false negative — it
+  validates with whatever npm the developer happens to have rather than with
+  the one that builds the production image. Fixed by Task 4a; re-run this
+  preflight once that lands.
+  Two preflight notes recorded while blocked: `prepare.sh`'s second argument is
+  the mode (`production|gate`), so the `gate.launch`/`produces` string
+  `prepare.sh gate-1 kernel` is not runnable as written — `kernel` is the chunk
+  label, and the gate needs `gate` mode for the fixture adapters and the
+  `chillify:gate:gate-1:` Redis prefix. The script refused `kernel` with exit 2,
+  which is the fail-closed behaviour working. Separately, `compose.yaml` ships
+  no Redis service by design, so the preflight must supply one the containers
+  can resolve; `REDIS_URL` was set at prepare time to a disposable Redis
+  container attached to the compose network.
+
+## Task 4a — Align the frontend lockfile with the image toolchain
+
+```toml
+id = "4a"
+type = "fix"
+chunk = 4
+deps = [4]
+files = ["frontend/package-lock.json", "scripts/verify.sh", "CONVENTIONS.md"]
+
+[[criteria]]
+text = "`npm ci` succeeds under the npm version in deploy/docker/web.Dockerfile's base image, and the production web image builds."
+layer = "integration"
+[[criteria]]
+text = "The verify script's frontend lockfile-drift step fails when the lockfile would not install in the image, rather than passing on the developer's npm."
+layer = "integration"
+```
+
+Context pack (hint): `deploy/docker/web.Dockerfile`; `scripts/verify.sh`;
+`CONVENTIONS.md` verification section.
+
 ## Task 6 — Direct-link inspection and reviewed YouTube acquisition
 
 ```toml
