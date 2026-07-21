@@ -171,6 +171,18 @@ gate = 1
 
 Context pack (hint): ARCHITECTURE §§5, 8, 10; `UX.md` S5/S9/S10/S13/S16; `DESIGN.md`.
 
+- **Done:** `7004f67` — evidence `specs/001-core/evidence/task-4.txt`
+  Scope notes, against the task's predicted file list: `TrackRow.tsx` does not
+  exist in the tree — its row actions were added to the real `TrackTable.tsx`.
+  Registering routes and adding the playlist/artwork/mutation persistence
+  required editing `db/{models,repositories}.py`, `api/{main,dependencies}.py`,
+  `composition.py`, `domain/{models,errors,normalization}.py`, and
+  `api/{routes,schemas}/tracks.py` beyond the listed files. `write_audio_tags`
+  moved from `media/storage.py` to the new `media/tags.py`, which the task's
+  file list introduces. S5 belongs to Task 6 (`POST /links/inspect` is that
+  task's contract), so the reviewed-YouTube editor is not built here; playlist
+  reorder, row removal, and drag handles belong to Task 12.
+
 ## Task 5 — DEMO GATE 1: walking skeleton
 
 ```toml
