@@ -56,6 +56,10 @@ if [[ "$MODE" == "gate" ]]; then
     # host paths, used by host-process runs and as the Compose bind sources;
     # the gate overlay replaces them with the container's own paths.
     CONTAINMENT_ROOT="$GATE_ROOT"
+    # The disposable Redis the gate overlay supplies, addressed by its service
+    # name on the Compose network. A caller running the app on the host instead
+    # of in containers overrides REDIS_URL to reach their own Redis.
+    DEFAULT_REDIS_URL="redis://redis:6379/0"
     # Seed the fixture adapters' recorded payloads. They are copied rather
     # than referenced so a gate run reads only from its own disposable tree.
     cp -R "$REPO_ROOT/backend/tests/fixtures/." "$GATE_ROOT/fixtures/"
@@ -63,6 +67,7 @@ else
     REDIS_PREFIX="chillify:"
     FIXTURE_ROOT=""
     CONTAINMENT_ROOT=""
+    DEFAULT_REDIS_URL="redis://127.0.0.1:6379/0"
 fi
 
 SECRET_KEY="$(
@@ -77,7 +82,7 @@ CHILLIFY_DATA_ROOT=$GATE_ROOT/data
 CHILLIFY_MUSIC_ROOT=$GATE_ROOT/music
 CHILLIFY_UID=$(id -u)
 CHILLIFY_GID=$(id -g)
-REDIS_URL=${REDIS_URL:-redis://127.0.0.1:6379/9}
+REDIS_URL=${REDIS_URL:-$DEFAULT_REDIS_URL}
 CHILLIFY_REDIS_PREFIX=$REDIS_PREFIX
 CHILLIFY_SECRET_KEY=$SECRET_KEY
 CHILLIFY_LOG_LEVEL=${CHILLIFY_LOG_LEVEL:-INFO}

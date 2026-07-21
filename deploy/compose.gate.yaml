@@ -4,15 +4,23 @@
 #     -f compose.yaml -f deploy/compose.gate.yaml up --build -d
 #
 # It changes nothing about how the application is built or started: the same
-# images, the same entry points, the same bind mounts. It adds the one thing a
+# images, the same entry points, the same bind mounts. It adds the two things a
 # gate needs and production must never have — the recorded fixture payloads the
-# fixture adapters read — and it declares the containment root the gate-safety
-# check verifies every other root lives beneath.
+# fixture adapters read, and a disposable Redis — and it declares the
+# containment root the gate-safety check verifies every other root lives
+# beneath.
 #
-# Those paths are the container's, not the host's. `.env` carries host paths so
-# the bind mount can find the disposable tree; inside the container everything
-# is under /var/lib/chillify, which is why the containment root is declared
-# rather than inferred from a repository layout that is not mounted here.
+# Production deliberately ships no Redis: it uses the operator's existing one
+# through REDIS_URL, and losing it only degrades acquisition. A gate has no
+# operator Redis to borrow and must exercise the download queue, so the overlay
+# supplies one that is thrown away with the rest of the environment. prepare.sh
+# points the gate's REDIS_URL at this service by default.
+#
+# The fixture and containment paths are the container's, not the host's. `.env`
+# carries host paths so the bind mount can find the disposable tree; inside the
+# container everything is under /var/lib/chillify, which is why the containment
+# root is declared rather than inferred from a repository layout that is not
+# mounted here.
 
 x-gate-environment: &gate-environment
   CHILLIFY_GATE_ROOT: /var/lib/chillify
@@ -27,6 +35,19 @@ x-gate-volume: &gate-volume
   read_only: true
 
 services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # No persistence and no volume: the queue is disposable with the gate.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # The application services do not start until Redis answers, so a gate never
+  # boots into the degraded state a missing queue would cause.
   migrate:
     environment: *gate-environment
     volumes:
@@ -36,8 +57,14 @@ services:
     environment: *gate-environment
     volumes:
       - *gate-volume
+    depends_on:
+      redis:
+        condition: service_healthy
 
   worker:
     environment: *gate-environment
     volumes:
       - *gate-volume
+    depends_on:
+      redis:
+        condition: service_healthy
