@@ -59,6 +59,7 @@ Task 0 configures these checks; prose does not duplicate them:
 - Boot smoke test: `GET /api/v1/system/health` returns `{"status":"ready"}` and `GET /api/v1/system/status` reports database, storage, Redis, tool, and provider state. Readiness and degradation are separate: Redis or tool loss degrades acquisition and never fails readiness.
 - Local development without containers: `cd backend && uv run uvicorn chillify.api.main:app` and `cd frontend && npm run dev`. The dev server proxies `/api` and `/media` so browser code has no environment-specific base URL.
 - Canonical verification is `./scripts/verify.sh` (`--fast` skips the build and dependency audits). It is fail-closed: a missing tool is a failure, never a skip.
+- The frontend lock is validated with the npm inside the web image's build stage, not the developer's npm, and `docker` is therefore required for that step. Different npm versions disagree about which transitive wasm dependencies a lock must record, so validating with the local one let a lock that could not build the production image report green. Regenerate the lock the same way — in that image — rather than with a host `npm install`.
 - Implementation batches run 2 tasks per session, flushed at each demo gate.
 
 ## Commits and reviews

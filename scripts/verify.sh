@@ -55,7 +55,40 @@ require npm
 # Lockfile drift — the committed lock is the only source of installed versions
 # --------------------------------------------------------------------------
 check_backend_lock() { (cd "$BACKEND" && uv lock --check); }
-check_frontend_lock() { (cd "$FRONTEND" && npm ci --dry-run --no-audit --no-fund >/dev/null); }
+
+# The frontend lock is validated with the npm that builds the production web
+# image, not with whatever npm the developer happens to have installed. Those
+# disagree: a lock missing transitive wasm dependencies passed under one npm
+# and failed the image build under another, so this step reported green on a
+# lock that could not ship. The base image is read out of the Dockerfile rather
+# than repeated here, because a second copy of the version is a second thing to
+# forget.
+web_build_image() {
+    sed -n 's/^FROM \(node:[^ ]*\) AS build$/\1/p' "$REPO_ROOT/deploy/docker/web.Dockerfile" | head -1
+}
+
+check_frontend_lock() {
+    local image
+    image="$(web_build_image)"
+    if [[ -z "$image" ]]; then
+        printf 'verify: no "FROM node:... AS build" stage in web.Dockerfile\n' >&2
+        return 1
+    fi
+    if ! command -v docker >/dev/null 2>&1; then
+        printf 'verify: docker is required to validate the frontend lock against %s\n' \
+            "$image" >&2
+        return 1
+    fi
+    # package.json and the lock are copied into the container rather than
+    # bind-mounted read-write, so a validation run can never rewrite them.
+    docker run --rm --network none -v "$FRONTEND:/frontend:ro" "$image" sh -c '
+        set -e
+        mkdir -p /tmp/lockcheck
+        cp /frontend/package.json /frontend/package-lock.json /tmp/lockcheck/
+        cd /tmp/lockcheck
+        npm ci --dry-run --no-audit --no-fund >/dev/null
+    '
+}
 
 # --------------------------------------------------------------------------
 # Backend

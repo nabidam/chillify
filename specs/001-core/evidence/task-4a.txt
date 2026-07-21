@@ -1,0 +1,50 @@
+== Task 4a — frontend lock validated with the image's npm ==
+
+-- the split that hid the defect (same two files, three npm versions) --
+$ node -v && npm -v   # host
+v24.11.0
+11.6.1
+$ docker run --rm node:24.18.0-trixie-slim npm -v   # web image build stage
+11.16.0
+package.json engines: {'node': '24.18.0', 'npm': '12.0.1'}
+
+-- the committed lock rejected by both container npms (host npm 11.6.1 accepted it) --
+npm error `npm ci` can only install packages when your package.json and package-lock.json or npm-shrinkwrap.json are in sync. Please update your lock file with `npm install` before continuing.
+npm error Missing: @emnapi/core@1.11.2 from lock file
+npm error Missing: @emnapi/runtime@1.11.2 from lock file
+
+-- regenerated lock: no version changed, only the optional wasm entries npm requires --
+version changes: NONE
+added: node_modules/@emnapi/core
+added: node_modules/@emnapi/runtime
+added: node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/@emnapi/core
+added: node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/@emnapi/runtime
+added: node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/@emnapi/wasi-threads
+added: node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/@napi-rs/wasm-runtime
+added: node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/@tybys/wasm-util
+added: node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/tslib
+
+-- accepted by every npm in play --
+npm 11.16.0: npm warn allow-scripts Run `npm approve-scripts --allow-scripts-pending` to review, or `npm approve-scripts <pkg>` to allow.
+npm 12.0.1: npm warn install-scripts Run `npm install-scripts ls` to review, or `npm install-scripts approve <pkg>` to allow.
+npm 11.6.1 (host): added 44 packages in 841ms
+
+-- (clarified) npm ci --dry-run result line per npm --
+npm 11.16.0: added 586 packages in 642ms
+npm 12.0.1:  added 586 packages in 668ms
+
+-- the verify step now fails on the lock it used to pass (old lock restored, then reverted) --
+=== lockfile drift (frontend)
+npm error Missing: @emnapi/core@ from lock file
+npm error Missing: @emnapi/runtime@ from lock file
+!!! lockfile drift (frontend): FAILED
+
+-- production web image builds (the blocked Gate 1 preflight step) --
+$ docker compose --env-file .gate/gate-1/.env build web
+#18 naming to docker.io/library/chillify-web done
+ Image chillify-web Built 
+
+-- full verify --
+--- frontend dependency audit: ok
+
+verify: all checks passed
