@@ -1,0 +1,43 @@
+# Gate overlay for the production composition.
+#
+#   docker compose --env-file .gate/<name>/.env \
+#     -f compose.yaml -f deploy/compose.gate.yaml up --build -d
+#
+# It changes nothing about how the application is built or started: the same
+# images, the same entry points, the same bind mounts. It adds the one thing a
+# gate needs and production must never have — the recorded fixture payloads the
+# fixture adapters read — and it declares the containment root the gate-safety
+# check verifies every other root lives beneath.
+#
+# Those paths are the container's, not the host's. `.env` carries host paths so
+# the bind mount can find the disposable tree; inside the container everything
+# is under /var/lib/chillify, which is why the containment root is declared
+# rather than inferred from a repository layout that is not mounted here.
+
+x-gate-environment: &gate-environment
+  CHILLIFY_GATE_ROOT: /var/lib/chillify
+  CHILLIFY_FIXTURE_ROOT: /var/lib/chillify/fixtures
+
+# Read-only: a gate run reads recorded payloads and must not be able to rewrite
+# the fixtures that define what it recorded.
+x-gate-volume: &gate-volume
+  type: bind
+  source: "${CHILLIFY_FIXTURE_ROOT:?CHILLIFY_FIXTURE_ROOT is required for a gate run}"
+  target: /var/lib/chillify/fixtures
+  read_only: true
+
+services:
+  migrate:
+    environment: *gate-environment
+    volumes:
+      - *gate-volume
+
+  api:
+    environment: *gate-environment
+    volumes:
+      - *gate-volume
+
+  worker:
+    environment: *gate-environment
+    volumes:
+      - *gate-volume

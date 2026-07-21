@@ -52,12 +52,17 @@ mkdir -p "$GATE_ROOT/data" "$GATE_ROOT/music" "$GATE_ROOT/fixtures"
 if [[ "$MODE" == "gate" ]]; then
     REDIS_PREFIX="chillify:gate:${NAME}:"
     FIXTURE_ROOT="$GATE_ROOT/fixtures"
+    # The containment root every other gate root must live beneath. These are
+    # host paths, used by host-process runs and as the Compose bind sources;
+    # the gate overlay replaces them with the container's own paths.
+    CONTAINMENT_ROOT="$GATE_ROOT"
     # Seed the fixture adapters' recorded payloads. They are copied rather
     # than referenced so a gate run reads only from its own disposable tree.
     cp -R "$REPO_ROOT/backend/tests/fixtures/." "$GATE_ROOT/fixtures/"
 else
     REDIS_PREFIX="chillify:"
     FIXTURE_ROOT=""
+    CONTAINMENT_ROOT=""
 fi
 
 SECRET_KEY="$(
@@ -79,9 +84,19 @@ CHILLIFY_LOG_LEVEL=${CHILLIFY_LOG_LEVEL:-INFO}
 CHILLIFY_ALLOWED_ORIGINS=
 CHILLIFY_ENV=$MODE
 CHILLIFY_FIXTURE_ROOT=$FIXTURE_ROOT
+CHILLIFY_GATE_ROOT=$CONTAINMENT_ROOT
 EOF
 
 chmod 0600 "$GATE_ROOT/.env"
 
 printf 'prepared %s (%s)\n' "$GATE_ROOT" "$MODE"
-printf 'launch: docker compose --env-file .gate/%s/.env up --build -d\n' "$NAME"
+if [[ "$MODE" == "gate" ]]; then
+    # A gate launches the production composition plus the fixture overlay.
+    # Without the overlay the fixture payloads are not mounted and startup
+    # fails closed, which is the intended outcome rather than a silent
+    # fixture-less run.
+    printf 'launch: docker compose --env-file .gate/%s/.env -f compose.yaml -f deploy/compose.gate.yaml up --build -d\n' \
+        "$NAME"
+else
+    printf 'launch: docker compose --env-file .gate/%s/.env up --build -d\n' "$NAME"
+fi

@@ -282,6 +282,44 @@ Context pack (hint): `deploy/docker/web.Dockerfile`; `scripts/verify.sh`;
   day. Neither is caused by the lock change — the package versions are
   unchanged — and `--audit-level=high` passes moderate by design.
 
+## Task 4b — Make gate containment expressible in the production containers
+
+```toml
+id = "4b"
+type = "fix"
+chunk = 4
+deps = [4]
+files = ["backend/src/chillify/config.py", "backend/tests/unit/test_config.py", "backend/tests/conftest.py", "deploy/compose.gate.yaml", "scripts/gate/prepare.sh", "ARCHITECTURE.md"]
+
+[[criteria]]
+text = "A gate launched through the production Compose file starts, with the fixture payloads mounted read-only and the gate-safety check satisfied."
+layer = "integration"
+[[criteria]]
+text = "Production still refuses a fixture root, a gate containment root, and the gate Redis namespace; gate mode still refuses roots outside its declared containment root, split storage roots, and an undeclared containment root."
+layer = "unit"
+```
+
+Context pack (hint): ARCHITECTURE §12 and the gate paragraph; `compose.yaml`;
+`scripts/gate/*.sh`.
+
+- **BLOCKED (network)** — code complete and `./scripts/verify.sh` fully green,
+  but the acceptance criterion cannot be exercised: building the `web` image
+  needs `nginx:1.30.4`, and the configured registry mirror
+  (`docker-mirror.liara.ir`) times out. `docker pull nginx:1.30.4` hangs; the
+  backend image builds from cache. Awaiting a proxy, then re-run the launch.
+  What changed and why: the old rule required `CHILLIFY_FIXTURE_ROOT` and both
+  storage roots to resolve beneath *the repository's* `.gate/`. Gates are
+  specified to run through the production Compose file, where the process sees
+  `/var/lib/chillify` bind mounts and no repository, so that rule could never
+  hold — and would not have been worth holding, because inside the container a
+  gate and a household deployment present identical paths. Containment is now
+  declared by `CHILLIFY_GATE_ROOT` and enforced in two places: the host scripts
+  keep the tree beneath the repository's `.gate/`, and the process checks that
+  every gate root agrees with the declared boundary. `deploy/compose.gate.yaml`
+  overlays the fixture mount, read-only, so production never mounts fixtures.
+  This patches the ARCHITECTURE gate paragraph, so the stale-plan rule applies:
+  PLAN.md and this file are `draft` until the scoped re-gate is clean.
+
 ## Task 6 — Direct-link inspection and reviewed YouTube acquisition
 
 ```toml

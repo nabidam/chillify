@@ -154,6 +154,7 @@ class TestGateSafety:
             "CHILLIFY_DATA_ROOT": str(gate / "data"),
             "CHILLIFY_MUSIC_ROOT": str(gate / "music"),
             "CHILLIFY_FIXTURE_ROOT": str(gate / "fixtures"),
+            "CHILLIFY_GATE_ROOT": str(gate),
             "CHILLIFY_REDIS_PREFIX": "chillify:gate:gate-1:",
             "REDIS_URL": "redis://127.0.0.1:6379/9",
             "CHILLIFY_SECRET_KEY": secret_key,
@@ -162,7 +163,7 @@ class TestGateSafety:
     def test_fully_conforming_gate_configuration_is_accepted(
         self, repo_root: Path, secret_key: str
     ) -> None:
-        settings = load_settings(self._gate_environment(repo_root, secret_key), repo_root=repo_root)
+        settings = load_settings(self._gate_environment(repo_root, secret_key))
 
         assert settings.is_gate
 
@@ -177,7 +178,7 @@ class TestGateSafety:
         }
 
         with pytest.raises(ConfigurationError) as caught:
-            load_settings(environment, repo_root=repo_root)
+            load_settings(environment)
 
         assert caught.value.code == "gate_root_escape"
 
@@ -188,7 +189,7 @@ class TestGateSafety:
         }
 
         with pytest.raises(ConfigurationError) as caught:
-            load_settings(environment, repo_root=repo_root)
+            load_settings(environment)
 
         assert caught.value.code == "gate_prefix_invalid"
 
@@ -197,11 +198,32 @@ class TestGateSafety:
         del environment["CHILLIFY_FIXTURE_ROOT"]
 
         with pytest.raises(ConfigurationError) as caught:
-            load_settings(environment, repo_root=repo_root)
+            load_settings(environment)
 
         assert caught.value.code == "fixture_root_missing"
 
     def test_split_gate_directories_are_refused(self, repo_root: Path, secret_key: str) -> None:
+        """Storage roots must share one directory, not merely one boundary.
+
+        The music root here stays inside the declared containment root, so it
+        clears the escape check and reaches the split check — which is the one
+        under test. A root in a *different* gate tree is refused earlier, by
+        `test_storage_root_in_another_gate_tree_is_refused`.
+        """
+        environment = self._gate_environment(repo_root, secret_key)
+        other = repo_root / ".gate" / "gate-1" / "elsewhere" / "music"
+        other.mkdir(parents=True)
+        environment["CHILLIFY_MUSIC_ROOT"] = str(other)
+
+        with pytest.raises(ConfigurationError) as caught:
+            load_settings(environment)
+
+        assert caught.value.code == "gate_roots_split"
+
+    def test_storage_root_in_another_gate_tree_is_refused(
+        self, repo_root: Path, secret_key: str
+    ) -> None:
+        """One gate may not reach into another gate's disposable tree."""
         other = repo_root / ".gate" / "gate-2" / "music"
         other.mkdir(parents=True)
         environment = {
@@ -210,9 +232,9 @@ class TestGateSafety:
         }
 
         with pytest.raises(ConfigurationError) as caught:
-            load_settings(environment, repo_root=repo_root)
+            load_settings(environment)
 
-        assert caught.value.code == "gate_roots_split"
+        assert caught.value.code == "gate_root_escape"
 
     def test_production_may_not_borrow_the_gate_namespace(
         self, valid_environment: dict[str, str]
@@ -233,6 +255,66 @@ class TestGateSafety:
             load_settings(environment)
 
         assert caught.value.code == "fixture_root_outside_gate"
+
+    def test_production_may_not_declare_a_gate_root(
+        self, valid_environment: dict[str, str], tmp_path: Path
+    ) -> None:
+        """The containment root is as gate-only as the fixtures it contains.
+
+        A production deployment that names one is either mislabelled or being
+        pointed at a disposable tree, and both are refused before startup.
+        """
+        environment = {**valid_environment, "CHILLIFY_GATE_ROOT": str(tmp_path)}
+
+        with pytest.raises(ConfigurationError) as caught:
+            load_settings(environment)
+
+        assert caught.value.code == "fixture_root_outside_gate"
+
+    def test_gate_mode_without_a_declared_containment_root_is_refused(
+        self, repo_root: Path, secret_key: str
+    ) -> None:
+        """Containment is declared, never inferred.
+
+        Gates run through the production Compose file, where the process sees
+        only bind mounts, so there is no repository layout to fall back on. An
+        undeclared boundary is refused rather than guessed at.
+        """
+        environment = self._gate_environment(repo_root, secret_key)
+        del environment["CHILLIFY_GATE_ROOT"]
+
+        with pytest.raises(ConfigurationError) as caught:
+            load_settings(environment)
+
+        assert caught.value.code == "gate_root_missing"
+
+    def test_container_style_mount_paths_are_accepted_under_their_gate_root(
+        self, secret_key: str, tmp_path: Path
+    ) -> None:
+        """The shape a gate actually runs in: mounts, not repository paths.
+
+        Inside the production containers the roots are `/var/lib/chillify/...`
+        and no repository is present. The declared containment root is what
+        makes that configuration checkable at all.
+        """
+        mount = tmp_path / "var" / "lib" / "chillify"
+        for child in ("data", "music", "fixtures"):
+            (mount / child).mkdir(parents=True)
+        settings = load_settings(
+            {
+                "CHILLIFY_ENV": "gate",
+                "CHILLIFY_GATE_ROOT": str(mount),
+                "CHILLIFY_DATA_ROOT": str(mount / "data"),
+                "CHILLIFY_MUSIC_ROOT": str(mount / "music"),
+                "CHILLIFY_FIXTURE_ROOT": str(mount / "fixtures"),
+                "CHILLIFY_REDIS_PREFIX": "chillify:gate:gate-1:",
+                "REDIS_URL": "redis://127.0.0.1:6379/9",
+                "CHILLIFY_SECRET_KEY": secret_key,
+            }
+        )
+
+        assert settings.is_gate
+        assert settings.gate_root == mount
 
 
 class TestMountedRootPreflight:

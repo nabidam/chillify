@@ -82,8 +82,9 @@ class Settings(BaseSettings):
         default=RuntimeEnvironment.PRODUCTION, alias="CHILLIFY_ENV"
     )
     fixture_root: Path | None = Field(default=None, alias="CHILLIFY_FIXTURE_ROOT")
+    gate_root: Path | None = Field(default=None, alias="CHILLIFY_GATE_ROOT")
 
-    @field_validator("fixture_root", mode="before")
+    @field_validator("fixture_root", "gate_root", mode="before")
     @classmethod
     def _blank_is_unset(cls, value: object) -> object:
         """Compose always passes this variable, blank when the operator left it
@@ -92,7 +93,7 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("data_root", "music_root", "fixture_root")
+    @field_validator("data_root", "music_root", "fixture_root", "gate_root")
     @classmethod
     def _absolute_path(cls, value: Path | None) -> Path | None:
         if value is None:
@@ -162,13 +163,11 @@ class Settings(BaseSettings):
         return self.environment is RuntimeEnvironment.GATE
 
 
-def load_settings(
-    environ: dict[str, str] | None = None, *, repo_root: Path | None = None
-) -> Settings:
+def load_settings(environ: dict[str, str] | None = None) -> Settings:
     """Parse and validate configuration, raising one named ConfigurationError.
 
-    `repo_root` anchors the gate-mode safety check; it defaults to the repository
-    that contains this package so production callers need not supply it.
+    Gate-mode containment is anchored by the declared `CHILLIFY_GATE_ROOT`, not
+    by this package's position on disk, so there is no repository path to pass.
     """
     try:
         # Construct through the environment source rather than init keyword
@@ -183,7 +182,7 @@ def load_settings(
         raise ConfigurationError("invalid_configuration", _format(exc)) from exc
     except SettingsError as exc:
         raise ConfigurationError("invalid_configuration", str(exc)) from exc
-    _assert_gate_safety(settings, repo_root=repo_root or default_repo_root())
+    _assert_gate_safety(settings)
     return settings
 
 
@@ -203,11 +202,6 @@ def _environment(environ: dict[str, str] | None) -> Iterator[None]:
         os.environ.update(original)
 
 
-def default_repo_root() -> Path:
-    """The repository root: backend/src/chillify/config.py -> four parents up."""
-    return Path(__file__).resolve().parents[3]
-
-
 def _format(exc: ValidationError) -> str:
     parts = []
     for error in exc.errors():
@@ -216,20 +210,38 @@ def _format(exc: ValidationError) -> str:
     return "Invalid deployment configuration — " + "; ".join(sorted(parts))
 
 
-def _assert_gate_safety(settings: Settings, *, repo_root: Path) -> None:
+def _assert_gate_safety(settings: Settings) -> None:
     """Fail closed unless every gate-mode condition holds.
 
-    Fixture adapters may bind only when the environment is `gate`, the fixture
-    root and both storage roots resolve beneath the repository `.gate/` tree, and
-    the Redis prefix is gate-namespaced. Any mismatch is refused here, before
+    Fixture adapters may bind only when the environment is `gate`, every
+    gate-visible root resolves beneath one declared containment root, and the
+    Redis prefix is gate-namespaced. Any mismatch is refused here, before
     migration or Redis contact.
+
+    The containment root is declared (`CHILLIFY_GATE_ROOT`) rather than derived
+    from this file's position in the repository. Gates run through the
+    production Compose file, where the process sees `/var/lib/chillify/...`
+    bind mounts and no repository at all, so a repository-relative rule was
+    both unsatisfiable there and checking something the process cannot see:
+    inside the container a gate and a household deployment present identical
+    paths. What keeps a gate off household data is which host directories are
+    mounted, and that is decided before this process starts — `prepare.sh`
+    creates the tree only beneath the repository's `.gate/`, and `cleanup.sh`
+    removes only a direct child of it. This function enforces what it can
+    actually observe: that the roots agree with each other and with one
+    declared boundary, and that fixture adapters and the gate Redis namespace
+    stay strictly inside gate mode.
     """
     if not settings.is_gate:
-        if settings.fixture_root is not None:
-            raise ConfigurationError(
-                "fixture_root_outside_gate",
-                "CHILLIFY_FIXTURE_ROOT is only permitted when CHILLIFY_ENV=gate.",
-            )
+        for name, value in (
+            ("CHILLIFY_FIXTURE_ROOT", settings.fixture_root),
+            ("CHILLIFY_GATE_ROOT", settings.gate_root),
+        ):
+            if value is not None:
+                raise ConfigurationError(
+                    "fixture_root_outside_gate",
+                    f"{name} is only permitted when CHILLIFY_ENV=gate.",
+                )
         if settings.redis_prefix.startswith(_GATE_PREFIX):
             raise ConfigurationError(
                 "gate_prefix_outside_gate",
@@ -238,13 +250,18 @@ def _assert_gate_safety(settings: Settings, *, repo_root: Path) -> None:
             )
         return
 
-    gate_root = Path(os.path.normpath(str(repo_root / ".gate")))
     if settings.fixture_root is None:
         raise ConfigurationError(
             "fixture_root_missing",
-            "CHILLIFY_ENV=gate requires CHILLIFY_FIXTURE_ROOT beneath the "
-            "repository .gate/ directory.",
+            "CHILLIFY_ENV=gate requires CHILLIFY_FIXTURE_ROOT beneath CHILLIFY_GATE_ROOT.",
         )
+    if settings.gate_root is None:
+        raise ConfigurationError(
+            "gate_root_missing",
+            "CHILLIFY_ENV=gate requires CHILLIFY_GATE_ROOT declaring the "
+            "disposable tree every other gate root lives beneath.",
+        )
+    gate_root = settings.gate_root
     for name, value in (
         ("CHILLIFY_FIXTURE_ROOT", settings.fixture_root),
         ("CHILLIFY_DATA_ROOT", settings.data_root),

@@ -131,10 +131,10 @@ def repo_root(disposable_root: Path) -> Path:
 def gate_composition(disposable_root: Path, secret_key: str) -> Iterator[Composition]:
     """A migrated composition running in gate mode with the fixture adapters bound.
 
-    The disposable tree mimics a repository `.gate/` directory, because the
-    gate-safety rules refuse fixture adapters anywhere else. That refusal is the
-    point: a test that wants fixtures has to satisfy the same conditions a gate
-    run does.
+    The disposable tree declares its own containment root, because the
+    gate-safety rules refuse fixture adapters that are not wholly inside one.
+    That refusal is the point: a test that wants fixtures has to satisfy the
+    same conditions a gate run does.
     """
     repo_root = disposable_root / "repo"
     gate_root = repo_root / ".gate" / "suite"
@@ -149,12 +149,13 @@ def gate_composition(disposable_root: Path, secret_key: str) -> Iterator[Composi
         "CHILLIFY_DATA_ROOT": str(data_root),
         "CHILLIFY_MUSIC_ROOT": str(music_root),
         "CHILLIFY_FIXTURE_ROOT": str(fixture_root),
+        "CHILLIFY_GATE_ROOT": str(gate_root),
         "REDIS_URL": "redis://127.0.0.1:6379/9",
         "CHILLIFY_REDIS_PREFIX": "chillify:gate:suite:",
         "CHILLIFY_SECRET_KEY": secret_key,
         "CHILLIFY_ENV": "gate",
     }
-    settings = load_settings(environment, repo_root=repo_root)
+    settings = load_settings(environment)
 
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND_ROOT / "migrations"))
