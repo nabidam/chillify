@@ -451,7 +451,7 @@ layer = "e2e"
 gate = 2
 ```
 
-- **Done:** `<pending>` — evidence `specs/001-core/evidence/task-8.txt`
+- **Done:** `75b6a38` — evidence `specs/001-core/evidence/task-8.txt`
   - The `[e2e@gate-2]` criterion is deferred to Task 10 (DEMO GATE 2); this task
     delivers the integration and contract acceptance. Backend: one fail-closed
     `OutboundHttp` policy (proxy-first, no direct fallback, bounded retry),
