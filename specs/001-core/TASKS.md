@@ -486,6 +486,38 @@ layer = "e2e"
 gate = 2
 ```
 
+- **Done:** `ab97fd9` — evidence `specs/001-core/evidence/task-9.txt`
+  The `[e2e@gate-2]` criterion is Task 10's demo gate and is not claimed here;
+  the two integration criteria and the contract criterion are demonstrated by
+  tests that drive the real DELETE route and services against a migrated SQLite
+  and mounted temp files (`tests/integration/test_media_delete_recovery.py`
+  covers the successful deletion — files/records/playlist refs removed and the
+  completed job reduced to an anonymous shell — plus the interrupted
+  before/after-commit recovery paths; `tests/integration/test_media_edit_recovery.py`
+  covers edit finalize-after-commit and rollback-before-commit, including the
+  real API boot running recovery in its lifespan; `tests/contract/test_deletion_contract.py`
+  asserts the documented 204 no-content shape and the anonymous-history served
+  behavior). `./scripts/verify.sh` → all checks passed (380 backend, 67
+  frontend).
+  Deviations from the predicted file set, all additive wiring the criteria and
+  the ARCHITECTURE §8 deletion/recovery contracts require: `DELETE /tracks/{id}`
+  and `GET /tracks/{id}/delete-impact` (the S15 impact endpoint from the routes
+  table) needed repository methods (`begin_deletion`, `delete`,
+  `playlist_reference_count`, `anonymize_for_deleted_track`, `open_delete`,
+  `list_recoverable`), a `DeletionService`/`MediaRecoveryService` factory pair in
+  `composition.py`, a `get_deletion_service` dependency, a `MediaMutationJournal`
+  domain value object in `domain/models.py`, and a media-recovery lifespan hook
+  in `api/main.py`. Startup recovery covers edit journals too — the edit
+  in-request path (Task 4) already rolls itself back while the process lives; the
+  crash-recovery half was deferred here alongside deletion, matching the
+  ARCHITECTURE two-stage-deletion/edit-recovery paragraphs. Frontend: the
+  `DeleteTrackDialog` (S15) and `alert-dialog` primitive are listed; reaching S15
+  from S13 required a Delete action in `TrackEditorDialog.tsx`, and the regenerated
+  `frontend/src/api/generated.ts` plus a `DeleteImpact` client type and a
+  `deleteImpact` query key. Player-on-delete continuity (advance/stop when the
+  current track is deleted) is Task 13's `playerStore` resilience and is not built
+  here; the dialog invalidates library/playlist queries on success.
+
 ## Task 10 — DEMO GATE 2: acquisition and recovery
 
 ```toml
