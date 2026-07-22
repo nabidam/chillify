@@ -636,6 +636,32 @@ layer = "e2e"
 gate = 3
 ```
 
+- **Done:** `868446c` — evidence `specs/001-core/evidence/task-11.txt`
+  The `[e2e@gate-3]` criterion is Task 15's demo gate and is not claimed here;
+  the integration, unit, and contract criteria are demonstrated by tests that
+  drive the real routes against migrated SQLite and mounted files
+  (`tests/integration/test_context_ordering.py` seeds out-of-order tracks and
+  asserts the exact artist/album/year order including Unknown Year, empty
+  contexts, and same-named-albums separation; `tests/unit/test_normalization.py`
+  covers the year-key round trip and canonical rejection; the context assertions
+  in `tests/contract/test_openapi_contract.py` call each documented endpoint and
+  assert the ordered track-array shapes). `./scripts/verify.sh --fast` → all
+  checks passed; `vite build` green.
+  Deviations from the predicted file set, all additive: `produces` names only
+  the three `{key}` detail endpoints, but ARCHITECTURE §5 also defines the three
+  collection endpoints (`GET /library/{artists,albums,years}`) that the listed
+  `ContextGrid` + `tabs` browse UI needs, so all six were built. Following the
+  `/profiles` precedent, the collections are bounded by household use and served
+  whole with an optional `q` filter and no cursor param (the routes table lists
+  `q, cursor`; omitting the cursor changes no user-visible result at household
+  scale). The year key lives beside the artist/album keys in the versioned
+  `domain/normalization.py`; the grouping summaries live in `domain/models.py`
+  and the context aggregates in `application/library.py` (like `StreamTarget`);
+  wiring the routes touched `db/repositories.py`, `api/schemas/tracks.py`
+  imports, `api/client.ts`, `api/queryKeys.ts`, `app/{routes,Router}.tsx`, and
+  the regenerated `frontend/src/api/generated.ts` beyond the listed files. `tabs`
+  was added with `npx shadcn@latest add tabs` (new-york), not hand-written.
+
 ## Task 12 — Playlist ownership, reorder, and row actions
 
 ```toml
