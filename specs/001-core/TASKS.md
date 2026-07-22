@@ -726,6 +726,19 @@ layer = "e2e"
 gate = 3
 ```
 
+- **Done:** `c3233c5` — evidence `specs/001-core/evidence/task-13.txt`
+
+  The unit criterion is met by `player-continuity.test.tsx`: reducer tests drive
+  `reorderUpcoming` (upcoming-only; refuses the current/played region) and
+  `removeFromQueue` (played-item index shift, current-track advance, unplayable-
+  successor skip, and stop-and-clear when nothing playable remains), plus drawer
+  tests for render/remove/clear and the deleted-track fallback. The e2e criterion
+  is the Gate 3 journey and is deferred to Task 15. Real tree: `playerStore.ts`
+  (not `.tsx`); `sheet.tsx` already existed; `scroll-area.tsx` added via
+  `shadcn add` (unified `radix-ui`, no new dependency). `useAudioController.ts`
+  was left unchanged — its existing audio-error path already advances past a
+  current track whose file is gone, so no edit was needed for delete continuity.
+
 ## Task 14 — Complete visual states and accessibility
 
 ```toml

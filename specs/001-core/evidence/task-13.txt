@@ -1,0 +1,10 @@
+$ npx vitest run tests/component/player-continuity.test.tsx
+
+ RUN  v4.1.10 /home/dev/projects/chillify/frontend
+
+
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+   Start at  03:27:25
+   Duration  1.68s (transform 153ms, setup 203ms, import 320ms, tests 476ms, environment 568ms)
+
