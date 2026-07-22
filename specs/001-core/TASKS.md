@@ -189,7 +189,7 @@ Context pack (hint): ARCHITECTURE §§5, 8, 10; `UX.md` S5/S9/S10/S13/S16; `DESI
 id = 5
 type = "gate"
 chunk = 4
-deps = [1, 2, 3, 4]
+deps = [1, 2, 3, 4, 21, 22]
 files = ["frontend/tests/e2e/gate-1.spec.ts", "specs/001-core/evidence/task-5.txt"]
 
 [[criteria]]
@@ -200,8 +200,8 @@ gate = 1
 [gate]
 n = 1
 release = false
-launch = "docker compose --env-file .gate/gate-1/.env up --build -d"
-seed = "./scripts/gate/seed.sh gate-1 kernel"
+launch = "./scripts/gate/prepare.sh gate-1 gate && docker compose --env-file .gate/gate-1/.env -f compose.yaml -f deploy/compose.gate.yaml up --build -d"
+seed = "./scripts/gate/seed.sh gate-1"
 unglamorous = "Restart: recreate production containers with the same disposable mounts and verify durable records while the browser session queue is empty."
 [[gate.journey]]
 step = "Create/select Household and open the shared library."
@@ -243,11 +243,23 @@ Preflight: run `./scripts/gate/prepare.sh gate-1 kernel` first; it must reject p
   no Redis service by design, so the preflight must supply one the containers
   can resolve; `REDIS_URL` was set at prepare time to a disposable Redis
   container attached to the compose network.
+- **GATE 1 WALKED — PASS** (2026-07-22, user) — evidence `specs/001-core/evidence/task-5.txt`
+  Preflight cleared after Tasks 4a and 4b (the gate could not launch before
+  either landed). The human walked all five journey steps against the recreated
+  production composition and confirmed them (screenshots shared in the review
+  session, not committed to the repository). The journey is crystallized as
+  `frontend/tests/e2e/gate-1.spec.ts`, which provisions a fresh seeded gate
+  stack, walks the whole story, force-recreates the containers for the
+  durability step, and tears the stack down — green in one run.
+  The gate's recorded `launch`/`seed` were corrected here: the launch overlays
+  `deploy/compose.gate.yaml` and prepares the gate env first, and the seed drops
+  the spurious `kernel` argument. The original `prepare.sh gate-1 kernel` string
+  was never runnable — `kernel` is the chunk label, not a mode.
 
 ## Task 4a — Align the frontend lockfile with the image toolchain
 
 ```toml
-id = "4a"
+id = 21
 type = "fix"
 chunk = 4
 deps = [4]
@@ -285,7 +297,7 @@ Context pack (hint): `deploy/docker/web.Dockerfile`; `scripts/verify.sh`;
 ## Task 4b — Make gate containment expressible in the production containers
 
 ```toml
-id = "4b"
+id = 22
 type = "fix"
 chunk = 4
 deps = [4]
@@ -302,11 +314,16 @@ layer = "unit"
 Context pack (hint): ARCHITECTURE §12 and the gate paragraph; `compose.yaml`;
 `scripts/gate/*.sh`.
 
-- **BLOCKED (network)** — code complete and `./scripts/verify.sh` fully green,
-  but the acceptance criterion cannot be exercised: building the `web` image
-  needs `nginx:1.30.4`, and the configured registry mirror
-  (`docker-mirror.liara.ir`) times out. `docker pull nginx:1.30.4` hangs; the
-  backend image builds from cache. Awaiting a proxy, then re-run the launch.
+- **Done:** `c69d83c` — evidence `specs/001-core/evidence/task-4b.txt`
+  The containerized-launch criterion, blocked earlier on an unreachable
+  registry mirror, was exercised once the mirror returned: the production
+  Compose file plus `deploy/compose.gate.yaml` now brings the gate up with
+  migrate completing (it exited 1 before), `env=gate`, `ready=true`, and Redis
+  reachable. The gate-safety unit criterion is covered by
+  `tests/unit/test_config.py`. The disposable overlay Redis that makes the
+  launch a single reproducible command landed in `475431a`. The whole path is
+  additionally proven end to end by the green `gate-1.spec.ts` (Task 5), whose
+  global setup provisions this exact stack.
   What changed and why: the old rule required `CHILLIFY_FIXTURE_ROOT` and both
   storage roots to resolve beneath *the repository's* `.gate/`. Gates are
   specified to run through the production Compose file, where the process sees
@@ -317,8 +334,9 @@ Context pack (hint): ARCHITECTURE §12 and the gate paragraph; `compose.yaml`;
   keep the tree beneath the repository's `.gate/`, and the process checks that
   every gate root agrees with the declared boundary. `deploy/compose.gate.yaml`
   overlays the fixture mount, read-only, so production never mounts fixtures.
-  This patches the ARCHITECTURE gate paragraph, so the stale-plan rule applies:
-  PLAN.md and this file are `draft` until the scoped re-gate is clean.
+  This patched the ARCHITECTURE gate paragraph, triggering the stale-plan rule;
+  the scoped re-gate has since run clean (`brana-gate tasks` — 0 findings), so
+  the `ready` stamp stands.
 
 ## Task 6 — Direct-link inspection and reviewed YouTube acquisition
 

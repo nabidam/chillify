@@ -1,0 +1,37 @@
+== Task 5 — DEMO GATE 1 walking skeleton — crystallized journey ==
+
+Human walkthrough: passed (all five journey steps observed; screenshots shared in the review session).
+
+Automated encoding: frontend/tests/e2e/gate-1.spec.ts against the real production
+composition (nginx+api+worker+redis). global-setup provisions a fresh gate from
+nothing (cleanup -> prepare -> compose up --build -> wait ready -> seed);
+global-teardown removes it; the journey force-recreates the containers for the
+durability step.
+
+$ GATE_BASE_URL=http://localhost:8788 npx playwright test --project=chromium
+
+
+
+
+
+ Image chillify-web Built 
+ Image chillify-worker Built 
+ Image chillify-migrate Built 
+ Image chillify-api Built 
+ Network chillify_default Creating 
+ Network chillify_default Created 
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+mounted root ready
+mounted root ready
+binding fixture provider adapters
+gate environment seeded
+seed complete
+seeded /home/dev/projects/chillify/.gate/gate-1
+
+Running 1 test using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/gate-1.spec.ts:34:1 › Gate 1 — the walking skeleton, end to end (40.1s)
+removed /home/dev/projects/chillify/.gate/gate-1
+
+  1 passed (1.3m)
