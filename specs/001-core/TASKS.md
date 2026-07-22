@@ -610,7 +610,7 @@ Preflight: `./scripts/gate/prepare.sh gate-2 recovery` must establish `.gate/gat
   suites (`test_queue_recovery`, `test_media_edit_recovery`,
   `test_media_delete_recovery`) rather than re-driven through the browser.
 
-- **Done:** `PENDING` — evidence `specs/001-core/evidence/task-10.txt`
+- **Done:** `dca6211` — evidence `specs/001-core/evidence/task-10.txt`
 
 ## Task 11 — Artist, album, and year contexts
 
