@@ -25,6 +25,7 @@ from chillify.api.routes import (
     downloads,
     events,
     library,
+    links,
     playlists,
     profiles,
     search,
@@ -179,6 +180,7 @@ def create_app() -> FastAPI:
     app.include_router(artwork.router, prefix=API_PREFIX)
     app.include_router(playlists.router, prefix=API_PREFIX)
     app.include_router(search.router, prefix=API_PREFIX)
+    app.include_router(links.router, prefix=API_PREFIX)
     app.include_router(downloads.router, prefix=API_PREFIX)
     app.include_router(events.router, prefix=API_PREFIX)
     # Managed media bytes sit outside the versioned API on the path nginx

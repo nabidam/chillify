@@ -1,0 +1,53 @@
+$ uv run pytest tests/contract/test_ytdlp_contract.py tests/contract/test_spotdl_contract.py tests/unit/test_link_inspection.py tests/integration/test_link_inspection.py -v
+============================= test session starts ==============================
+platform linux -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- /home/dev/projects/chillify/backend/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/dev/projects/chillify/backend
+configfile: pyproject.toml
+plugins: respx-0.23.1, anyio-4.14.2
+collecting ... collected 42 items
+
+tests/contract/test_ytdlp_contract.py::TestYouTubeInspectorContract::test_a_video_url_is_supported[fixture-<lambda>] PASSED [  2%]
+tests/contract/test_ytdlp_contract.py::TestYouTubeInspectorContract::test_a_foreign_host_is_not_supported[fixture-<lambda>] PASSED [  4%]
+tests/contract/test_ytdlp_contract.py::TestYouTubeInspectorContract::test_a_supported_video_inspects_to_a_normalized_candidate[fixture-<lambda>] PASSED [  7%]
+tests/contract/test_ytdlp_contract.py::TestYouTubeInspectorContract::test_a_video_reached_inside_a_playlist_is_the_video[fixture-<lambda>] PASSED [  9%]
+tests/contract/test_ytdlp_contract.py::TestYouTubeInspectorContract::test_a_playlist_link_is_rejected_before_any_inspection[fixture-<lambda>] PASSED [ 11%]
+tests/contract/test_ytdlp_contract.py::TestYouTubeInspectorContract::test_a_channel_link_is_rejected[fixture-<lambda>] PASSED [ 14%]
+tests/contract/test_ytdlp_contract.py::TestYouTubeWireNormalization::test_music_track_fields_are_preferred_over_the_raw_title PASSED [ 16%]
+tests/contract/test_ytdlp_contract.py::TestYouTubeWireNormalization::test_the_uploader_stands_in_for_a_missing_artist PASSED [ 19%]
+tests/contract/test_ytdlp_contract.py::TestYouTubeWireNormalization::test_a_playlist_document_is_refused PASSED [ 21%]
+tests/contract/test_ytdlp_contract.py::TestYouTubeWireNormalization::test_a_non_object_is_refused PASSED [ 23%]
+tests/contract/test_ytdlp_contract.py::TestYouTubeWireNormalization::test_a_document_without_a_title_is_refused PASSED [ 26%]
+tests/contract/test_ytdlp_contract.py::TestYouTubeWireNormalization::test_an_insecure_thumbnail_is_dropped PASSED [ 28%]
+tests/contract/test_ytdlp_contract.py::TestYouTubeWireNormalization::test_a_duration_is_normalized_to_milliseconds PASSED [ 30%]
+tests/contract/test_spotdl_contract.py::TestSpotdlInspectorContract::test_a_track_url_is_supported[fixture-<lambda>] PASSED [ 33%]
+tests/contract/test_spotdl_contract.py::TestSpotdlInspectorContract::test_a_foreign_host_is_not_supported[fixture-<lambda>] PASSED [ 35%]
+tests/contract/test_spotdl_contract.py::TestSpotdlInspectorContract::test_a_supported_track_inspects_to_a_normalized_candidate[fixture-<lambda>] PASSED [ 38%]
+tests/contract/test_spotdl_contract.py::TestSpotdlInspectorContract::test_a_collection_link_is_rejected_before_invocation[https://open.spotify.com/album/1DFixLWuPkv3KT3TnV35m3-fixture-<lambda>] PASSED [ 40%]
+tests/contract/test_spotdl_contract.py::TestSpotdlInspectorContract::test_a_collection_link_is_rejected_before_invocation[https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M-fixture-<lambda>] PASSED [ 42%]
+tests/contract/test_spotdl_contract.py::TestSpotdlInspectorContract::test_a_collection_link_is_rejected_before_invocation[https://open.spotify.com/artist/4tZwfgrHOc3mvqYlEYSvVi-fixture-<lambda>] PASSED [ 45%]
+tests/contract/test_spotdl_contract.py::TestSpotdlWireNormalization::test_the_first_named_artist_is_used PASSED [ 47%]
+tests/contract/test_spotdl_contract.py::TestSpotdlWireNormalization::test_more_than_one_song_is_refused PASSED [ 50%]
+tests/contract/test_spotdl_contract.py::TestSpotdlWireNormalization::test_an_empty_result_is_refused PASSED [ 52%]
+tests/contract/test_spotdl_contract.py::TestSpotdlWireNormalization::test_a_non_object_is_refused PASSED [ 54%]
+tests/contract/test_spotdl_contract.py::TestSpotdlWireNormalization::test_an_insecure_cover_is_dropped PASSED [ 57%]
+tests/contract/test_spotdl_contract.py::TestSpotdlWireNormalization::test_a_malformed_isrc_is_dropped_rather_than_failing PASSED [ 59%]
+tests/contract/test_spotdl_contract.py::TestSpotdlWireNormalization::test_a_duration_is_normalized_to_milliseconds PASSED [ 61%]
+tests/unit/test_link_inspection.py::TestRejectionsCreateNoJob::test_an_empty_link_is_a_field_error PASSED [ 64%]
+tests/unit/test_link_inspection.py::TestRejectionsCreateNoJob::test_a_non_url_is_a_field_error PASSED [ 66%]
+tests/unit/test_link_inspection.py::TestRejectionsCreateNoJob::test_a_non_web_scheme_is_a_field_error PASSED [ 69%]
+tests/unit/test_link_inspection.py::TestRejectionsCreateNoJob::test_an_over_long_link_is_a_field_error PASSED [ 71%]
+tests/unit/test_link_inspection.py::TestRejectionsCreateNoJob::test_an_unrecognized_host_is_unsupported PASSED [ 73%]
+tests/unit/test_link_inspection.py::TestRejectionsCreateNoJob::test_a_recognized_but_bulk_link_is_unsupported PASSED [ 76%]
+tests/unit/test_link_inspection.py::TestPolicyRouting::test_youtube_requires_review PASSED [ 78%]
+tests/unit/test_link_inspection.py::TestPolicyRouting::test_spotify_does_not_require_review PASSED [ 80%]
+tests/integration/test_link_inspection.py::TestValidLinks::test_a_youtube_video_inspects_and_asks_for_review PASSED [ 83%]
+tests/integration/test_link_inspection.py::TestValidLinks::test_a_spotify_track_inspects_without_review PASSED [ 85%]
+tests/integration/test_link_inspection.py::TestRejectedLinksLeaveNoJob::test_a_rejected_link_creates_no_download[https://open.spotify.com/album/1DFixLWuPkv3KT3TnV35m3-400] PASSED [ 88%]
+tests/integration/test_link_inspection.py::TestRejectedLinksLeaveNoJob::test_a_rejected_link_creates_no_download[https://www.youtube.com/playlist?list=PL1234567890-400] PASSED [ 90%]
+tests/integration/test_link_inspection.py::TestRejectedLinksLeaveNoJob::test_a_rejected_link_creates_no_download[https://example.com/whatever-400] PASSED [ 92%]
+tests/integration/test_link_inspection.py::TestRejectedLinksLeaveNoJob::test_a_rejected_link_creates_no_download[not a link at all-422] PASSED [ 95%]
+tests/integration/test_link_inspection.py::TestRejectedLinksLeaveNoJob::test_a_rejected_link_creates_no_download[ftp://example.com/track-422] PASSED [ 97%]
+tests/integration/test_link_inspection.py::TestRejectedLinksLeaveNoJob::test_inspecting_a_valid_link_alone_queues_nothing PASSED [100%]
+
+============================== 42 passed in 1.14s ==============================

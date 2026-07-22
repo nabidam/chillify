@@ -18,7 +18,12 @@ from dataclasses import dataclass, field
 from chillify.config import Settings
 from chillify.domain.errors import ProviderDisabledError
 from chillify.domain.jobs import JobProvider
-from chillify.domain.protocols import AcquisitionProvider, ArtworkFetcher, DiscoveryProvider
+from chillify.domain.protocols import (
+    AcquisitionProvider,
+    ArtworkFetcher,
+    DiscoveryProvider,
+    LinkInspector,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +34,11 @@ class ProviderRegistry:
 
     discovery: dict[str, DiscoveryProvider] = field(default_factory=dict)
     acquisition: dict[JobProvider, AcquisitionProvider] = field(default_factory=dict)
+    # Keyed by the acquisition provider that later fulfils an inspected link, so
+    # the inspection use case routes by capability rather than naming yt-dlp or
+    # SpotDL. Empty until an adapter is bound; a submitted link is then reported
+    # as unsupported, exactly as a disabled provider already is.
+    link_inspectors: dict[JobProvider, LinkInspector] = field(default_factory=dict)
     # Keyed by the artwork origin it serves — `url` for a submitted link,
     # `lastfm` for the enricher's best match — so the staging use case asks for
     # a capability rather than naming an adapter.
@@ -69,6 +79,8 @@ def build_registry(settings: Settings) -> ProviderRegistry:
         FixtureAcquisitionProvider,
         FixtureDiscoveryProvider,
     )
+    from chillify.infrastructure.providers.spotdl import FixtureSpotdlInspector
+    from chillify.infrastructure.providers.ytdlp import FixtureYouTubeInspector
 
     fixture_root = settings.fixture_root
     acquisition = FixtureAcquisitionProvider(fixture_root=fixture_root)
@@ -78,5 +90,9 @@ def build_registry(settings: Settings) -> ProviderRegistry:
         acquisition={
             JobProvider.YT_DLP: acquisition,
             JobProvider.SPOTDL: acquisition,
+        },
+        link_inspectors={
+            JobProvider.YT_DLP: FixtureYouTubeInspector(fixture_root=fixture_root),
+            JobProvider.SPOTDL: FixtureSpotdlInspector(fixture_root=fixture_root),
         },
     )

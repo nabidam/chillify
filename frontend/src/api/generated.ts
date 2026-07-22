@@ -133,6 +133,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/links/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspect one Spotify track or YouTube video link
+         * @description Recognize and inspect one link, reporting its candidate and review need.
+         */
+        post: operations["inspect_link_api_v1_links_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/playlists/{playlist_id}": {
         parameters: {
             query?: never;
@@ -657,6 +677,55 @@ export interface components {
          * @enum {string}
          */
         LibrarySort: "recent" | "title" | "artist";
+        /**
+         * LinkInspectionModel
+         * @description What one link resolves to, and how it should be queued.
+         *
+         *     `source_type` is always `spotify_track` or `youtube_video` in practice —
+         *     inspection only recognizes those two — and the wire literal is shared with
+         *     the download request so the same candidate flows straight into it.
+         */
+        LinkInspectionModel: {
+            candidate: components["schemas"]["TrackCandidateModel"];
+            /**
+             * Existing Track Id
+             * @description The local track this link already duplicates, if any.
+             */
+            existing_track_id?: string | null;
+            /**
+             * Is Playable
+             * @description Always false. A link resolves to something to acquire, never a local file.
+             * @default false
+             * @constant
+             */
+            is_playable: false;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "deezer" | "spotdl" | "yt_dlp";
+            /**
+             * Review Required
+             * @description True when S5 metadata review must precede queueing, as for YouTube.
+             */
+            review_required: boolean;
+            /**
+             * Source Type
+             * @enum {string}
+             */
+            source_type: "deezer_result" | "spotify_track" | "youtube_video";
+        };
+        /**
+         * LinkInspectionRequest
+         * @description One submitted URL to recognize and inspect.
+         */
+        LinkInspectionRequest: {
+            /**
+             * Url
+             * @description The submitted link.
+             */
+            url: string;
+        };
         /** PageModel[JobModel] */
         PageModel_JobModel_: {
             /** Items */
@@ -1248,6 +1317,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PageModel_TrackSummaryModel_"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    inspect_link_api_v1_links_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkInspectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkInspectionModel"];
                 };
             };
             /** @description Error envelope */

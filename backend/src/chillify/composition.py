@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from chillify.application.artwork import ArtworkService
 from chillify.application.downloads import DownloadService
 from chillify.application.library import LibraryService
+from chillify.application.links import LinkInspectionService, RegisteredInspector
 from chillify.application.metadata import MetadataService
 from chillify.application.playlists import PlaylistService
 from chillify.application.search import SearchService
@@ -145,6 +146,14 @@ class Composition:
     def search_service(self) -> SearchService:
         """Bind explicit online discovery to the adapters this environment allows."""
         return SearchService(session_factory=self.session_factory, registry=self.registry)
+
+    def link_inspection_service(self) -> LinkInspectionService:
+        """Bind direct-link inspection to the inspectors this environment allows."""
+        inspectors = tuple(
+            RegisteredInspector(provider=provider, inspector=inspector)
+            for provider, inspector in self.registry.link_inspectors.items()
+        )
+        return LinkInspectionService(session_factory=self.session_factory, inspectors=inspectors)
 
     def download_service(self, *, worker_identity: str = "api") -> DownloadService:
         """Bind the acquisition use cases.

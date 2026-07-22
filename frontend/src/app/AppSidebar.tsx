@@ -1,4 +1,5 @@
 import { Download, Library, ListMusic, Plus, Search, Settings, UserRound } from "lucide-react";
+import { useState } from "react";
 import { NavLink, useLocation } from "react-router";
 import { useActiveProfile } from "@/app/activeProfile";
 import { routes } from "@/app/routes";
@@ -15,6 +16,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { AddLinkDialog } from "@/features/acquisition/AddLinkDialog";
 import { usePlaylists } from "@/features/playlists/playlistQueries";
 import { cn } from "@/lib/cn";
 
@@ -38,6 +40,7 @@ export function AppSidebar() {
   const location = useLocation();
   const { activeProfileId } = useActiveProfile();
   const playlists = usePlaylists(activeProfileId).data ?? [];
+  const [addOpen, setAddOpen] = useState(false);
 
   return (
     <Sidebar collapsible="offcanvas">
@@ -119,11 +122,13 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="p-4">
-        <Button className="w-full justify-center gap-2">
+        <Button className="w-full justify-center gap-2" onClick={() => setAddOpen(true)}>
           <Plus className="size-4" aria-hidden="true" />
           Add music
         </Button>
       </SidebarFooter>
+
+      <AddLinkDialog open={addOpen} onOpenChange={setAddOpen} />
     </Sidebar>
   );
 }
