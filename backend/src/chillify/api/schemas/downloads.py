@@ -129,6 +129,16 @@ class DownloadRequestModel(BaseModel):
     candidate: TrackCandidateModel
 
 
+class CancelRequestModel(BaseModel):
+    """The optimistic-concurrency guard for one cancel.
+
+    `version` is the value the browser last saw. A cancel built on a stale view
+    is refused rather than applied to a job that has since moved on.
+    """
+
+    version: int = Field(ge=1, description="The job version the request was built against.")
+
+
 class JobEventModel(BaseModel):
     """One durable, replayable step in a job's history."""
 

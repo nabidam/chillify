@@ -21,8 +21,8 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DownloadRow } from "@/features/downloads/DownloadRow";
 import {
   DISPLAY_STATE_LABELS,
   type DownloadJob,
@@ -30,6 +30,7 @@ import {
   phaseLabel,
   queueOrder,
   useDownloads,
+  useRetryDownload,
 } from "@/features/downloads/downloadJobs";
 
 /**
@@ -132,7 +133,7 @@ export function DownloadsPage() {
           <ul className="flex flex-col gap-2">
             {active.map((job) => (
               <li key={job.id}>
-                <JobRow job={job} />
+                <DownloadRow job={job} />
               </li>
             ))}
           </ul>
@@ -162,30 +163,6 @@ export function DownloadsPage() {
           </Accordion>
         </section>
       ) : null}
-    </div>
-  );
-}
-
-function JobRow({ job }: { job: DownloadJob }) {
-  return (
-    <div className="flex flex-col gap-2 rounded-md bg-surface-raised px-4 py-3">
-      <JobSummary job={job} />
-      {job.progress_percent === null ? (
-        <p className="type-meta text-foreground-subtle">
-          This step reports no percentage; the phase above is the real progress.
-        </p>
-      ) : (
-        <Progress
-          value={job.progress_percent}
-          className="bg-progress-track"
-          aria-label={`${phaseLabel(job)} progress`}
-          // The registry component styles the bar but does not forward the
-          // value to the primitive, so the announced value is supplied here
-          // rather than by hand-editing generated source.
-          aria-valuenow={job.progress_percent}
-          aria-valuetext={`${Math.round(job.progress_percent)} percent`}
-        />
-      )}
     </div>
   );
 }
@@ -231,28 +208,50 @@ function StateBadge({ job }: { job: DownloadJob }) {
  * record stays behind this expansion rather than shouting at everyone.
  */
 function JobDiagnostics({ job }: { job: DownloadJob }) {
+  const retry = useRetryDownload();
+  const isRetryable = job.state === "failed" || job.state === "cancelled";
+  const retryError = retry.error instanceof ApiRequestError ? retry.error.message : null;
   return (
-    <dl className="type-meta grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-foreground-muted">
-      <dt>State</dt>
-      <dd>{DISPLAY_STATE_LABELS[job.display_state]}</dd>
-      <dt>Phase</dt>
-      <dd>{phaseLabel(job)}</dd>
-      <dt>Started</dt>
-      <dd>{job.started_at === null ? "—" : new Date(job.started_at).toLocaleString()}</dd>
-      <dt>Finished</dt>
-      <dd>{job.finished_at === null ? "—" : new Date(job.finished_at).toLocaleString()}</dd>
-      {job.restart_count > 0 ? (
-        <>
-          <dt>Restarts</dt>
-          <dd>{job.restart_count}</dd>
-        </>
+    <div className="flex flex-col gap-3">
+      <dl className="type-meta grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-foreground-muted">
+        <dt>State</dt>
+        <dd>{DISPLAY_STATE_LABELS[job.display_state]}</dd>
+        <dt>Phase</dt>
+        <dd>{phaseLabel(job)}</dd>
+        <dt>Started</dt>
+        <dd>{job.started_at === null ? "—" : new Date(job.started_at).toLocaleString()}</dd>
+        <dt>Finished</dt>
+        <dd>{job.finished_at === null ? "—" : new Date(job.finished_at).toLocaleString()}</dd>
+        {job.restart_count > 0 ? (
+          <>
+            <dt>Restarts</dt>
+            <dd>{job.restart_count}</dd>
+          </>
+        ) : null}
+        {job.error_message !== null ? (
+          <>
+            <dt>Reason</dt>
+            <dd className="text-destructive">{job.error_message}</dd>
+          </>
+        ) : null}
+      </dl>
+      {isRetryable ? (
+        <div className="flex flex-col items-start gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={retry.isPending}
+            onClick={() => retry.mutate({ jobId: job.id })}
+          >
+            Try this download again
+          </Button>
+          {retryError !== null ? (
+            <span className="type-meta text-destructive" role="alert">
+              {retryError}
+            </span>
+          ) : null}
+        </div>
       ) : null}
-      {job.error_message !== null ? (
-        <>
-          <dt>Reason</dt>
-          <dd className="text-destructive">{job.error_message}</dd>
-        </>
-      ) : null}
-    </dl>
+    </div>
   );
 }

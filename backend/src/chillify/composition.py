@@ -34,6 +34,7 @@ from chillify.application.library import LibraryService
 from chillify.application.links import LinkInspectionService, RegisteredInspector
 from chillify.application.metadata import MetadataService
 from chillify.application.playlists import PlaylistService
+from chillify.application.reconciliation import ReconciliationService
 from chillify.application.search import SearchService
 from chillify.config import Settings, preflight_mounted_roots
 from chillify.infrastructure.db.engine import create_database_engine, create_session_factory
@@ -169,6 +170,15 @@ class Composition:
             dispatch=make_dispatcher(self.celery_app(), self.settings),
             queue_reachable=self.is_queue_reachable,
             worker_identity=worker_identity,
+        )
+
+    def reconciliation_service(self) -> ReconciliationService:
+        """Bind interrupted-job recovery to this process's database and broker."""
+        return ReconciliationService(
+            session_factory=self.session_factory,
+            music_root=self.settings.music_root,
+            dispatch=make_dispatcher(self.celery_app(), self.settings),
+            queue_reachable=self.is_queue_reachable,
         )
 
     def celery_app(self) -> Celery:

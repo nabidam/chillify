@@ -20,6 +20,7 @@ from chillify.composition import Composition, Health, build_composition
 from chillify.config import ConfigurationError, load_settings
 from chillify.infrastructure.logging.setup import SERVICE_WORKER, configure_logging
 from chillify.infrastructure.queue.celery_app import QUEUE_NAME, create_celery_app
+from chillify.infrastructure.queue.reconciliation import install_reconciliation
 from chillify.infrastructure.queue.tasks import register_tasks
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,9 @@ def main(argv: list[str] | None = None) -> int:
     composition()
     celery_app = create_celery_app(settings)
     register_tasks(celery_app, download_service)
+    # Recover interrupted jobs when this worker connects — on startup and on
+    # every Redis reconnection — before it starts pulling new work.
+    install_reconciliation(lambda: composition().reconciliation_service().reconcile())
     celery_app.worker_main(
         [
             "worker",

@@ -99,6 +99,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/downloads/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel one queued or running download
+         * @description Cancel a queued job outright, or ask a running one to stop.
+         */
+        post: operations["cancel_download_api_v1_downloads__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/downloads/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue a fresh attempt linked to a finished download
+         * @description Create one new linked attempt; a repeated key replays the first result.
+         */
+        post: operations["retry_download_api_v1_downloads__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events": {
         parameters: {
             query?: never;
@@ -460,6 +500,20 @@ export interface components {
              * @description The cover image to stage.
              */
             file: string;
+        };
+        /**
+         * CancelRequestModel
+         * @description The optimistic-concurrency guard for one cancel.
+         *
+         *     `version` is the value the browser last saw. A cancel built on a stale view
+         *     is refused rather than applied to a job that has since moved on.
+         */
+        CancelRequestModel: {
+            /**
+             * Version
+             * @description The job version the request was built against.
+             */
+            version: number;
         };
         /** ComponentStatusModel */
         ComponentStatusModel: {
@@ -1246,6 +1300,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobDetailModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    cancel_download_api_v1_downloads__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelRequestModel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    retry_download_api_v1_downloads__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobModel"];
                 };
             };
             /** @description Error envelope */

@@ -55,7 +55,9 @@ from chillify.infrastructure.media.storage import (
     remove_workspace,
 )
 from chillify.infrastructure.media.tags import write_audio_tags
+from chillify.infrastructure.media.workspaces import existing_workspaces
 from chillify.infrastructure.providers.registry import ProviderRegistry
+from chillify.infrastructure.queue.cancellation import ActiveAcquisitions, active_acquisitions
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +88,9 @@ class DownloadService:
     queue_reachable: QueueProbe
     worker_identity: str = "api"
     proxy_url: str | None = None
+    # The in-process channel a same-process cancel uses to stop a live run
+    # before its next database poll. Defaults to the worker's shared registry.
+    active: ActiveAcquisitions = active_acquisitions
 
     @contextmanager
     def _transaction(self) -> Iterator[Session]:
@@ -172,6 +177,53 @@ class DownloadService:
                 job.id, celery_task_id=task_id, now=datetime.now(UTC)
             )
 
+    # -- cancel and retry -------------------------------------------------
+
+    def cancel_download(self, job_id: JobId, *, expected_version: int) -> DownloadJob:
+        """Cancel a queued job, or ask a running one to stop and clean up.
+
+        A queued cancel commits `cancelled` and discards any scratch directory
+        here, because there is no run to do it. A running cancel records the
+        request and trips the in-process signal; the worker commits the terminal
+        state and removes the workspace when its acquisition unwinds.
+        """
+        now = datetime.now(UTC)
+        with self._transaction() as session:
+            job = DownloadJobRepository(session).request_cancel(
+                job_id, expected_version=expected_version, now=now
+            )
+
+        if job.state is JobState.CANCELLED:
+            scratch = existing_workspaces(self.music_root).get(str(job_id))
+            if scratch is not None:
+                remove_workspace(scratch)
+        else:
+            # Reach a run happening in this process now; a run in another
+            # process sees the durable flag it just committed on its next check.
+            self.active.request(job_id)
+        logger.info(
+            "download cancel requested",
+            extra={"job_id": str(job_id), "state": str(job.state)},
+        )
+        return job
+
+    def retry_download(self, job_id: JobId) -> DownloadJob:
+        """Queue a fresh attempt linked to a finished failed or cancelled job."""
+        if not self.queue_reachable():
+            raise QueueUnavailableError(
+                "Downloads are paused while the queue is unreachable. Your library still plays."
+            )
+        now = datetime.now(UTC)
+        with self._transaction() as session:
+            job = DownloadJobRepository(session).retry(job_id, now=now)
+
+        logger.info(
+            "download retried",
+            extra={"job_id": str(job.id), "parent_job_id": str(job_id)},
+        )
+        self._dispatch(job)
+        return job
+
     def find_active(self, dedupe_key: str) -> DownloadJob | None:
         """The job already holding this dedupe key, if one is queued or running."""
         with self._transaction() as session:
@@ -251,13 +303,17 @@ class DownloadService:
             self._record(job.id, JobPhase.DOWNLOADING, percent)
 
         self._record(job.id, JobPhase.DOWNLOADING, None)
-        artifact = adapter.acquire(
-            candidate,
-            str(workspace),
-            self.proxy_url,
-            report,
-            lambda: self._is_cancel_requested(job.id),
-        )
+        # The adapter consults both channels: the in-process signal stops a
+        # same-process cancel immediately, and the durable flag catches a cancel
+        # committed by another process between the adapter's checks.
+        with self.active.begin(job.id) as signal:
+            artifact = adapter.acquire(
+                candidate,
+                str(workspace),
+                self.proxy_url,
+                report,
+                lambda: signal.requested or self._is_cancel_requested(job.id),
+            )
 
         self._record(job.id, JobPhase.CONVERTING, None)
         self._record(job.id, JobPhase.ENRICHING, None)

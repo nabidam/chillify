@@ -23,6 +23,7 @@ from chillify.domain.errors import (
 )
 from chillify.domain.jobs import (
     DownloadJob,
+    InvalidJobTransitionError,
     JobEvent,
     JobId,
     JobPhase,
@@ -1142,6 +1143,161 @@ class DownloadJobRepository:
             phase=phase,
             progress_percent=row.progress_percent,
             payload=payload or {},
+            now=now,
+        )
+        return _to_job(row)
+
+    # -- reconciliation ---------------------------------------------------
+
+    def list_stale_running(self, *, now: datetime) -> tuple[DownloadJob, ...]:
+        """Running jobs whose worker lease has lapsed, oldest first.
+
+        A live worker refreshes `lease_expires_at` on every phase; a lapsed or
+        absent lease therefore means the run stopped without committing a
+        terminal state — an interrupted job recovery must resume.
+        """
+        moment = to_rfc3339(now)
+        rows = self._session.scalars(
+            select(DownloadJobRow)
+            .where(DownloadJobRow.state == str(JobState.RUNNING))
+            .where(
+                or_(
+                    DownloadJobRow.lease_expires_at.is_(None),
+                    DownloadJobRow.lease_expires_at <= moment,
+                )
+            )
+            .order_by(DownloadJobRow.id)
+        ).all()
+        return tuple(_to_job(row) for row in rows)
+
+    def list_queued(self) -> tuple[DownloadJob, ...]:
+        """Every queued job, oldest first, for republication in submit order."""
+        rows = self._session.scalars(
+            select(DownloadJobRow)
+            .where(DownloadJobRow.state == str(JobState.QUEUED))
+            .order_by(DownloadJobRow.id)
+        ).all()
+        return tuple(_to_job(row) for row in rows)
+
+    def active_job_ids(self) -> set[str]:
+        """IDs of jobs still queued or running — the workspaces worth keeping."""
+        rows = self._session.scalars(
+            select(DownloadJobRow.id).where(
+                DownloadJobRow.state.in_([str(JobState.QUEUED), str(JobState.RUNNING)])
+            )
+        ).all()
+        return {str(job_id) for job_id in rows}
+
+    def restart(self, job_id: JobId, *, now: datetime) -> DownloadJob:
+        """Return an interrupted running job to the queue as a restart.
+
+        The lease is cleared, `restart_count` increments, and the phase becomes
+        `restarted` so the browser can tell a recovered job from a first
+        attempt. Progress is dropped: the next run reports its own.
+        """
+        row = self._require(job_id)
+        assert_transition(JobState(row.state), JobState.QUEUED)
+        moment = to_rfc3339(now)
+        row.state = str(JobState.QUEUED)
+        row.phase = str(JobPhase.RESTARTED)
+        row.progress_percent = None
+        row.lease_owner = None
+        row.lease_expires_at = None
+        row.heartbeat_at = None
+        row.restart_count += 1
+        row.version += 1
+        row.updated_at = moment
+        self._session.flush()
+
+        self._append_event(
+            job_id=job_id,
+            state=JobState.QUEUED,
+            phase=JobPhase.RESTARTED,
+            progress_percent=None,
+            payload={"restart_count": row.restart_count},
+            now=now,
+        )
+        return _to_job(row)
+
+    # -- cancel and retry -------------------------------------------------
+
+    def request_cancel(self, job_id: JobId, *, expected_version: int, now: datetime) -> DownloadJob:
+        """Cancel a queued job outright, or ask a running one to stop.
+
+        A finished job cannot be cancelled, and a stale `version` means the
+        caller acted on an out-of-date view; both are refused before anything
+        changes. A queued job commits `cancelled` here because there is no run
+        to interrupt; a running job only records `cancel_requested_at`, and the
+        worker commits the terminal state when it next checks.
+        """
+        row = self._require(job_id)
+        if JobState(row.state) in (JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED):
+            raise InvalidJobTransitionError(
+                "That download has already finished and cannot be cancelled.",
+                context={"from_state": row.state, "to_state": str(JobState.CANCELLED)},
+            )
+        if row.version != expected_version:
+            raise RecordChangedError(
+                "That download changed since you last saw it. Reload and try again.",
+                context={"current_version": row.version},
+            )
+        if JobState(row.state) is JobState.QUEUED:
+            return self.finish(job_id, state=JobState.CANCELLED, now=now)
+
+        moment = to_rfc3339(now)
+        row.cancel_requested_at = moment
+        row.version += 1
+        row.updated_at = moment
+        self._session.flush()
+        return _to_job(row)
+
+    def retry(self, job_id: JobId, *, now: datetime) -> DownloadJob:
+        """Queue a fresh attempt linked to a finished failed or cancelled job.
+
+        The original chronology is immutable, so this never reopens it: a new
+        job carries the same immutable request and candidate, points back at its
+        parent, and starts its own history. A completed job has nothing to
+        retry and is refused.
+        """
+        parent = self._require(job_id)
+        if JobState(parent.state) not in (JobState.FAILED, JobState.CANCELLED):
+            raise InvalidJobTransitionError(
+                "Only a failed or cancelled download can be retried.",
+                context={"from_state": parent.state, "to_state": str(JobState.QUEUED)},
+            )
+        moment = to_rfc3339(now)
+        row = DownloadJobRow(
+            id=new_id(),
+            provider=parent.provider,
+            source_type=parent.source_type,
+            source_ref=parent.source_ref,
+            dedupe_key=parent.dedupe_key,
+            request_json=parent.request_json,
+            candidate_json=parent.candidate_json,
+            state=str(JobState.QUEUED),
+            phase=str(JobPhase.ACCEPTED),
+            progress_percent=None,
+            parent_job_id=parent.id,
+            restart_count=0,
+            version=1,
+            created_at=moment,
+            updated_at=moment,
+        )
+        self._session.add(row)
+        try:
+            self._session.flush()
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise DuplicateRecordError(
+                "That track is already queued or downloading.", field="source_ref"
+            ) from exc
+
+        self._append_event(
+            job_id=JobId(row.id),
+            state=JobState.QUEUED,
+            phase=JobPhase.ACCEPTED,
+            progress_percent=None,
+            payload={"parent_job_id": parent.id},
             now=now,
         )
         return _to_job(row)

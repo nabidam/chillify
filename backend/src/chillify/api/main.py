@@ -36,6 +36,7 @@ from chillify.composition import build_composition
 from chillify.config import ConfigurationError, load_settings
 from chillify.domain.errors import ChillifyError
 from chillify.infrastructure.logging.setup import SERVICE_API, configure_logging, request_context
+from chillify.infrastructure.queue.reconciliation import run_reconciliation
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     composition = build_composition(settings)
     app.state.composition = composition
+    # Recover interrupted jobs and republish work the broker never carried, so a
+    # restart never leaves a job stuck in a state no process still owns.
+    run_reconciliation(composition.reconciliation_service().reconcile)
     try:
         yield
     finally:

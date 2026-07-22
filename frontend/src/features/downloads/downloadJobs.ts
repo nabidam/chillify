@@ -4,10 +4,10 @@
  * Job state is global and server-owned. Nothing here keeps a second copy of a
  * job: the queries are the copy, and the event bridge invalidates them.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/generated";
-import { queryKeys } from "@/api/queryKeys";
+import { DOWNLOADS_QUERY_PREFIX, queryKeys } from "@/api/queryKeys";
 
 export type DownloadJob = components["schemas"]["JobModel"];
 export type JobEvent = components["schemas"]["JobEventModel"];
@@ -37,6 +37,54 @@ export function useDownloadDetail(jobId: string | null) {
           params: { path: { job_id: jobId ?? "" } },
         }),
       ),
+  });
+}
+
+/**
+ * Cancel one queued or running download.
+ *
+ * The job's `version` is sent so a cancel built on a stale view is refused
+ * rather than applied to a job that has since moved on. The server owns the
+ * outcome, so success simply invalidates the list the SSE bridge also refreshes.
+ */
+export function useCancelDownload() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { jobId: string; version: number }): Promise<DownloadJob> =>
+      unwrap(
+        await api.POST("/api/v1/downloads/{job_id}/cancel", {
+          params: { path: { job_id: input.jobId } },
+          body: { version: input.version },
+        }),
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: DOWNLOADS_QUERY_PREFIX });
+    },
+  });
+}
+
+/**
+ * Queue a fresh attempt linked to a finished failed or cancelled download.
+ *
+ * The idempotency key is minted per press so a double-click cannot queue two
+ * attempts: the second request replays the first job rather than creating a
+ * sibling.
+ */
+export function useRetryDownload() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { jobId: string }): Promise<DownloadJob> =>
+      unwrap(
+        await api.POST("/api/v1/downloads/{job_id}/retry", {
+          params: {
+            path: { job_id: input.jobId },
+            header: { "Idempotency-Key": crypto.randomUUID() },
+          },
+        }),
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: DOWNLOADS_QUERY_PREFIX });
+    },
   });
 }
 

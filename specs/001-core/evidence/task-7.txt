@@ -1,0 +1,19 @@
+# Task 7 evidence — cancellation, retry, restart recovery, deduplication
+
+## Criterion 1 + 2 [integration]: new suites
+$ uv run pytest tests/integration/test_queue_recovery.py tests/integration/test_duplicates.py -q
+...............                                                          [100%]
+15 passed in 10.99s
+
+## Full backend suite
+$ uv run pytest -q  (run from backend/)
+352 passed in 57.94s  (includes the 15 new Task 7 integration tests)
+
+## Canonical verification
+$ ./scripts/verify.sh
+--- frontend build: ok
+=== backend dependency audit
+--- backend dependency audit: ok
+=== frontend dependency audit
+--- frontend dependency audit: ok
+verify: all checks passed
