@@ -1,0 +1,23 @@
+# Task 9a evidence — reach an operator proxy on the Docker host
+# captured 2026-07-22T17:10:28Z against the live gate-2 stack
+
+$ docker compose ... exec -T api getent hosts host.docker.internal   # BEFORE fix
+(no output — NXDOMAIN; host.docker.internal did not resolve)
+
+--- compose.yaml diff (host-gateway mapping on api + worker) ---
+ compose.yaml | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+$ docker compose ... up -d --force-recreate api worker web
+$ docker compose ... exec -T api getent hosts host.docker.internal   # AFTER fix
+10.200.0.1      host.docker.internal
+
+$ exec -T api python -c 'socket.create_connection((host.docker.internal,10808),3)'
+CONNECTED ('10.200.0.1', 10808)
+
+$ curl -X POST /api/v1/settings/proxy/test  -d '{"url":"socks5://host.docker.internal:10808"}'
+{"ok":true,"code":"ok","message":"The proxy accepted a test request."}
+HTTP 200
+
+$ ./scripts/verify.sh
+verify: all checks passed

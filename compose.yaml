@@ -27,6 +27,15 @@ x-backend-environment: &backend-environment
   CHILLIFY_FIXTURE_ROOT: "${CHILLIFY_FIXTURE_ROOT:-}"
   PYTHONUNBUFFERED: "1"
 
+# API and worker reach a proxy the operator runs on the Docker host by name.
+# On Linux `host.docker.internal` does not resolve inside a container unless the
+# host gateway is mapped explicitly, so a SOCKS/HTTP proxy at
+# host.docker.internal:PORT is otherwise unreachable and the proxy test fails on
+# DNS before it ever reaches the operator's proxy. migrate and web make no
+# outbound proxy calls and do not need it.
+x-backend-extra-hosts: &backend-extra-hosts
+  - "host.docker.internal:host-gateway"
+
 # API and worker receive identical, explicit bind mounts.
 x-backend-volumes: &backend-volumes
   - type: bind
@@ -59,6 +68,7 @@ services:
     <<: *runtime-identity
     environment: *backend-environment
     volumes: *backend-volumes
+    extra_hosts: *backend-extra-hosts
     read_only: true
     tmpfs:
       - /tmp:mode=1777,size=64m
@@ -98,6 +108,7 @@ services:
     <<: *runtime-identity
     environment: *backend-environment
     volumes: *backend-volumes
+    extra_hosts: *backend-extra-hosts
     read_only: true
     tmpfs:
       - /tmp:mode=1777,size=2g

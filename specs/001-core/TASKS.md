@@ -518,6 +518,34 @@ gate = 2
   current track is deleted) is Task 13's `playerStore` resilience and is not built
   here; the dialog invalidates library/playlist queries on success.
 
+## Task 9a — Reach an operator proxy on the Docker host
+
+```toml
+id = 23
+type = "fix"
+chunk = 8
+deps = [8]
+files = ["compose.yaml"]
+
+[[criteria]]
+text = "`host.docker.internal` resolves inside the api and worker containers, so a proxy the operator runs on the Docker host is reachable and `POST /settings/proxy/test` against `socks5://host.docker.internal:PORT` gets past DNS to the proxy itself."
+layer = "integration"
+```
+
+Context pack (hint): `compose.yaml` backend services; `deploy/compose.gate.yaml`;
+Task 8 outbound policy.
+
+- **Done:** `PENDING` — evidence `specs/001-core/evidence/task-9a.txt`
+  Gate 2 preflight finding (user, 2026-07-22): the proxy test failed on a host
+  proxy at `socks5://host.docker.internal:10808`. On Linux that name does not
+  resolve inside a container without an explicit host-gateway mapping, so the
+  outbound policy failed on DNS before reaching the operator's (working) proxy —
+  a container-networking gap, not an app defect. Fixed by mapping
+  `host.docker.internal:host-gateway` on api and worker (the two outbound
+  services); migrate and web make no proxy calls. Verified against the live gate
+  stack: the name resolves to the host gateway and the proxy test returns
+  `{"ok":true,"code":"ok"}` through the container to the real host proxy.
+
 ## Task 10 — DEMO GATE 2: acquisition and recovery
 
 ```toml
