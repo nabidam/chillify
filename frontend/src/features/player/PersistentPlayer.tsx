@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { selectCurrentTrackId, usePlayerStore } from "@/features/player/playerStore";
+import { QueueDrawer } from "@/features/player/QueueDrawer";
 import { useAudioController } from "@/features/player/useAudioController";
 import { formatDuration } from "@/lib/format";
 
@@ -131,21 +132,24 @@ export function PersistentPlayer() {
         </div>
       </div>
 
-      <div className="flex flex-1 items-center justify-end gap-2">
-        <span className="type-micro text-foreground-subtle">Volume</span>
-        <Slider
-          aria-label="Volume"
-          className="w-24"
-          min={0}
-          max={1}
-          step={0.05}
-          value={[volume]}
-          onValueChange={([next]) => {
-            if (next !== undefined) {
-              setVolume(next);
-            }
-          }}
-        />
+      <div className="flex flex-1 items-center justify-end gap-3">
+        <div className="flex items-center gap-2">
+          <span className="type-micro text-foreground-subtle">Volume</span>
+          <Slider
+            aria-label="Volume"
+            className="w-24"
+            min={0}
+            max={1}
+            step={0.05}
+            value={[volume]}
+            onValueChange={([next]) => {
+              if (next !== undefined) {
+                setVolume(next);
+              }
+            }}
+          />
+        </div>
+        <QueueDrawer />
       </div>
     </section>
   );

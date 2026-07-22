@@ -28,6 +28,14 @@ export interface PlayerState {
   setVolume: (volume: number) => void;
   reportProgress: (positionSeconds: number, durationSeconds: number) => void;
   markUnplayable: (trackId: string) => void;
+  /** Move an upcoming item to another upcoming slot; played tracks are fixed. */
+  reorderUpcoming: (from: number, to: number) => void;
+  /**
+   * Drop the queue item at `index`, keeping the current track playing. Removing
+   * the current track itself advances to the next playable track or stops when
+   * none remain — the deterministic answer to a deleted or removed track.
+   */
+  removeFromQueue: (index: number) => void;
   clearSession: () => void;
 }
 
@@ -116,6 +124,60 @@ export const usePlayerStore = create<PlayerState>()((set, get) => ({
         ? state
         : { unplayableTrackIds: [...state.unplayableTrackIds, trackId] },
     ),
+
+  reorderUpcoming: (from, to) =>
+    set((state) => {
+      // Only the not-yet-played tail is manually orderable: the current and
+      // already-played tracks keep their positions so history stays truthful.
+      const firstUpcoming = state.currentIndex + 1;
+      if (
+        from < firstUpcoming ||
+        to < firstUpcoming ||
+        from >= state.queue.length ||
+        to >= state.queue.length ||
+        from === to
+      ) {
+        return state;
+      }
+      const queue = state.queue.slice();
+      const [moved] = queue.splice(from, 1);
+      if (moved === undefined) {
+        return state;
+      }
+      queue.splice(to, 0, moved);
+      // Both indices sit past currentIndex, so the current track is untouched.
+      return { queue };
+    }),
+
+  removeFromQueue: (index) =>
+    set((state) => {
+      if (index < 0 || index >= state.queue.length) {
+        return state;
+      }
+      const queue = state.queue.slice();
+      queue.splice(index, 1);
+
+      if (index < state.currentIndex) {
+        // A played item left; the current track plays on, its index shifts down.
+        return { queue, currentIndex: state.currentIndex - 1 };
+      }
+      if (index > state.currentIndex) {
+        // An upcoming item left; nothing about the current track changes.
+        return { queue };
+      }
+      // The current track itself left. Advance to the next playable track that
+      // has taken its slot, or stop and clear when nothing remains ahead.
+      const next = nextPlayableIndex(queue, state.unplayableTrackIds, index, 1);
+      return next < 0
+        ? { queue, currentIndex: -1, isPlaying: false, positionSeconds: 0, durationSeconds: 0 }
+        : {
+            queue,
+            currentIndex: next,
+            isPlaying: true,
+            positionSeconds: 0,
+            durationSeconds: 0,
+          };
+    }),
 
   clearSession: () => set({ ...EMPTY_SESSION }),
 }));
