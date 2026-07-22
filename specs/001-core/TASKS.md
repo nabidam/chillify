@@ -682,6 +682,33 @@ layer = "e2e"
 gate = 3
 ```
 
+- **Done:** `6b90cc0` — evidence `specs/001-core/evidence/task-12.txt`
+  The `[e2e@gate-3]` criterion is Task 15's demo gate and is not claimed here;
+  the integration and contract criteria are demonstrated by tests that drive
+  the real routes against migrated SQLite (`tests/integration/test_playlists.py`
+  adds `TestPlaylistReorder`, `TestPlaylistRemoval`, and a reorder+removal
+  restart case covering profile isolation, contiguous reorder, remove-without-
+  delete, membership-mismatch rejection, and `record_changed` on stale reorder
+  and removal; `tests/contract/test_openapi_contract.py` asserts the PUT order
+  and DELETE track routes plus the reorder body shape) and by the S10 component
+  tests in `tests/component/playlists.test.tsx` (reorder handles per row and
+  their disabled single-track state, removal under the revision `If-Match`, and
+  the conflict path that keeps the confirmed row and warns). `./scripts/verify.sh
+  --fast` → all checks passed; full backend suite 412 passed; `vite build` green.
+  Deviations from the predicted file set, all additive: `remove_track`/`reorder`
+  and the contiguous `_renumber` helper live in `db/repositories.py` (the
+  positions carry a `CHECK (>= 0)`, so renumber parks rows above the current
+  maximum, not below zero, to avoid a mid-update `UNIQUE(playlist_id, position)`
+  collision); the reorder request schema is in `api/schemas/playlists.py`; the
+  DELETE/PUT routes and an `If-Match` parser are in `api/routes/playlists.py`;
+  the two mutations are in `playlistQueries.ts`; regenerating `api/generated.ts`
+  and wiring the new `AddToPlaylistMenu` into the existing `TrackTable.tsx`
+  (which the task's file list does not name) removed the duplicated add-to-
+  playlist block. `tests/setup.ts` gained a module-scope `ResizeObserver` stub
+  because `@dnd-kit` reads it at import. Drag reconciliation is hand-rolled over
+  the assigned `@dnd-kit/react@0.5.0` (no `@dnd-kit/helpers` is in the dependency
+  plan); the real browser drag journey is the gate-3 concern, not a jsdom one.
+
 ## Task 13 — Session queue and resilient persistent player
 
 ```toml
