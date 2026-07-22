@@ -61,6 +61,19 @@ _STATUS_CODES: Final = {
 }
 
 
+def _run_media_recovery(recover: object) -> None:
+    """Run one media-recovery pass, never letting it crash startup.
+
+    Recovery is idempotent, so a transient failure is safe to defer: the next
+    restart runs it again, and the unfinished journal rows are exactly where the
+    following pass will find them.
+    """
+    try:
+        recover()  # type: ignore[operator]
+    except Exception:
+        logger.exception("media recovery pass failed; durable state is unchanged")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = load_settings()
@@ -71,6 +84,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     composition = build_composition(settings)
     app.state.composition = composition
+    # Finish or reverse any edit or deletion a crash left half-applied before the
+    # API serves a request, so a track is never both present on disk and absent
+    # from the library, or the reverse.
+    _run_media_recovery(composition.media_recovery_service().recover)
     # Recover interrupted jobs and republish work the broker never carried, so a
     # restart never leaves a job stuck in a state no process still owns.
     run_reconciliation(composition.reconciliation_service().reconcile)

@@ -24,6 +24,7 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArtworkPicker } from "@/features/metadata/ArtworkPicker";
+import { DeleteTrackDialog } from "@/features/metadata/DeleteTrackDialog";
 
 interface EditorFields {
   title: string;
@@ -70,6 +71,7 @@ export function TrackEditorDialog({
   const queryClient = useQueryClient();
   const [fields, setFields] = useState<EditorFields | null>(null);
   const [stage, setStage] = useState<ArtworkStage | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const detail = useQuery({
     queryKey: queryKeys.track(trackId ?? ""),
@@ -120,6 +122,7 @@ export function TrackEditorDialog({
     if (!open) {
       setFields(null);
       setStage(null);
+      setConfirmingDelete(false);
       save.reset();
       return;
     }
@@ -321,6 +324,17 @@ export function TrackEditorDialog({
           ) : null}
 
           <DialogFooter>
+            {isLoaded ? (
+              <Button
+                type="button"
+                variant="destructive"
+                className="sm:mr-auto"
+                disabled={isSaving}
+                onClick={() => setConfirmingDelete(true)}
+              >
+                Delete track
+              </Button>
+            ) : null}
             <DialogClose asChild>
               <Button type="button" variant="ghost" disabled={isSaving}>
                 Cancel
@@ -334,6 +348,18 @@ export function TrackEditorDialog({
             </Button>
           </DialogFooter>
         </form>
+
+        {isLoaded ? (
+          <DeleteTrackDialog
+            trackId={detail.data.track.id}
+            trackTitle={detail.data.track.title}
+            trackArtist={detail.data.track.artist}
+            revision={detail.data.track.revision}
+            open={confirmingDelete}
+            onOpenChange={setConfirmingDelete}
+            onDeleted={() => onOpenChange(false)}
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   );

@@ -29,6 +29,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from chillify.application.artwork import ArtworkService
+from chillify.application.deletion import DeletionService
 from chillify.application.downloads import DownloadService
 from chillify.application.library import LibraryService
 from chillify.application.links import LinkInspectionService, RegisteredInspector
@@ -40,6 +41,7 @@ from chillify.application.settings import SettingsService
 from chillify.config import Settings, preflight_mounted_roots
 from chillify.infrastructure.db.engine import create_database_engine, create_session_factory
 from chillify.infrastructure.logging.setup import redactor
+from chillify.infrastructure.media.recovery import MediaRecoveryService
 from chillify.infrastructure.providers.registry import ProviderRegistry, build_registry
 from chillify.infrastructure.queue.celery_app import create_celery_app, make_dispatcher
 from chillify.infrastructure.security.secrets import SecretCipher
@@ -130,6 +132,20 @@ class Composition:
     def metadata_service(self) -> MetadataService:
         """Bind the recoverable track-correction use case to this process."""
         return MetadataService(
+            session_factory=self.session_factory,
+            music_root=self.settings.music_root,
+        )
+
+    def deletion_service(self) -> DeletionService:
+        """Bind the recoverable permanent-deletion use case to this process."""
+        return DeletionService(
+            session_factory=self.session_factory,
+            music_root=self.settings.music_root,
+        )
+
+    def media_recovery_service(self) -> MediaRecoveryService:
+        """Bind startup recovery of interrupted edit and deletion mutations."""
+        return MediaRecoveryService(
             session_factory=self.session_factory,
             music_root=self.settings.music_root,
         )

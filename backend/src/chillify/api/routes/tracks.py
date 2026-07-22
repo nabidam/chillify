@@ -10,11 +10,17 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Path
+from fastapi import APIRouter, Depends, Header, Path, Response, status
 from fastapi.responses import FileResponse
 
-from chillify.api.dependencies import get_library_service, get_metadata_service
+from chillify.api.dependencies import (
+    get_deletion_service,
+    get_library_service,
+    get_metadata_service,
+)
+from chillify.api.schemas.deletion import DeleteImpactModel
 from chillify.api.schemas.tracks import TrackDetailModel, UpdateTrackRequest
+from chillify.application.deletion import DeletionService
 from chillify.application.library import LibraryService
 from chillify.application.metadata import MetadataService
 from chillify.domain.errors import ValidationFailedError
@@ -63,6 +69,47 @@ def update_track(
             expected_revision=_revision_from(if_match),
         )
     )
+
+
+@router.get(
+    "/tracks/{track_id}/delete-impact",
+    response_model=DeleteImpactModel,
+    summary="Count what a permanent deletion would remove",
+)
+def read_delete_impact(
+    deletion: Annotated[DeletionService, Depends(get_deletion_service)],
+    track_id: Annotated[str, Path(description="Track ID.")],
+) -> DeleteImpactModel:
+    """The server-owned playlist references S15 discloses before confirming.
+
+    S15 combines this with the current-track and session-queue occurrences from
+    the browser's own store, which the server never sees.
+    """
+    return DeleteImpactModel.of(deletion.delete_impact(TrackId(track_id)))
+
+
+@router.delete(
+    "/tracks/{track_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    summary="Permanently delete one shared track",
+)
+def delete_track(
+    deletion: Annotated[DeletionService, Depends(get_deletion_service)],
+    track_id: Annotated[str, Path(description="Track ID.")],
+    if_match: Annotated[
+        str | None,
+        Header(alias="If-Match", description="The track's current `revision`."),
+    ] = None,
+) -> Response:
+    """Remove the track's media and every reference to it, atomically.
+
+    `If-Match` is required for the same reason the correction route requires it:
+    this is destructive and rewrites the mounted filesystem, so it must refuse to
+    run against a revision the browser has not seen.
+    """
+    deletion.delete_track(TrackId(track_id), expected_revision=_revision_from(if_match))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def _revision_from(if_match: str | None) -> int:

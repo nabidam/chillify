@@ -194,6 +194,25 @@ class PlaylistDetail:
 
 
 @dataclass(frozen=True, slots=True)
+class MediaMutationJournal:
+    """One recovery-journal row, parsed for startup recovery to act on.
+
+    A journal row records a change that moves managed media — an edit or a
+    deletion — and the files that can undo it. Startup recovery reads the rows
+    that never reached `finalized` or `rolled_back` and finishes or reverses
+    each from exactly this record, never from the browser's memory of it.
+    """
+
+    id: str
+    track_id: str | None
+    operation: str
+    state: str
+    old_record: dict[str, object]
+    new_record: dict[str, object] | None
+    recovery: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
 class NormalizedMetadata:
     """The normalized projection of one track's identity fields."""
 

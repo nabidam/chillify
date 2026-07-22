@@ -32,6 +32,7 @@ export type Profile = components["schemas"]["ProfileModel"];
 export type Playlist = components["schemas"]["PlaylistModel"];
 export type PlaylistDetail = components["schemas"]["PlaylistDetailModel"];
 export type ArtworkStage = components["schemas"]["ArtworkStageModel"];
+export type DeleteImpact = components["schemas"]["DeleteImpactModel"];
 export type LibrarySort = components["schemas"]["LibrarySort"];
 export type ApiError = components["schemas"]["ErrorBody"];
 

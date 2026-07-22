@@ -1,0 +1,31 @@
+$ uv run pytest tests/integration/test_media_edit_recovery.py tests/integration/test_media_delete_recovery.py tests/contract/test_deletion_contract.py -v
+
+============================= test session starts ==============================
+platform linux -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- /home/dev/projects/chillify/backend/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/dev/projects/chillify/backend
+configfile: pyproject.toml
+plugins: respx-0.23.1, anyio-4.14.2
+collecting ... collected 15 items
+
+tests/integration/test_media_edit_recovery.py::TestFinalizeAfterCommit::test_a_committed_edit_left_uncleaned_is_finalized PASSED [  6%]
+tests/integration/test_media_edit_recovery.py::TestRollbackBeforeCommit::test_an_edit_stranded_after_placement_restores_the_old_version PASSED [ 13%]
+tests/integration/test_media_edit_recovery.py::TestRecoveryRunsOnBoot::test_starting_the_api_finishes_an_interrupted_edit PASSED [ 20%]
+tests/integration/test_media_delete_recovery.py::TestSuccessfulDeletion::test_a_deletion_removes_the_files_and_every_owned_record PASSED [ 26%]
+tests/integration/test_media_delete_recovery.py::TestSuccessfulDeletion::test_a_deletion_reduces_the_completed_job_to_an_anonymous_shell PASSED [ 33%]
+tests/integration/test_media_delete_recovery.py::TestSuccessfulDeletion::test_a_deletion_survives_a_restart PASSED [ 40%]
+tests/integration/test_media_delete_recovery.py::TestSuccessfulDeletion::test_a_stale_revision_is_refused_and_the_track_is_untouched PASSED [ 46%]
+tests/integration/test_media_delete_recovery.py::TestInterruptedDeletionRecovery::test_a_deletion_stranded_before_commit_recovers_the_track PASSED [ 53%]
+tests/integration/test_media_delete_recovery.py::TestInterruptedDeletionRecovery::test_a_deletion_stranded_after_commit_is_finished PASSED [ 60%]
+tests/contract/test_deletion_contract.py::TestDocumentedShape::test_the_deletion_routes_are_documented PASSED [ 66%]
+tests/contract/test_deletion_contract.py::TestDocumentedShape::test_deletion_documents_a_no_content_response_and_if_match PASSED [ 73%]
+tests/contract/test_deletion_contract.py::TestDocumentedShape::test_the_delete_impact_shape_exposes_only_a_playlist_count PASSED [ 80%]
+tests/contract/test_deletion_contract.py::TestServedShape::test_deleting_a_track_returns_no_content PASSED [ 86%]
+tests/contract/test_deletion_contract.py::TestServedShape::test_deletion_leaves_only_an_anonymous_history_shell PASSED [ 93%]
+tests/contract/test_deletion_contract.py::TestServedShape::test_a_refused_deletion_uses_the_one_error_envelope PASSED [100%]
+
+============================== 15 passed in 1.98s ==============================
+
+$ ./scripts/verify.sh  (tail)
+verify: all checks passed
+(backend 380 tests, frontend 67 tests, lint/format/type/boundary/build/audits/secret-scan all green)

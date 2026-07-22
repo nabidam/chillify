@@ -442,7 +442,15 @@ export interface paths {
         get: operations["read_track_api_v1_tracks__track_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Permanently delete one shared track
+         * @description Remove the track's media and every reference to it, atomically.
+         *
+         *     `If-Match` is required for the same reason the correction route requires it:
+         *     this is destructive and rewrites the mounted filesystem, so it must refuse to
+         *     run against a revision the browser has not seen.
+         */
+        delete: operations["delete_track_api_v1_tracks__track_id__delete"];
         options?: never;
         head?: never;
         /**
@@ -454,6 +462,29 @@ export interface paths {
          *     and this is the one mutation that also rewrites a file on disk.
          */
         patch: operations["update_track_api_v1_tracks__track_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/tracks/{track_id}/delete-impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count what a permanent deletion would remove
+         * @description The server-owned playlist references S15 discloses before confirming.
+         *
+         *     S15 combines this with the current-track and session-queue occurrences from
+         *     the browser's own store, which the server never sees.
+         */
+        get: operations["read_delete_impact_api_v1_tracks__track_id__delete_impact_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/tracks/{track_id}/stream": {
@@ -633,6 +664,20 @@ export interface components {
              * @description Household profile name. Unique after case and whitespace folding.
              */
             name: string;
+        };
+        /**
+         * DeleteImpactModel
+         * @description The server-owned references S15 warns about before a permanent deletion.
+         *
+         *     The browser adds the current-track and session-queue occurrences it reads
+         *     from its own store; the server only knows the durable playlist references.
+         */
+        DeleteImpactModel: {
+            /**
+             * Playlist Count
+             * @description How many playlists across every profile hold this track.
+             */
+            playlist_count: number;
         };
         /**
          * DownloadRequestModel
@@ -2230,6 +2275,39 @@ export interface operations {
             };
         };
     };
+    delete_track_api_v1_tracks__track_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The track's current `revision`. */
+                "If-Match"?: string | null;
+            };
+            path: {
+                /** @description Track ID. */
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     update_track_api_v1_tracks__track_id__patch: {
         parameters: {
             query?: never;
@@ -2256,6 +2334,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TrackDetailModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_delete_impact_api_v1_tracks__track_id__delete_impact_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Track ID. */
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteImpactModel"];
                 };
             };
             /** @description Error envelope */

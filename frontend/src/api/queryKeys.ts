@@ -18,6 +18,7 @@ export const queryKeys = {
   libraryTracks: (query: LibraryTracksQuery = {}) =>
     ["library", "tracks", query.q ?? "", query.sort ?? "recent"] as const,
   track: (trackId: string) => ["library", "track", trackId] as const,
+  deleteImpact: (trackId: string) => ["library", "delete-impact", trackId] as const,
   /**
    * The Deezer query carries a submission token rather than the live input:
    * local search reacts to typing, online search happens only when the person

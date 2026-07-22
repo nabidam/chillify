@@ -40,6 +40,7 @@ from chillify.domain.models import (
     ArtworkStageId,
     Availability,
     LibrarySort,
+    MediaMutationJournal,
     Page,
     Playlist,
     PlaylistDetail,
@@ -84,6 +85,12 @@ JOB_EVENT_REPLAY_LIMIT = 500
 JOB_LEASE_SECONDS = 120
 
 IDEMPOTENCY_RETENTION_HOURS = 24
+
+# The nonidentifying value every identifying job field is replaced with once the
+# track it produced is permanently deleted. It is a constant, not a per-job
+# value, because the anonymized shell must reveal nothing — not even a distinct
+# placeholder per former track.
+DELETED_TRACK_SENTINEL = "deleted"
 
 # The phase each terminal state commits with, so a finished job never keeps the
 # phase it happened to be in when it stopped.
@@ -362,12 +369,67 @@ class TrackRepository:
         return _to_track(row)
 
     def end_mutation(self, track_id: TrackId) -> None:
-        """Return a track to `available` after an edit rolled back."""
+        """Return a track to `available` after an edit or deletion rolled back.
+
+        Both `mutating` (an edit) and `recovery` (a deletion) mean a mutation
+        owned the file and then reversed; either way the old record is intact,
+        so the track becomes playable again. A row already `available` — or gone
+        — is left untouched: recovery must be safe to run twice.
+        """
         row = self._session.get(TrackRow, str(track_id))
-        if row is None or row.availability != str(Availability.MUTATING):
+        if row is None or row.availability not in (
+            str(Availability.MUTATING),
+            str(Availability.RECOVERY),
+        ):
             return
         row.availability = str(Availability.AVAILABLE)
         self._session.flush()
+
+    def begin_deletion(self, track_id: TrackId, *, expected_revision: int) -> Track:
+        """Mark the track's file owned by a deletion in progress.
+
+        Like `begin_mutation` the revision is matched, not bumped: the row is
+        about to be removed entirely, and until it is the `recovery` state keeps
+        it out of the player while the files are still restorable.
+        """
+        row = self._require_track(track_id)
+        if row.revision != expected_revision:
+            raise RecordChangedError(
+                "Somebody else changed this track first. Reload it and try again.",
+                context={"current_revision": row.revision},
+            )
+        row.availability = str(Availability.RECOVERY)
+        self._session.flush()
+        return _to_track(row)
+
+    def delete(self, track_id: TrackId) -> None:
+        """Remove the track row, cascading its sources and playlist entries.
+
+        The foreign keys carry `ON DELETE CASCADE` for `track_sources` and
+        `playlist_tracks` and `ON DELETE SET NULL` for a completed job's
+        `result_track_id`, so this one statement removes every owned reference
+        and detaches the anonymized history in the caller's transaction.
+        """
+        row = self._session.get(TrackRow, str(track_id))
+        if row is None:
+            return
+        self._session.delete(row)
+        self._session.flush()
+
+    def playlist_reference_count(self, track_id: TrackId) -> int:
+        """How many playlists across every profile hold this track.
+
+        This is the server-owned half of the deletion impact S15 discloses; the
+        browser adds its own current-track and queue occurrences on top.
+        """
+        return int(
+            self._session.scalar(
+                select(func.count())
+                .select_from(PlaylistTrackRow)
+                .where(PlaylistTrackRow.track_id == str(track_id))
+            )
+            or 0
+        )
 
     def apply_edit(
         self,
@@ -813,6 +875,51 @@ class MediaMutationRepository:
         self._session.flush()
         return mutation_id
 
+    def open_delete(
+        self,
+        *,
+        track_id: TrackId,
+        old_record: dict[str, object],
+        now: datetime,
+    ) -> str:
+        """Open the journal for a permanent deletion before any file is touched.
+
+        A deletion has no new record — its whole purpose is that nothing takes
+        the old one's place — so `new_record_json` is null. The old record and
+        the recovery links are what a crashed deletion is reversed from.
+        """
+        mutation_id = new_id()
+        moment = to_rfc3339(now)
+        self._session.add(
+            MediaMutationRow(
+                id=mutation_id,
+                track_id=str(track_id),
+                operation="delete",
+                state="prepared",
+                old_record_json=json.dumps(old_record, separators=(",", ":"), sort_keys=True),
+                new_record_json=None,
+                recovery_json="{}",
+                created_at=moment,
+                updated_at=moment,
+            )
+        )
+        self._session.flush()
+        return mutation_id
+
+    def list_recoverable(self) -> tuple[MediaMutationJournal, ...]:
+        """Every journal row a restart must finish or reverse.
+
+        A row is recoverable exactly while it is neither `finalized` nor
+        `rolled_back`: those two are the only terminal states, and everything
+        else describes a change that a crash left half-applied.
+        """
+        rows = self._session.scalars(
+            select(MediaMutationRow)
+            .where(MediaMutationRow.state.not_in(("finalized", "rolled_back")))
+            .order_by(MediaMutationRow.created_at, MediaMutationRow.id)
+        ).all()
+        return tuple(_to_mutation_journal(row) for row in rows)
+
     def advance(
         self,
         mutation_id: str,
@@ -839,6 +946,21 @@ class MediaMutationRepository:
         if row is not None:
             self._session.delete(row)
             self._session.flush()
+
+
+def _to_mutation_journal(row: MediaMutationRow) -> MediaMutationJournal:
+    old_record = json.loads(row.old_record_json)
+    new_record = None if row.new_record_json is None else json.loads(row.new_record_json)
+    recovery = json.loads(row.recovery_json)
+    return MediaMutationJournal(
+        id=row.id,
+        track_id=row.track_id,
+        operation=row.operation,
+        state=row.state,
+        old_record=old_record if isinstance(old_record, dict) else {},
+        new_record=new_record if isinstance(new_record, dict) else None,
+        recovery=recovery if isinstance(recovery, dict) else {},
+    )
 
 
 def _to_job(row: DownloadJobRow) -> DownloadJob:
@@ -1019,6 +1141,39 @@ class DownloadJobRepository:
             now=now,
         )
         return _to_job(row)
+
+    def anonymize_for_deleted_track(self, track_id: TrackId, *, now: datetime) -> int:
+        """Strip identifying history from every job that produced this track.
+
+        Deletion is permanent, so the completed job that acquired the track must
+        keep no way back to what it was: its source locator, dedupe key,
+        request, candidate metadata, and error detail are replaced with a
+        nonidentifying sentinel, and every event's payload is emptied. What
+        remains is an anonymous shell — provider, phases, state, and timestamps —
+        which the Downloads screen renders as “Deleted track”.
+
+        The link itself is cut here too rather than left to the delete cascade,
+        so the anonymized job carries no track ID even for the instant before the
+        row is removed.
+        """
+        rows = self._session.scalars(
+            select(DownloadJobRow).where(DownloadJobRow.result_track_id == str(track_id))
+        ).all()
+        moment = to_rfc3339(now)
+        for row in rows:
+            row.source_ref = DELETED_TRACK_SENTINEL
+            row.dedupe_key = DELETED_TRACK_SENTINEL
+            row.request_json = "{}"
+            row.candidate_json = None
+            row.error_detail = None
+            row.result_track_id = None
+            row.updated_at = moment
+            for event in self._session.scalars(
+                select(JobEventRow).where(JobEventRow.job_id == row.id)
+            ):
+                event.payload_json = "{}"
+        self._session.flush()
+        return len(rows)
 
     def read_request(self, job_id: JobId) -> dict[str, object]:
         """The immutable submitted request. The worker reconstructs input from this."""

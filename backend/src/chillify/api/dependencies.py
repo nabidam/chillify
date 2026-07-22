@@ -12,6 +12,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from chillify.application.artwork import ArtworkService
+from chillify.application.deletion import DeletionService
 from chillify.application.downloads import DownloadService, IdempotencyGuard
 from chillify.application.library import LibraryService
 from chillify.application.links import LinkInspectionService
@@ -55,6 +56,12 @@ def get_metadata_service(
     composition: Annotated[Composition, Depends(get_composition)],
 ) -> MetadataService:
     return composition.metadata_service()
+
+
+def get_deletion_service(
+    composition: Annotated[Composition, Depends(get_composition)],
+) -> DeletionService:
+    return composition.deletion_service()
 
 
 def get_playlist_service(
