@@ -1,0 +1,36 @@
+# Task 12 evidence — Playlist ownership, reorder, and row actions
+# captured 2026-07-22T23:19:27Z
+
+$ ./scripts/verify.sh --fast   (tail)
+   Start at  02:50:43
+   Duration  7.09s (transform 2.39s, setup 2.11s, import 7.08s, tests 18.78s, environment 6.15s)
+
+--- frontend tests: ok
+
+=== raw color literals
+--- raw color literals: ok
+
+=== primitive boundary
+--- primitive boundary: ok
+
+=== domain boundary
+--- domain boundary: ok
+
+=== secret scan
+--- secret scan: ok
+
+verify: all checks passed
+
+$ uv run pytest tests/integration/test_playlists.py tests/contract/test_openapi_contract.py -q   (tail)
+.........................................                                [100%]
+41 passed in 21.05s
+
+$ npx vitest run tests/component/playlists.test.tsx   (tail)
+ RUN  v4.1.10 /home/dev/projects/chillify/frontend
+
+
+ Test Files  1 passed (1)
+      Tests  17 passed (17)
+   Start at  02:51:27
+   Duration  5.25s (transform 565ms, setup 459ms, import 1.08s, tests 2.50s, environment 1.07s)
+

@@ -22,6 +22,7 @@ from chillify.domain.errors import (
     DuplicateRecordError,
     RecordChangedError,
     RecordNotFoundError,
+    ValidationFailedError,
 )
 from chillify.domain.jobs import (
     DownloadJob,
@@ -830,6 +831,103 @@ class PlaylistRepository:
                 "That track is already in this playlist.", field="track_id"
             ) from exc
         return self.get_detail(playlist_id)
+
+    def remove_track(
+        self,
+        playlist_id: PlaylistId,
+        track_id: TrackId,
+        *,
+        expected_revision: int,
+        now: datetime | None = None,
+    ) -> PlaylistDetail:
+        """Drop one track from the saved order without deleting the track.
+
+        Removing a member leaves a gap in `position`; the remaining rows are
+        renumbered to a contiguous `0..n-1` list so the saved order stays the
+        same contiguous invariant every read and reorder depends on.
+        """
+        row = self._require(playlist_id)
+        if row.revision != expected_revision:
+            raise RecordChangedError(
+                "Somebody else changed this playlist first. Reload it and try again.",
+                context={"current_revision": row.revision},
+            )
+        entries = list(
+            self._session.scalars(
+                select(PlaylistTrackRow)
+                .where(PlaylistTrackRow.playlist_id == str(playlist_id))
+                .order_by(PlaylistTrackRow.position, PlaylistTrackRow.track_id)
+            )
+        )
+        target = next((entry for entry in entries if entry.track_id == str(track_id)), None)
+        if target is None:
+            raise RecordNotFoundError("That track is not in this playlist.")
+
+        moment = to_rfc3339(now or datetime.now(UTC))
+        self._session.delete(target)
+        self._session.flush()
+        remaining = [entry for entry in entries if entry.track_id != str(track_id)]
+        self._renumber(remaining)
+        row.revision += 1
+        row.updated_at = moment
+        self._session.flush()
+        return self.get_detail(playlist_id)
+
+    def reorder(
+        self,
+        playlist_id: PlaylistId,
+        track_ids: tuple[TrackId, ...],
+        *,
+        expected_revision: int,
+        now: datetime | None = None,
+    ) -> PlaylistDetail:
+        """Rewrite the whole saved order as a complete contiguous list.
+
+        The submitted IDs must be exactly the current membership, reordered: a
+        reorder never adds or drops a track, so a list that is missing one or
+        names a stranger is rejected rather than silently reconciled.
+        """
+        row = self._require(playlist_id)
+        if row.revision != expected_revision:
+            raise RecordChangedError(
+                "Somebody else changed this playlist first. Reload it and try again.",
+                context={"current_revision": row.revision},
+            )
+        entries = {
+            entry.track_id: entry
+            for entry in self._session.scalars(
+                select(PlaylistTrackRow).where(PlaylistTrackRow.playlist_id == str(playlist_id))
+            )
+        }
+        submitted = [str(track_id) for track_id in track_ids]
+        if len(submitted) != len(set(submitted)) or set(submitted) != set(entries):
+            raise ValidationFailedError(
+                "A reorder must list exactly the tracks already in the playlist.",
+                field="track_ids",
+            )
+
+        self._renumber([entries[track] for track in submitted])
+        row.revision += 1
+        row.updated_at = to_rfc3339(now or datetime.now(UTC))
+        self._session.flush()
+        return self.get_detail(playlist_id)
+
+    def _renumber(self, entries: list[PlaylistTrackRow]) -> None:
+        """Assign contiguous `0..n-1` positions in the given order.
+
+        Two passes through a parking range above the current maximum so no
+        intermediate UPDATE ever collides with the `UNIQUE(playlist_id,
+        position)`: positions are `CHECK (>= 0)` and may be gapped, so parking
+        above every current value is the temporary block that overlaps none of
+        them, and the final `0..n-1` slots sit below the whole parking block.
+        """
+        base = max((entry.position for entry in entries), default=-1) + 1
+        for index, entry in enumerate(entries):
+            entry.position = base + index
+        self._session.flush()
+        for index, entry in enumerate(entries):
+            entry.position = index
+        self._session.flush()
 
     def _track_counts(self, playlist_ids: tuple[str, ...]) -> dict[str, int]:
         if not playlist_ids:

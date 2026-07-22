@@ -95,3 +95,52 @@ export function useAddTrackToPlaylist() {
     },
   });
 }
+
+/** Rewrite the whole saved order under the playlist's current revision. */
+export function useReorderPlaylist() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      playlistId: string;
+      trackIds: string[];
+      revision: number;
+    }): Promise<PlaylistDetail> =>
+      unwrap(
+        await api.PUT("/api/v1/playlists/{playlist_id}/order", {
+          params: { path: { playlist_id: input.playlistId } },
+          body: { track_ids: input.trackIds, revision: input.revision },
+        }),
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: PLAYLISTS_QUERY_PREFIX });
+    },
+  });
+}
+
+/**
+ * Drop one track from a playlist without deleting the shared track.
+ *
+ * The revision travels as `If-Match`, matching the destructive track routes:
+ * a removal made against a stale view is refused rather than silently applied.
+ */
+export function useRemoveTrackFromPlaylist() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      playlistId: string;
+      trackId: string;
+      revision: number;
+    }): Promise<PlaylistDetail> =>
+      unwrap(
+        await api.DELETE("/api/v1/playlists/{playlist_id}/tracks/{track_id}", {
+          params: {
+            path: { playlist_id: input.playlistId, track_id: input.trackId },
+            header: { "If-Match": String(input.revision) },
+          },
+        }),
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: PLAYLISTS_QUERY_PREFIX });
+    },
+  });
+}

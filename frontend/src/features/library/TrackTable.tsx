@@ -1,14 +1,12 @@
-import { ListPlus, MoreHorizontal, Pencil, PlayIcon } from "lucide-react";
+import { MoreHorizontal, Pencil, PlayIcon } from "lucide-react";
 import { useState } from "react";
 import type { TrackSummary } from "@/api/client";
-import { useActiveProfile } from "@/app/activeProfile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -22,9 +20,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { AddToPlaylistMenu } from "@/features/library/AddToPlaylistMenu";
 import { TrackEditorDialog } from "@/features/metadata/TrackEditorDialog";
 import { selectCurrentTrackId, usePlayerStore } from "@/features/player/playerStore";
-import { useAddTrackToPlaylist, usePlaylists } from "@/features/playlists/playlistQueries";
 import { cn } from "@/lib/cn";
 import { formatMilliseconds } from "@/lib/format";
 
@@ -43,9 +41,6 @@ export function TrackTable({
   onPlay: (index: number) => void;
 }) {
   const currentTrackId = usePlayerStore(selectCurrentTrackId);
-  const { activeProfileId } = useActiveProfile();
-  const playlists = usePlaylists(activeProfileId);
-  const addToPlaylist = useAddTrackToPlaylist();
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
 
   return (
@@ -136,36 +131,7 @@ export function TrackTable({
                         Edit details
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      {/* A flat section rather than a submenu: a household has
-                          a handful of playlists, and one keystroke reaches any
-                          of them instead of two. */}
-                      <DropdownMenuLabel className="flex items-center gap-2">
-                        <ListPlus className="size-4" aria-hidden="true" />
-                        Add to playlist
-                      </DropdownMenuLabel>
-                      {(playlists.data ?? []).length === 0 ? (
-                        <DropdownMenuItem disabled>
-                          {playlists.isPending
-                            ? "Loading playlists…"
-                            : "No playlists on this profile yet"}
-                        </DropdownMenuItem>
-                      ) : (
-                        (playlists.data ?? []).map((playlist) => (
-                          <DropdownMenuItem
-                            key={playlist.id}
-                            disabled={addToPlaylist.isPending}
-                            onSelect={() => {
-                              addToPlaylist.mutate({
-                                playlistId: playlist.id,
-                                trackId: track.id,
-                                revision: playlist.revision,
-                              });
-                            }}
-                          >
-                            {playlist.name}
-                          </DropdownMenuItem>
-                        ))
-                      )}
+                      <AddToPlaylistMenu trackId={track.id} />
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>

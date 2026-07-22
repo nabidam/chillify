@@ -328,6 +328,26 @@ export interface paths {
         patch: operations["rename_playlist_api_v1_playlists__playlist_id__patch"];
         trace?: never;
     };
+    "/api/v1/playlists/{playlist_id}/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rewrite a playlist's saved order
+         * @description Apply the whole submitted order under its revision, all or nothing.
+         */
+        put: operations["reorder_playlist_api_v1_playlists__playlist_id__order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/playlists/{playlist_id}/tracks": {
         parameters: {
             query?: never;
@@ -340,6 +360,29 @@ export interface paths {
         /** Add one track to the end of a playlist */
         post: operations["add_playlist_track_api_v1_playlists__playlist_id__tracks_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/playlists/{playlist_id}/tracks/{track_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove one track from a playlist without deleting the track
+         * @description Drop the track from this playlist's saved order; the shared track stays.
+         *
+         *     `If-Match` carries the revision so a removal made against a stale view is
+         *     refused rather than silently reordering somebody else's change away.
+         */
+        delete: operations["remove_playlist_track_api_v1_playlists__playlist_id__tracks__track_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1339,6 +1382,19 @@ export interface components {
             revision: number;
         };
         /**
+         * ReorderPlaylistRequest
+         * @description S10 drag-reorder: the complete saved order, most-first, under a revision.
+         *
+         *     The list is the whole membership rewritten, never a delta, so a concurrent
+         *     change is caught by the revision before the order is applied.
+         */
+        ReorderPlaylistRequest: {
+            /** Revision */
+            revision: number;
+            /** Track Ids */
+            track_ids: string[];
+        };
+        /**
          * SettingsModel
          * @description The masked settings surface.
          */
@@ -2255,6 +2311,42 @@ export interface operations {
             };
         };
     };
+    reorder_playlist_api_v1_playlists__playlist_id__order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Playlist ID. */
+                playlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderPlaylistRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistDetailModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     add_playlist_track_api_v1_playlists__playlist_id__tracks_post: {
         parameters: {
             query?: never;
@@ -2270,6 +2362,43 @@ export interface operations {
                 "application/json": components["schemas"]["AddPlaylistTrackRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistDetailModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    remove_playlist_track_api_v1_playlists__playlist_id__tracks__track_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The playlist's current `revision`. */
+                "If-Match"?: string | null;
+            };
+            path: {
+                /** @description Playlist ID. */
+                playlist_id: string;
+                /** @description Track ID. */
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

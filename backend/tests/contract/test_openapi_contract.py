@@ -83,6 +83,19 @@ class TestDocumentedShape:
         assert "get" in paths["/api/v1/library/tracks"]
         assert "get" in paths["/api/v1/tracks/{track_id}/stream"]
 
+    def test_the_playlist_mutation_routes_are_documented(self, client: TestClient) -> None:
+        document = client.get("/api/v1/openapi.json").json()
+        paths = document["paths"]
+
+        assert "put" in paths["/api/v1/playlists/{playlist_id}/order"]
+        assert "delete" in paths["/api/v1/playlists/{playlist_id}/tracks/{track_id}"]
+        # The reorder body is the whole order plus the revision that catches a
+        # concurrent change before it is applied.
+        order_body = paths["/api/v1/playlists/{playlist_id}/order"]["put"]["requestBody"]
+        name = order_body["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[-1]
+        properties = document["components"]["schemas"][name]["properties"]
+        assert {"track_ids", "revision"} <= set(properties)
+
     def test_collections_share_one_page_envelope(self, client: TestClient) -> None:
         document = client.get("/api/v1/openapi.json").json()
 

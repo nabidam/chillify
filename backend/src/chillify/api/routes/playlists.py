@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, status
+from fastapi import APIRouter, Depends, Header, Path, status
 
 from chillify.api.dependencies import get_playlist_service
 from chillify.api.schemas.common import PageModel
@@ -19,8 +19,10 @@ from chillify.api.schemas.playlists import (
     PlaylistDetailModel,
     PlaylistModel,
     RenamePlaylistRequest,
+    ReorderPlaylistRequest,
 )
 from chillify.application.playlists import PlaylistService
+from chillify.domain.errors import ValidationFailedError
 from chillify.domain.models import PlaylistId, ProfileId, TrackId
 
 router = APIRouter(tags=["playlists"])
@@ -105,3 +107,67 @@ def add_playlist_track(
             expected_revision=request.revision,
         )
     )
+
+
+@router.delete(
+    "/playlists/{playlist_id}/tracks/{track_id}",
+    response_model=PlaylistDetailModel,
+    summary="Remove one track from a playlist without deleting the track",
+)
+def remove_playlist_track(
+    playlists: Annotated[PlaylistService, Depends(get_playlist_service)],
+    playlist_id: Annotated[str, Path(description="Playlist ID.")],
+    track_id: Annotated[str, Path(description="Track ID.")],
+    if_match: Annotated[
+        str | None,
+        Header(alias="If-Match", description="The playlist's current `revision`."),
+    ] = None,
+) -> PlaylistDetailModel:
+    """Drop the track from this playlist's saved order; the shared track stays.
+
+    `If-Match` carries the revision so a removal made against a stale view is
+    refused rather than silently reordering somebody else's change away.
+    """
+    return PlaylistDetailModel.of(
+        playlists.remove_track(
+            PlaylistId(playlist_id),
+            TrackId(track_id),
+            expected_revision=_revision_from(if_match),
+        )
+    )
+
+
+@router.put(
+    "/playlists/{playlist_id}/order",
+    response_model=PlaylistDetailModel,
+    summary="Rewrite a playlist's saved order",
+)
+def reorder_playlist(
+    request: ReorderPlaylistRequest,
+    playlists: Annotated[PlaylistService, Depends(get_playlist_service)],
+    playlist_id: Annotated[str, Path(description="Playlist ID.")],
+) -> PlaylistDetailModel:
+    """Apply the whole submitted order under its revision, all or nothing."""
+    return PlaylistDetailModel.of(
+        playlists.reorder(
+            PlaylistId(playlist_id),
+            tuple(TrackId(track_id) for track_id in request.track_ids),
+            expected_revision=request.revision,
+        )
+    )
+
+
+def _revision_from(if_match: str | None) -> int:
+    """Parse the `If-Match` header into the revision the change must match."""
+    if if_match is None:
+        raise ValidationFailedError(
+            "This change needs the playlist's current revision in an If-Match header.",
+            field="If-Match",
+        )
+    candidate = if_match.strip().strip('"').removeprefix("W/").strip('"')
+    if not candidate.isdigit():
+        raise ValidationFailedError(
+            "The If-Match header must carry the playlist's numeric revision.",
+            field="If-Match",
+        )
+    return int(candidate)

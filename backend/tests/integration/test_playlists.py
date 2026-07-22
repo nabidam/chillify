@@ -265,6 +265,147 @@ class TestPlaylistRename:
         assert response.status_code == 409
 
 
+def _fill(client: TestClient, playlist: dict[str, object], *track_ids: str) -> dict[str, object]:
+    """Add every track in order, threading the bumped revision through each add."""
+    detail = {"playlist": playlist, "tracks": []}
+    for track_id in track_ids:
+        detail = client.post(
+            f"/api/v1/playlists/{playlist['id']}/tracks",
+            json={"track_id": track_id, "revision": detail["playlist"]["revision"]},
+        ).json()
+    return detail
+
+
+class TestPlaylistReorder:
+    def test_a_reorder_writes_the_submitted_order_and_bumps_the_revision(
+        self, client: TestClient, profile_id: str, seed_track: Callable[..., str]
+    ) -> None:
+        playlist = client.post(_playlists_path(profile_id), json={"name": "Sunday"}).json()
+        first = seed_track(title="Hoppipolla")
+        second = seed_track(title="Glosoli")
+        third = seed_track(title="Saeglopur")
+        filled = _fill(client, playlist, first, second, third)
+
+        reordered = client.put(
+            f"/api/v1/playlists/{playlist['id']}/order",
+            json={"track_ids": [third, first, second], "revision": filled["playlist"]["revision"]},
+        )
+
+        assert reordered.status_code == 200
+        assert [track["id"] for track in reordered.json()["tracks"]] == [third, first, second]
+        assert reordered.json()["playlist"]["revision"] == filled["playlist"]["revision"] + 1
+
+    def test_a_reorder_that_adds_or_drops_a_track_is_refused_on_its_field(
+        self, client: TestClient, profile_id: str, seed_track: Callable[..., str]
+    ) -> None:
+        playlist = client.post(_playlists_path(profile_id), json={"name": "Sunday"}).json()
+        first = seed_track(title="Hoppipolla")
+        second = seed_track(title="Glosoli")
+        filled = _fill(client, playlist, first, second)
+
+        dropped = client.put(
+            f"/api/v1/playlists/{playlist['id']}/order",
+            json={"track_ids": [first], "revision": filled["playlist"]["revision"]},
+        )
+
+        assert dropped.status_code == 422
+        assert dropped.json()["error"]["field"] == "track_ids"
+        # The saved order is untouched by the rejected write.
+        detail = client.get(f"/api/v1/playlists/{playlist['id']}").json()
+        assert [track["id"] for track in detail["tracks"]] == [first, second]
+
+    def test_a_stale_reorder_returns_record_changed_and_leaves_the_order_alone(
+        self, client: TestClient, profile_id: str, seed_track: Callable[..., str]
+    ) -> None:
+        playlist = client.post(_playlists_path(profile_id), json={"name": "Sunday"}).json()
+        first = seed_track(title="Hoppipolla")
+        second = seed_track(title="Glosoli")
+        _fill(client, playlist, first, second)
+
+        response = client.put(
+            f"/api/v1/playlists/{playlist['id']}/order",
+            json={"track_ids": [second, first], "revision": 99},
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "record_changed"
+        detail = client.get(f"/api/v1/playlists/{playlist['id']}").json()
+        assert [track["id"] for track in detail["tracks"]] == [first, second]
+
+
+class TestPlaylistRemoval:
+    def test_removing_a_track_leaves_the_shared_track_and_renumbers_the_rest(
+        self, client: TestClient, profile_id: str, seed_track: Callable[..., str]
+    ) -> None:
+        playlist = client.post(_playlists_path(profile_id), json={"name": "Sunday"}).json()
+        first = seed_track(title="Hoppipolla")
+        second = seed_track(title="Glosoli")
+        third = seed_track(title="Saeglopur")
+        filled = _fill(client, playlist, first, second, third)
+
+        removed = client.delete(
+            f"/api/v1/playlists/{playlist['id']}/tracks/{second}",
+            headers={"If-Match": str(filled["playlist"]["revision"])},
+        )
+
+        assert removed.status_code == 200
+        assert [track["id"] for track in removed.json()["tracks"]] == [first, third]
+        assert removed.json()["playlist"]["track_count"] == 2
+        # The track itself is untouched — still in the library, addable again.
+        library = client.get(f"/api/v1/playlists/{playlist['id']}").json()
+        assert [track["id"] for track in library["tracks"]] == [first, third]
+        re_added = client.post(
+            f"/api/v1/playlists/{playlist['id']}/tracks",
+            json={"track_id": second, "revision": removed.json()["playlist"]["revision"]},
+        )
+        assert re_added.status_code == 200
+        assert [track["id"] for track in re_added.json()["tracks"]] == [first, third, second]
+
+    def test_removing_a_track_that_is_not_in_the_playlist_is_a_not_found(
+        self, client: TestClient, profile_id: str, seed_track: Callable[..., str]
+    ) -> None:
+        playlist = client.post(_playlists_path(profile_id), json={"name": "Sunday"}).json()
+        present = seed_track(title="Hoppipolla")
+        absent = seed_track(title="Glosoli")
+        filled = _fill(client, playlist, present)
+
+        response = client.delete(
+            f"/api/v1/playlists/{playlist['id']}/tracks/{absent}",
+            headers={"If-Match": str(filled["playlist"]["revision"])},
+        )
+
+        assert response.status_code == 404
+
+    def test_a_removal_without_the_revision_header_is_refused(
+        self, client: TestClient, profile_id: str, seed_track: Callable[..., str]
+    ) -> None:
+        playlist = client.post(_playlists_path(profile_id), json={"name": "Sunday"}).json()
+        track_id = seed_track()
+        _fill(client, playlist, track_id)
+
+        response = client.delete(f"/api/v1/playlists/{playlist['id']}/tracks/{track_id}")
+
+        assert response.status_code == 422
+        assert response.json()["error"]["field"] == "If-Match"
+
+    def test_a_stale_removal_returns_record_changed_and_keeps_the_track(
+        self, client: TestClient, profile_id: str, seed_track: Callable[..., str]
+    ) -> None:
+        playlist = client.post(_playlists_path(profile_id), json={"name": "Sunday"}).json()
+        track_id = seed_track()
+        _fill(client, playlist, track_id)
+
+        response = client.delete(
+            f"/api/v1/playlists/{playlist['id']}/tracks/{track_id}",
+            headers={"If-Match": "99"},
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "record_changed"
+        detail = client.get(f"/api/v1/playlists/{playlist['id']}").json()
+        assert [track["id"] for track in detail["tracks"]] == [track_id]
+
+
 class TestDurability:
     def test_playlists_and_their_order_survive_a_restart(
         self,
@@ -289,3 +430,30 @@ class TestDurability:
         detail = restarted.get(f"/api/v1/playlists/{playlist['id']}").json()
 
         assert [track["id"] for track in detail["tracks"]] == [first, second]
+
+    def test_a_reorder_and_a_removal_survive_a_restart(
+        self,
+        start_api: Callable[[], TestClient],
+        seed_track: Callable[..., str],
+    ) -> None:
+        first_run = start_api()
+        profile_id = first_run.post(PROFILES_PATH, json={"name": "Household"}).json()["id"]
+        playlist = first_run.post(_playlists_path(profile_id), json={"name": "Sunday"}).json()
+        first = seed_track(title="Hoppipolla")
+        second = seed_track(title="Glosoli")
+        third = seed_track(title="Saeglopur")
+        filled = _fill(first_run, playlist, first, second, third)
+
+        reordered = first_run.put(
+            f"/api/v1/playlists/{playlist['id']}/order",
+            json={"track_ids": [third, second, first], "revision": filled["playlist"]["revision"]},
+        ).json()
+        first_run.delete(
+            f"/api/v1/playlists/{playlist['id']}/tracks/{second}",
+            headers={"If-Match": str(reordered["playlist"]["revision"])},
+        )
+
+        restarted = start_api()
+        detail = restarted.get(f"/api/v1/playlists/{playlist['id']}").json()
+
+        assert [track["id"] for track in detail["tracks"]] == [third, first]

@@ -67,3 +67,14 @@ class AddPlaylistTrackRequest(BaseModel):
 
     track_id: str = Field(min_length=1)
     revision: int = Field(ge=1)
+
+
+class ReorderPlaylistRequest(BaseModel):
+    """S10 drag-reorder: the complete saved order, most-first, under a revision.
+
+    The list is the whole membership rewritten, never a delta, so a concurrent
+    change is caught by the revision before the order is applied.
+    """
+
+    track_ids: list[str] = Field(min_length=1)
+    revision: int = Field(ge=1)

@@ -201,6 +201,99 @@ describe("S10 playlist detail", () => {
     expect(await screen.findByText("This playlist could not be loaded")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
+
+  it("offers a reorder handle per track once more than one track has loaded", async () => {
+    servePlaylistDetail([
+      trackSummaryFixture({ id: "track-1", title: "Hoppipolla" }),
+      trackSummaryFixture({ id: "track-2", title: "Glosoli" }),
+    ]);
+    renderAt(`/playlists/${playlist.id}`);
+
+    const handles = await screen.findAllByRole("button", { name: /^Reorder / });
+    expect(handles.length).toBe(2);
+    expect(handles.every((handle) => !handle.hasAttribute("disabled"))).toBe(true);
+  });
+
+  it("disables reorder when a single track cannot be reordered against anything", async () => {
+    servePlaylistDetail([trackSummaryFixture({ title: "Hoppipolla" })]);
+    renderAt(`/playlists/${playlist.id}`);
+
+    const handle = await screen.findByRole("button", { name: /^Reorder / });
+    expect(handle.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("removes a track under the playlist's revision without deleting the track", async () => {
+    const revisions: Array<string | null> = [];
+    // The saved order is stateful so the invalidation refetch reflects the
+    // removal exactly as the real server would, rather than replaying the row.
+    let saved = [
+      trackSummaryFixture({ id: "keep", title: "Hoppipolla" }),
+      trackSummaryFixture({ id: "drop", title: "Glosoli" }),
+    ];
+    server.use(
+      http.get("/api/v1/playlists/:playlistId", () =>
+        HttpResponse.json({
+          playlist: { ...playlist, track_count: saved.length },
+          tracks: saved,
+        }),
+      ),
+      http.delete("/api/v1/playlists/:playlistId/tracks/:trackId", ({ request, params }) => {
+        revisions.push(request.headers.get("If-Match"));
+        saved = saved.filter((track) => track.id !== params.trackId);
+        return HttpResponse.json({
+          playlist: { ...playlist, revision: playlist.revision + 1, track_count: saved.length },
+          tracks: saved,
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderAt(`/playlists/${playlist.id}`);
+
+    await user.click(await screen.findByRole("button", { name: "Actions for Glosoli" }));
+    await user.click(
+      await screen.findByRole("menuitem", { name: /remove from this playlist/i }),
+    );
+
+    await waitFor(() => expect(revisions).toEqual([String(playlist.revision)]));
+    await waitFor(() => expect(screen.queryByText("Glosoli")).toBeNull());
+    // The other track is untouched: removal is not deletion.
+    expect(screen.getByText("Hoppipolla")).toBeTruthy();
+  });
+
+  it("keeps the track and warns when a removal conflicts with a concurrent change", async () => {
+    servePlaylistDetail([
+      trackSummaryFixture({ id: "keep", title: "Hoppipolla" }),
+      trackSummaryFixture({ id: "drop", title: "Glosoli" }),
+    ]);
+    server.use(
+      http.delete("/api/v1/playlists/:playlistId/tracks/:trackId", () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "record_changed",
+              message: "Somebody else changed this playlist first. Reload it and try again.",
+              field: null,
+              retryable: false,
+              request_id: "test",
+              detail: {},
+            },
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderAt(`/playlists/${playlist.id}`);
+
+    await user.click(await screen.findByRole("button", { name: "Actions for Glosoli" }));
+    await user.click(
+      await screen.findByRole("menuitem", { name: /remove from this playlist/i }),
+    );
+
+    expect(await screen.findByText("That track could not be removed")).toBeTruthy();
+    // The confirmed order is left intact: the row the server refused to drop stays.
+    expect(screen.getByText("Glosoli")).toBeTruthy();
+  });
 });
 
 describe("library row actions", () => {

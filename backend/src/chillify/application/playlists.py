@@ -88,3 +88,25 @@ class PlaylistService:
             return PlaylistRepository(session).add_track(
                 playlist_id, track_id, expected_revision=expected_revision
             )
+
+    def remove_track(
+        self, playlist_id: PlaylistId, track_id: TrackId, *, expected_revision: int
+    ) -> PlaylistDetail:
+        """Drop one track from the saved order, leaving the shared track alone."""
+        with self._transaction() as session:
+            return PlaylistRepository(session).remove_track(
+                playlist_id, track_id, expected_revision=expected_revision
+            )
+
+    def reorder(
+        self,
+        playlist_id: PlaylistId,
+        track_ids: tuple[TrackId, ...],
+        *,
+        expected_revision: int,
+    ) -> PlaylistDetail:
+        """Rewrite the whole saved order under the submitted revision."""
+        with self._transaction() as session:
+            return PlaylistRepository(session).reorder(
+                playlist_id, track_ids, expected_revision=expected_revision
+            )

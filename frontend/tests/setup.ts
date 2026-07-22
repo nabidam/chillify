@@ -2,6 +2,14 @@ import { cleanup } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, vi } from "vitest";
 import { server } from "./msw/server";
 
+// dnd-kit reads ResizeObserver at module-evaluation time, before any hook runs,
+// so the stub must exist as this setup file is imported rather than in beforeAll.
+globalThis.ResizeObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+
 // jsdom implements neither of these, and the Shadcn Sidebar reads both.
 beforeAll(() => {
   vi.stubGlobal(
@@ -17,11 +25,6 @@ beforeAll(() => {
       dispatchEvent: vi.fn(),
     })),
   );
-  globalThis.ResizeObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  };
   // jsdom has no media pipeline at all. The controller's contract is which
   // calls it makes and in what order, so the calls are recorded rather than
   // performed; real playback is a gate concern, not a jsdom one.
