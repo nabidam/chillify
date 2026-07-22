@@ -12,8 +12,10 @@ from chillify.domain.normalization import (
     UNKNOWN_ARTIST,
     decode_album_key,
     decode_artist_key,
+    decode_year_key,
     encode_album_key,
     encode_artist_key,
+    encode_year_key,
     fold_name,
     normalize_album,
     normalize_artist,
@@ -141,3 +143,22 @@ class TestContextKeys:
     def test_an_artist_key_is_not_accepted_as_an_album_key(self) -> None:
         with pytest.raises(ValidationFailedError):
             decode_album_key(encode_artist_key("sigur ros"))
+
+    def test_a_year_key_round_trips(self) -> None:
+        key = encode_year_key(2005)
+
+        assert key == "2005"
+        assert decode_year_key(key) == 2005
+
+    def test_an_absent_year_is_the_first_class_unknown_context(self) -> None:
+        key = encode_year_key(None)
+
+        assert key == "unknown"
+        assert decode_year_key(key) is None
+
+    @pytest.mark.parametrize(
+        "key", ["02005", " 2005", "2005 ", "+2005", "-2005", "2005a", "", "20"]
+    )
+    def test_a_noncanonical_year_key_is_refused(self, key: str) -> None:
+        with pytest.raises(ValidationFailedError):
+            decode_year_key(key)

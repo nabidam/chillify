@@ -1,0 +1,8 @@
+$ uv run pytest tests/integration/test_context_ordering.py tests/unit/test_normalization.py::TestContextKeys tests/contract/test_openapi_contract.py::TestContextEndpoints -q
+................................                                         [100%]
+32 passed in 1.75s
+
+$ ./scripts/verify.sh --fast   (static + suites + boundaries)
+verify: all checks passed
+
+$ (cd frontend && npx vite build)  → built in 706ms, exit 0

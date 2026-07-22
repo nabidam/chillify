@@ -17,6 +17,12 @@ export const queryKeys = {
   profiles: ["profiles"] as const,
   libraryTracks: (query: LibraryTracksQuery = {}) =>
     ["library", "tracks", query.q ?? "", query.sort ?? "recent"] as const,
+  libraryArtists: (q = "") => ["library", "artists", q] as const,
+  libraryAlbums: (q = "") => ["library", "albums", q] as const,
+  libraryYears: () => ["library", "years"] as const,
+  artistContext: (artistKey: string) => ["library", "artist", artistKey] as const,
+  albumContext: (albumKey: string) => ["library", "album", albumKey] as const,
+  yearContext: (yearKey: string) => ["library", "year", yearKey] as const,
   track: (trackId: string) => ["library", "track", trackId] as const,
   deleteImpact: (trackId: string) => ["library", "delete-impact", trackId] as const,
   /**

@@ -20,6 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ContextGrid } from "@/features/library/ContextGrid";
 import { TrackTable, TrackTablePlaceholder } from "@/features/library/TrackTable";
 import { usePlayerStore } from "@/features/player/playerStore";
 
@@ -32,11 +34,49 @@ const SORT_LABELS: Record<LibrarySort, string> = {
 /**
  * S2 — Your Library.
  *
- * The landing view for locally playable tracks. Chillify shows only what it
- * downloaded and manages, so an empty library says exactly that rather than
- * implying a scan is missing.
+ * The landing view for locally playable tracks. The same tracks are browsable
+ * four ways — a flat list or grouped by artist, album, or year — so the tabs
+ * switch the grouping without leaving the page or touching the player. Chillify
+ * shows only what it downloaded and manages, so an empty view says exactly that
+ * rather than implying a scan is missing.
  */
 export function LibraryPage() {
+  return (
+    <div className="flex flex-col gap-5">
+      <header>
+        <h1 className="type-title text-foreground">Your Library</h1>
+        <p className="type-meta text-foreground-muted">
+          Everything Chillify has downloaded and manages for this household.
+        </p>
+      </header>
+
+      <Tabs defaultValue="tracks" className="gap-4">
+        <TabsList>
+          <TabsTrigger value="tracks">Tracks</TabsTrigger>
+          <TabsTrigger value="artists">Artists</TabsTrigger>
+          <TabsTrigger value="albums">Albums</TabsTrigger>
+          <TabsTrigger value="years">Years</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="tracks">
+          <TracksTab />
+        </TabsContent>
+        <TabsContent value="artists">
+          <ContextGrid kind="artist" />
+        </TabsContent>
+        <TabsContent value="albums">
+          <ContextGrid kind="album" />
+        </TabsContent>
+        <TabsContent value="years">
+          <ContextGrid kind="year" />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+/** The flat, sortable track list — the library's default grouping. */
+function TracksTab() {
   const [sort, setSort] = useState<LibrarySort>("recent");
   const playQueue = usePlayerStore((state) => state.playQueue);
 
@@ -49,16 +89,13 @@ export function LibraryPage() {
   const items = tracks.data?.items ?? [];
 
   return (
-    <div className="flex flex-col gap-5">
-      <header className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="type-title text-foreground">Your Library</h1>
-          <p className="type-meta text-foreground-muted">
-            {tracks.isSuccess
-              ? `${items.length} ${items.length === 1 ? "track" : "tracks"}`
-              : "Loading your tracks…"}
-          </p>
-        </div>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-4">
+        <p className="type-meta text-foreground-muted">
+          {tracks.isSuccess
+            ? `${items.length} ${items.length === 1 ? "track" : "tracks"}`
+            : "Loading your tracks…"}
+        </p>
 
         <Select value={sort} onValueChange={(value) => setSort(value as LibrarySort)}>
           <SelectTrigger className="w-48" aria-label="Sort tracks">
@@ -72,7 +109,7 @@ export function LibraryPage() {
             ))}
           </SelectContent>
         </Select>
-      </header>
+      </div>
 
       {tracks.isPending ? <TrackTablePlaceholder /> : null}
 

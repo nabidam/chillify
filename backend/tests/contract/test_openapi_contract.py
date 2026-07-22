@@ -15,6 +15,12 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 
+from chillify.domain.normalization import (
+    encode_album_key,
+    encode_artist_key,
+    encode_year_key,
+)
+
 pytestmark = pytest.mark.contract
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -180,3 +186,48 @@ class TestServedShape:
         response = client.get(STATUS_PATH, headers={"Origin": "http://attacker.invalid"})
 
         assert "access-control-allow-origin" not in {key.lower() for key in response.headers}
+
+
+# The identity fields each detail context wraps around its ordered track array.
+_CONTEXT_DETAILS = {
+    "/api/v1/library/artists/{artist_key}": {"artist_key", "artist", "track_count", "tracks"},
+    "/api/v1/library/albums/{album_key}": {"album_key", "album", "artist", "track_count", "tracks"},
+    "/api/v1/library/years/{year_key}": {"year_key", "release_year", "track_count", "tracks"},
+}
+
+
+class TestContextEndpoints:
+    def test_every_context_endpoint_is_documented(self, client: TestClient) -> None:
+        paths = client.get("/api/v1/openapi.json").json()["paths"]
+
+        for path in (
+            "/api/v1/library/artists",
+            "/api/v1/library/albums",
+            "/api/v1/library/years",
+            *_CONTEXT_DETAILS,
+        ):
+            assert "get" in paths[path]
+
+    def test_each_detail_context_documents_an_ordered_track_array(self, client: TestClient) -> None:
+        document = client.get("/api/v1/openapi.json").json()
+
+        for path, identity in _CONTEXT_DETAILS.items():
+            schema = _schema_for(document, path)
+            assert identity <= set(schema["properties"])
+            tracks = schema["properties"]["tracks"]
+            assert tracks["type"] == "array"
+            reference = tracks["items"]["$ref"].rsplit("/", 1)[-1]
+            assert reference == "TrackSummaryModel"
+
+    def test_each_detail_context_serves_a_track_array(self, client: TestClient) -> None:
+        # An empty library still answers with the documented array shape rather
+        # than a 404, which is what lets S6/S7/S8 render an empty context.
+        cases = {
+            "/api/v1/library/artists/": encode_artist_key("nobody"),
+            "/api/v1/library/albums/": encode_album_key("nobody", "nothing"),
+            "/api/v1/library/years/": encode_year_key(None),
+        }
+        for prefix, key in cases.items():
+            body = client.get(f"{prefix}{key}").json()
+            assert body["tracks"] == []
+            assert body["track_count"] == 0

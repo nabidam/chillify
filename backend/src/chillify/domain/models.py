@@ -123,6 +123,45 @@ class TrackDetail:
 
 
 @dataclass(frozen=True, slots=True)
+class ArtistSummary:
+    """One artist grouping as the S2 Artists tab renders it.
+
+    `display_name` is a representative raw value chosen deterministically, so the
+    grid card and the artist view it opens name the artist identically.
+    """
+
+    normalized_artist: str
+    display_name: str
+    track_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class AlbumSummary:
+    """One album grouping as the S2 Albums tab renders it.
+
+    Albums that normalize equal but belong to different artists are distinct
+    groupings; an absent album name is the deterministic Unknown Album context.
+    """
+
+    normalized_artist: str
+    normalized_album: str
+    display_album: str | None
+    display_artist: str
+    track_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class YearSummary:
+    """One release-year grouping as the S2 Years tab renders it.
+
+    `release_year` is None for the first-class Unknown Year grouping.
+    """
+
+    release_year: int | None
+    track_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class TrackEdit:
     """The complete intended record one save applies.
 

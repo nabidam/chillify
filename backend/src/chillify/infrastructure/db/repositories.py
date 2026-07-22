@@ -11,6 +11,7 @@ import json
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import Select, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
@@ -35,6 +36,8 @@ from chillify.domain.jobs import (
 )
 from chillify.domain.models import (
     AUDIO_MIME_TYPE,
+    AlbumSummary,
+    ArtistSummary,
     ArtworkOrigin,
     ArtworkStage,
     ArtworkStageId,
@@ -51,12 +54,19 @@ from chillify.domain.models import (
     TrackDetail,
     TrackId,
     TrackSource,
+    YearSummary,
     from_rfc3339,
     normalize_metadata,
     to_rfc3339,
 )
 from chillify.domain.normalization import fold_name, normalize_key
-from chillify.domain.ordering import decode_cursor, encode_cursor
+from chillify.domain.ordering import (
+    album_sort_key,
+    artist_sort_key,
+    decode_cursor,
+    encode_cursor,
+    year_sort_key,
+)
 from chillify.infrastructure.db.models import (
     ApiIdempotencyRow,
     ArtworkStageRow,
@@ -569,6 +579,104 @@ class TrackRepository:
         if sort is LibrarySort.RECENT:
             return statement.where(pair < bound)
         return statement.where(pair > bound)
+
+    # -- browse contexts --------------------------------------------------
+
+    def tracks_for_artist(self, normalized_artist: str) -> tuple[Track, ...]:
+        """Every local track by one normalized artist, in artist-view order."""
+        rows = self._session.scalars(
+            select(TrackRow).where(TrackRow.normalized_artist == normalized_artist)
+        ).all()
+        return tuple(sorted((_to_track(row) for row in rows), key=artist_sort_key))
+
+    def tracks_for_album(self, normalized_artist: str, normalized_album: str) -> tuple[Track, ...]:
+        """One album's tracks in disc/track order; the artist keeps them apart."""
+        rows = self._session.scalars(
+            select(TrackRow)
+            .where(TrackRow.normalized_artist == normalized_artist)
+            .where(TrackRow.normalized_album == normalized_album)
+        ).all()
+        return tuple(sorted((_to_track(row) for row in rows), key=album_sort_key))
+
+    def tracks_for_year(self, release_year: int | None) -> tuple[Track, ...]:
+        """One release year's tracks; None addresses the Unknown Year grouping."""
+        column = TrackRow.release_year
+        predicate = column.is_(None) if release_year is None else column == release_year
+        rows = self._session.scalars(select(TrackRow).where(predicate)).all()
+        return tuple(sorted((_to_track(row) for row in rows), key=year_sort_key))
+
+    def list_artists(self, *, query: str | None = None) -> tuple[ArtistSummary, ...]:
+        """Every artist grouping in normalized order, filtered by the search key.
+
+        Household libraries are bounded, so the collection is served whole in
+        one normalized-artist order — the same decision `/profiles` makes.
+        `func.min` picks the representative display name deterministically.
+        """
+        statement = select(
+            TrackRow.normalized_artist,
+            func.min(TrackRow.artist),
+            func.count(),
+        ).group_by(TrackRow.normalized_artist)
+        statement = self._apply_context_search(statement, query, (TrackRow.normalized_artist,))
+        rows = self._session.execute(statement.order_by(TrackRow.normalized_artist.asc())).all()
+        return tuple(
+            ArtistSummary(normalized_artist=normalized, display_name=display, track_count=count)
+            for normalized, display, count in rows
+        )
+
+    def list_albums(self, *, query: str | None = None) -> tuple[AlbumSummary, ...]:
+        """Every album grouping, keyed by normalized artist and album together.
+
+        Two albums that share a name but not an artist stay separate rows, and
+        an absent album name is carried as None for the Unknown Album context.
+        """
+        statement = select(
+            TrackRow.normalized_artist,
+            TrackRow.normalized_album,
+            func.min(TrackRow.album),
+            func.min(TrackRow.artist),
+            func.count(),
+        ).group_by(TrackRow.normalized_artist, TrackRow.normalized_album)
+        statement = self._apply_context_search(
+            statement, query, (TrackRow.normalized_artist, TrackRow.normalized_album)
+        )
+        rows = self._session.execute(
+            statement.order_by(TrackRow.normalized_artist.asc(), TrackRow.normalized_album.asc())
+        ).all()
+        return tuple(
+            AlbumSummary(
+                normalized_artist=normalized_artist,
+                normalized_album=normalized_album,
+                display_album=display_album,
+                display_artist=display_artist,
+                track_count=count,
+            )
+            for normalized_artist, normalized_album, display_album, display_artist, count in rows
+        )
+
+    def list_years(self) -> tuple[YearSummary, ...]:
+        """Every release-year grouping, real years first and Unknown Year last."""
+        statement = select(TrackRow.release_year, func.count()).group_by(TrackRow.release_year)
+        rows = self._session.execute(statement).all()
+        summaries = [YearSummary(release_year=year, track_count=count) for year, count in rows]
+        # Unknown Year sorts last against any real year without special-casing.
+        summaries.sort(key=lambda item: (item.release_year is None, item.release_year or 0))
+        return tuple(summaries)
+
+    @staticmethod
+    def _apply_context_search(
+        statement: Select[Any],
+        query: str | None,
+        columns: tuple[InstrumentedAttribute[str], ...],
+    ) -> Select[Any]:
+        """Filter a grouped context listing by the normalized search key."""
+        if query is None:
+            return statement
+        normalized = normalize_key(query, fallback="")
+        if not normalized:
+            return statement
+        pattern = f"%{normalized}%"
+        return statement.where(or_(*(column.like(pattern) for column in columns)))
 
 
 def _to_playlist(row: PlaylistRow, track_count: int) -> Playlist:

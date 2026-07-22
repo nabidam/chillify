@@ -156,6 +156,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/albums": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List local albums
+         * @description Every album grouping; same-named albums by different artists stay apart.
+         */
+        get: operations["list_library_albums_api_v1_library_albums_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/albums/{album_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One album's tracks in disc/track order */
+        get: operations["get_library_album_api_v1_library_albums__album_key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/artists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List local artists
+         * @description Every artist grouping in normalized order.
+         *
+         *     Bounded by household use and served whole, the same decision `/profiles`
+         *     makes: the page envelope is present for shape consistency, never paging.
+         */
+        get: operations["list_library_artists_api_v1_library_artists_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/artists/{artist_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One artist's local tracks in play order */
+        get: operations["get_library_artist_api_v1_library_artists__artist_key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/tracks": {
         parameters: {
             query?: never;
@@ -165,6 +242,43 @@ export interface paths {
         };
         /** List local tracks */
         get: operations["list_library_tracks_api_v1_library_tracks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/years": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List local release years
+         * @description Every release-year grouping, real years first and Unknown Year last.
+         */
+        get: operations["list_library_years_api_v1_library_years_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/years/{year_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One release year's tracks in play order */
+        get: operations["get_library_year_api_v1_library_years__year_key__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -559,6 +673,77 @@ export interface components {
             track_id: string;
         };
         /**
+         * AlbumContextModel
+         * @description The S7 album view: identity and disc/track-ordered tracks.
+         */
+        AlbumContextModel: {
+            /** Album */
+            album: string | null;
+            /** Album Key */
+            album_key: string;
+            /** Artist */
+            artist: string;
+            /** Track Count */
+            track_count: number;
+            /** Tracks */
+            tracks: components["schemas"]["TrackSummaryModel"][];
+        };
+        /**
+         * AlbumSummaryModel
+         * @description One album grouping as the S2 Albums tab renders it.
+         */
+        AlbumSummaryModel: {
+            /**
+             * Album
+             * @description Album name, or null for the Unknown Album context.
+             */
+            album: string | null;
+            /**
+             * Album Key
+             * @description Derived key addressing this album context.
+             */
+            album_key: string;
+            /**
+             * Artist
+             * @description Representative display name for the album's artist.
+             */
+            artist: string;
+            /** Track Count */
+            track_count: number;
+        };
+        /**
+         * ArtistContextModel
+         * @description The S6 artist view: identity and every local track in play order.
+         */
+        ArtistContextModel: {
+            /** Artist */
+            artist: string;
+            /** Artist Key */
+            artist_key: string;
+            /** Track Count */
+            track_count: number;
+            /** Tracks */
+            tracks: components["schemas"]["TrackSummaryModel"][];
+        };
+        /**
+         * ArtistSummaryModel
+         * @description One artist grouping as the S2 Artists tab renders it.
+         */
+        ArtistSummaryModel: {
+            /**
+             * Artist
+             * @description Representative display name for the artist.
+             */
+            artist: string;
+            /**
+             * Artist Key
+             * @description Derived key addressing this artist context.
+             */
+            artist_key: string;
+            /** Track Count */
+            track_count: number;
+        };
+        /**
          * ArtworkLastfmRequest
          * @description Stage Last.fm's best cover for one track's identity.
          */
@@ -910,6 +1095,26 @@ export interface components {
              */
             url: string;
         };
+        /** PageModel[AlbumSummaryModel] */
+        PageModel_AlbumSummaryModel_: {
+            /** Items */
+            items: components["schemas"]["AlbumSummaryModel"][];
+            /**
+             * Next Cursor
+             * @description Opaque cursor for the next page, or null when this page is the last.
+             */
+            next_cursor?: string | null;
+        };
+        /** PageModel[ArtistSummaryModel] */
+        PageModel_ArtistSummaryModel_: {
+            /** Items */
+            items: components["schemas"]["ArtistSummaryModel"][];
+            /**
+             * Next Cursor
+             * @description Opaque cursor for the next page, or null when this page is the last.
+             */
+            next_cursor?: string | null;
+        };
         /** PageModel[JobModel] */
         PageModel_JobModel_: {
             /** Items */
@@ -954,6 +1159,16 @@ export interface components {
         PageModel_TrackSummaryModel_: {
             /** Items */
             items: components["schemas"]["TrackSummaryModel"][];
+            /**
+             * Next Cursor
+             * @description Opaque cursor for the next page, or null when this page is the last.
+             */
+            next_cursor?: string | null;
+        };
+        /** PageModel[YearSummaryModel] */
+        PageModel_YearSummaryModel_: {
+            /** Items */
+            items: components["schemas"]["YearSummaryModel"][];
             /**
              * Next Cursor
              * @description Opaque cursor for the next page, or null when this page is the last.
@@ -1373,6 +1588,38 @@ export interface components {
             /** Track Number */
             track_number?: number | null;
         };
+        /**
+         * YearContextModel
+         * @description The S8 year view: identity and grouped-then-ordered tracks.
+         */
+        YearContextModel: {
+            /** Release Year */
+            release_year: number | null;
+            /** Track Count */
+            track_count: number;
+            /** Tracks */
+            tracks: components["schemas"]["TrackSummaryModel"][];
+            /** Year Key */
+            year_key: string;
+        };
+        /**
+         * YearSummaryModel
+         * @description One release-year grouping as the S2 Years tab renders it.
+         */
+        YearSummaryModel: {
+            /**
+             * Release Year
+             * @description The release year, or null for the first-class Unknown Year grouping.
+             */
+            release_year: number | null;
+            /** Track Count */
+            track_count: number;
+            /**
+             * Year Key
+             * @description Derived key addressing this year context.
+             */
+            year_key: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -1684,6 +1931,132 @@ export interface operations {
             };
         };
     };
+    list_library_albums_api_v1_library_albums_get: {
+        parameters: {
+            query?: {
+                /** @description Match against the normalized artist and album. */
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageModel_AlbumSummaryModel_"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_library_album_api_v1_library_albums__album_key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumContextModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_library_artists_api_v1_library_artists_get: {
+        parameters: {
+            query?: {
+                /** @description Match against the normalized artist. */
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageModel_ArtistSummaryModel_"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_library_artist_api_v1_library_artists__artist_key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artist_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtistContextModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_library_tracks_api_v1_library_tracks_get: {
         parameters: {
             query?: {
@@ -1708,6 +2081,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PageModel_TrackSummaryModel_"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_library_years_api_v1_library_years_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageModel_YearSummaryModel_"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_library_year_api_v1_library_years__year_key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                year_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["YearContextModel"];
                 };
             };
             /** @description Error envelope */

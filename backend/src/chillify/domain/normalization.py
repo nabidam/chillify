@@ -28,6 +28,14 @@ METADATA_TEXT_MAX_LENGTH: Final = 200
 DISC_OR_TRACK_NUMBER_MIN: Final = 1
 DISC_OR_TRACK_NUMBER_MAX: Final = 999
 RELEASE_YEAR_MIN: Final = 1000
+# The database corruption guard bounds a stored year to `1000..9999`; a year
+# key names a stored context, so it is verified against that same range rather
+# than the tighter clock-bound input rule.
+RELEASE_YEAR_STORAGE_MAX: Final = 9999
+
+# The first-class stand-in for a release-year context with no year. Chosen so a
+# year key reads as itself in a URL — `2005` or `unknown`, never an opaque blob.
+UNKNOWN_YEAR_KEY: Final = "unknown"
 
 # Deterministic stand-ins for absent metadata. A real album literally named
 # "Unknown Album" therefore shares the absent-album context; that collision is
@@ -255,3 +263,30 @@ def decode_album_key(key: str) -> tuple[str, str]:
     ):
         raise ValidationFailedError("That album key is not in canonical form.")
     return artist, album
+
+
+def encode_year_key(release_year: int | None) -> str:
+    """The stable identifier for a release-year context.
+
+    A real year is its own decimal string; an absent year is the literal
+    `unknown`, so the year grouping addresses missing metadata as a
+    first-class context rather than an error.
+    """
+    return UNKNOWN_YEAR_KEY if release_year is None else str(release_year)
+
+
+def decode_year_key(key: str) -> int | None:
+    """Decode and verify canonical form: `unknown`, or a bare in-range year.
+
+    Canonical means the key re-encodes to itself, which rejects leading zeros,
+    signs, and whitespace before the value can name a context no stored row can
+    hold. `unknown` maps to the absent-year context.
+    """
+    if key == UNKNOWN_YEAR_KEY:
+        return None
+    if not (key.isascii() and key.isdigit()):
+        raise ValidationFailedError("That year key is not in canonical form.")
+    year = int(key)
+    if encode_year_key(year) != key or year < RELEASE_YEAR_MIN or year > RELEASE_YEAR_STORAGE_MAX:
+        raise ValidationFailedError("That year key is not in canonical form.")
+    return year

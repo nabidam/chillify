@@ -28,6 +28,12 @@ function apiBaseUrl(): string {
 
 export type TrackSummary = components["schemas"]["TrackSummaryModel"];
 export type TrackDetail = components["schemas"]["TrackDetailModel"];
+export type ArtistSummary = components["schemas"]["ArtistSummaryModel"];
+export type AlbumSummary = components["schemas"]["AlbumSummaryModel"];
+export type YearSummary = components["schemas"]["YearSummaryModel"];
+export type ArtistContext = components["schemas"]["ArtistContextModel"];
+export type AlbumContext = components["schemas"]["AlbumContextModel"];
+export type YearContext = components["schemas"]["YearContextModel"];
 export type Profile = components["schemas"]["ProfileModel"];
 export type Playlist = components["schemas"]["PlaylistModel"];
 export type PlaylistDetail = components["schemas"]["PlaylistDetailModel"];
