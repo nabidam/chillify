@@ -207,3 +207,49 @@ class StorageUnwritableError(ChillifyError):
     code = "storage_unwritable"
     status_code = 503
     retryable = True
+
+
+class ProxyConfigurationError(ChillifyError):
+    """The configured proxy URL is malformed or uses an unsupported scheme.
+
+    This is a submitted value that violates a documented rule, so it is a
+    validation failure rather than a transport failure: no request was ever
+    attempted. The message names the rule, never the credential inside the URL.
+    """
+
+    code = "proxy_configuration_invalid"
+    status_code = 422
+    retryable = False
+
+
+class ProxyAuthenticationError(ChillifyError):
+    """The proxy rejected the supplied credentials.
+
+    Retrying the same request cannot help until the credentials change, so this
+    is not retryable. The proxy's own response body is never echoed.
+    """
+
+    code = "proxy_authentication_failed"
+    status_code = 502
+    retryable = False
+
+
+class ProxyConnectionError(ChillifyError):
+    """The configured proxy could not be reached.
+
+    There is deliberately no direct fallback: reaching the destination without
+    the proxy is exactly the traffic the operator chose to prevent. The failure
+    is retryable because the proxy may simply be momentarily unreachable.
+    """
+
+    code = "proxy_connection_failed"
+    status_code = 503
+    retryable = True
+
+
+class ProxyTimeoutError(ChillifyError):
+    """An outbound request through the proxy exceeded its time budget."""
+
+    code = "proxy_timeout"
+    status_code = 504
+    retryable = True

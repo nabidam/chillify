@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import Select, func, or_, select, tuple_
@@ -64,6 +65,7 @@ from chillify.infrastructure.db.models import (
     PlaylistRow,
     PlaylistTrackRow,
     ProfileRow,
+    SettingsRow,
     TrackRow,
     TrackSourceRow,
 )
@@ -1402,3 +1404,96 @@ class IdempotencyRepository:
         self._session.query(ApiIdempotencyRow).filter(
             ApiIdempotencyRow.expires_at <= to_rfc3339(now)
         ).delete(synchronize_session=False)
+
+
+@dataclass(frozen=True, slots=True)
+class SettingRecord:
+    """One stored setting, with its ciphertext kept apart from its public part.
+
+    The public part is what `GET /settings` may return; the ciphertext never is.
+    Keeping them separate here means no caller can accidentally serialize the
+    encrypted credential into a response.
+    """
+
+    key: str
+    public: dict[str, object]
+    secret_ciphertext: bytes | None
+    revision: int
+
+    @property
+    def has_secret(self) -> bool:
+        return self.secret_ciphertext is not None
+
+
+class SettingsRepository:
+    """Reads and writes the seeded proxy and provider settings rows.
+
+    A missing row is configuration corruption — the migration seeds every key —
+    so it is reported as a not-found rather than silently created with a guessed
+    default. Every write is revision-guarded so a second browser tab cannot
+    clobber an edit it never saw.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def list_all(self) -> tuple[SettingRecord, ...]:
+        rows = self._session.scalars(select(SettingsRow).order_by(SettingsRow.key)).all()
+        return tuple(_to_setting(row) for row in rows)
+
+    def get(self, key: str) -> SettingRecord:
+        row = self._require(key)
+        return _to_setting(row)
+
+    def update(
+        self,
+        key: str,
+        *,
+        expected_revision: int,
+        public: dict[str, object],
+        secret_ciphertext: bytes | None,
+        now: datetime | None = None,
+    ) -> SettingRecord:
+        """Replace one setting's public and secret parts, guarding the revision.
+
+        A stale revision is refused rather than overwritten: the other tab in
+        the house already saved, and silently discarding that edit is exactly
+        the surprise optimistic concurrency exists to prevent.
+        """
+        row = self._require(key)
+        if row.revision != expected_revision:
+            raise RecordChangedError(
+                "This setting was changed elsewhere. Reload and try again.",
+                field="revision",
+                context={"current_revision": row.revision},
+            )
+        row.public_json = json.dumps(public, separators=(",", ":"), sort_keys=True)
+        row.secret_ciphertext = secret_ciphertext
+        row.revision += 1
+        row.updated_at = to_rfc3339(now or datetime.now(UTC))
+        self._session.flush()
+        return _to_setting(row)
+
+    def _require(self, key: str) -> SettingsRow:
+        row = self._session.get(SettingsRow, key)
+        if row is None:
+            raise RecordNotFoundError(
+                "That setting does not exist in this deployment.",
+                context={"key": key},
+            )
+        return row
+
+
+def _to_setting(row: SettingsRow) -> SettingRecord:
+    try:
+        public = json.loads(row.public_json)
+    except json.JSONDecodeError:
+        public = {}
+    if not isinstance(public, dict):
+        public = {}
+    return SettingRecord(
+        key=row.key,
+        public=public,
+        secret_ciphertext=row.secret_ciphertext,
+        revision=row.revision,
+    )

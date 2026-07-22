@@ -9,6 +9,7 @@ import { PlaylistPage } from "@/features/playlists/PlaylistPage";
 import { PlaylistsPage } from "@/features/playlists/PlaylistsPage";
 import { ProfileChooser } from "@/features/profiles/ProfileChooser";
 import { SearchPage } from "@/features/search/SearchPage";
+import { SettingsPage } from "@/features/settings/SettingsPage";
 
 /**
  * Route table for the persistent shell.
@@ -30,7 +31,7 @@ export function AppRoutes() {
           <Route path={routes.playlists} element={<PlaylistsPage />} />
           <Route path={`${routes.playlists}/:playlistId`} element={<PlaylistPage />} />
           <Route path={routes.downloads} element={<DownloadsPage />} />
-          <Route path={routes.settings} element={<PendingScreen title="Settings" />} />
+          <Route path={routes.settings} element={<SettingsPage />} />
           <Route path="*" element={<PendingScreen title="Not found" />} />
         </Route>
       </Route>

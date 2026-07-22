@@ -303,6 +303,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the masked proxy and provider settings */
+        get: operations["read_settings_api_v1_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/providers/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Toggle a provider or set its credential */
+        patch: operations["update_provider_api_v1_settings_providers__provider__patch"];
+        trace?: never;
+    };
+    "/api/v1/settings/providers/{provider}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report a single provider's readiness */
+        post: operations["test_provider_api_v1_settings_providers__provider__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/proxy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Save or clear the global proxy */
+        patch: operations["update_proxy_api_v1_settings_proxy_patch"];
+        trace?: never;
+    };
+    "/api/v1/settings/proxy/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test the saved or a supplied proxy through the proxy itself */
+        post: operations["test_proxy_api_v1_settings_proxy_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/health": {
         parameters: {
             query?: never;
@@ -888,6 +973,39 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * ProviderDiagnosisModel
+         * @description One provider-test outcome.
+         */
+        ProviderDiagnosisModel: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "ok" | "disabled" | "unconfigured";
+            /** Message */
+            message: string;
+            /** Ok */
+            ok: boolean;
+        };
+        /**
+         * ProviderStateModel
+         * @description One provider's public settings state.
+         */
+        ProviderStateModel: {
+            /** Configured */
+            configured: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Has Credential */
+            has_credential: boolean;
+            /** Name */
+            name: string;
+            /** Requires Credential */
+            requires_credential: boolean;
+            /** Revision */
+            revision: number;
+        };
         /** ProviderStatusModel */
         ProviderStatusModel: {
             /** Configured */
@@ -896,6 +1014,40 @@ export interface components {
             enabled: boolean;
             /** Name */
             name: string;
+        };
+        /**
+         * ProxyDiagnosisModel
+         * @description One proxy-test outcome.
+         */
+        ProxyDiagnosisModel: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "ok" | "unsupported_scheme" | "connection" | "authentication" | "timeout";
+            /** Message */
+            message: string;
+            /** Ok */
+            ok: boolean;
+        };
+        /**
+         * ProxyStateModel
+         * @description The masked proxy state a browser may see.
+         */
+        ProxyStateModel: {
+            /** Configured */
+            configured: boolean;
+            /** Host */
+            host?: string | null;
+            /**
+             * Masked Url
+             * @description Scheme, host, and port with the password removed and the username masked.
+             */
+            masked_url?: string | null;
+            /** Revision */
+            revision: number;
+            /** Scheme */
+            scheme?: string | null;
         };
         /**
          * RemoteResultModel
@@ -925,6 +1077,15 @@ export interface components {
             name: string;
             /** Revision */
             revision: number;
+        };
+        /**
+         * SettingsModel
+         * @description The masked settings surface.
+         */
+        SettingsModel: {
+            /** Providers */
+            providers: components["schemas"]["ProviderStateModel"][];
+            proxy: components["schemas"]["ProxyStateModel"];
         };
         /**
          * SystemStatusModel
@@ -959,6 +1120,17 @@ export interface components {
             storage: components["schemas"]["ComponentStatusModel"][];
             /** Tools */
             tools: components["schemas"]["ComponentStatusModel"][];
+        };
+        /**
+         * TestProxyRequest
+         * @description Test the saved proxy, or a supplied one before saving it.
+         */
+        TestProxyRequest: {
+            /**
+             * Url
+             * @description A proxy to test as-is, or null to test the saved proxy.
+             */
+            url?: string | null;
         };
         /**
          * TrackCandidateModel
@@ -1076,6 +1248,58 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * UpdateProviderRequest
+         * @description Toggle a provider and, for Last.fm, set or clear its API key.
+         */
+        UpdateProviderRequest: {
+            /**
+             * Clear Secret
+             * @description Remove the stored credential.
+             * @default false
+             */
+            clear_secret: boolean;
+            /**
+             * Credential
+             * @description A new API key for a credentialled provider. Blank means unchanged.
+             */
+            credential?: string | null;
+            /**
+             * Enabled
+             * @description Turn the provider on or off.
+             */
+            enabled?: boolean | null;
+            /**
+             * Revision
+             * @description The revision the browser last read.
+             */
+            revision: number;
+        };
+        /**
+         * UpdateProxyRequest
+         * @description Save or clear the global proxy.
+         *
+         *     A blank or null `url` with `clear` unset means "remove the proxy"; a URL
+         *     means "validate and save it". The revision is the one the browser last read.
+         */
+        UpdateProxyRequest: {
+            /**
+             * Clear
+             * @description Remove the saved proxy.
+             * @default false
+             */
+            clear: boolean;
+            /**
+             * Revision
+             * @description The revision the browser last read.
+             */
+            revision: number;
+            /**
+             * Url
+             * @description Proxy URL, or null to clear.
+             */
+            url?: string | null;
         };
         /**
          * UpdateTrackRequest
@@ -1739,6 +1963,167 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PageModel_RemoteResultModel_"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_settings_api_v1_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_provider_api_v1_settings_providers__provider__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProviderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderStateModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    test_provider_api_v1_settings_providers__provider__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderDiagnosisModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_proxy_api_v1_settings_proxy_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProxyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProxyStateModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    test_proxy_api_v1_settings_proxy_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TestProxyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProxyDiagnosisModel"];
                 };
             };
             /** @description Error envelope */

@@ -13,6 +13,7 @@ export interface LibraryTracksQuery {
 
 export const queryKeys = {
   systemStatus: ["system", "status"] as const,
+  settings: ["settings"] as const,
   profiles: ["profiles"] as const,
   libraryTracks: (query: LibraryTracksQuery = {}) =>
     ["library", "tracks", query.q ?? "", query.sort ?? "recent"] as const,

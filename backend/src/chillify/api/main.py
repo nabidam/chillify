@@ -32,6 +32,9 @@ from chillify.api.routes import (
     system,
     tracks,
 )
+from chillify.api.routes import (
+    settings as settings_routes,
+)
 from chillify.composition import build_composition
 from chillify.config import ConfigurationError, load_settings
 from chillify.domain.errors import ChillifyError
@@ -186,6 +189,7 @@ def create_app() -> FastAPI:
     app.include_router(search.router, prefix=API_PREFIX)
     app.include_router(links.router, prefix=API_PREFIX)
     app.include_router(downloads.router, prefix=API_PREFIX)
+    app.include_router(settings_routes.router, prefix=API_PREFIX)
     app.include_router(events.router, prefix=API_PREFIX)
     # Managed media bytes sit outside the versioned API on the path nginx
     # passes through unbuffered, alongside the audio stream.

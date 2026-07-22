@@ -451,7 +451,18 @@ layer = "e2e"
 gate = 2
 ```
 
-## Task 9 — Mutation recovery and permanent deletion
+- **Done:** `<pending>` — evidence `specs/001-core/evidence/task-8.txt`
+  - The `[e2e@gate-2]` criterion is deferred to Task 10 (DEMO GATE 2); this task
+    delivers the integration and contract acceptance. Backend: one fail-closed
+    `OutboundHttp` policy (proxy-first, no direct fallback, bounded retry),
+    Fernet secret encryption, masked settings CRUD (`GET /settings`,
+    `PATCH /settings/proxy`, `POST /settings/proxy/test`,
+    `PATCH/POST /settings/providers/{provider}`), and production Deezer/Last.fm
+    adapters over the shared policy. Frontend: S12 SettingsPage with proxy,
+    provider cards, and storage/tool diagnostics; `switch` primitive added.
+  - Verified: `./scripts/verify.sh` → all checks passed (365 backend, 67
+    frontend). Acceptance evidence in `task-8.txt` (28 tests: proxy fail-closed
+    integration + shared outbound-policy contract).
 
 ```toml
 id = 9

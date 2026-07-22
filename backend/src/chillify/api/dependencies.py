@@ -18,6 +18,7 @@ from chillify.application.links import LinkInspectionService
 from chillify.application.metadata import MetadataService
 from chillify.application.playlists import PlaylistService
 from chillify.application.search import SearchService
+from chillify.application.settings import SettingsService
 from chillify.composition import Composition
 
 
@@ -66,6 +67,12 @@ def get_artwork_service(
     composition: Annotated[Composition, Depends(get_composition)],
 ) -> ArtworkService:
     return composition.artwork_service()
+
+
+def get_settings_service(
+    composition: Annotated[Composition, Depends(get_composition)],
+) -> SettingsService:
+    return composition.settings_service()
 
 
 def get_idempotency_guard(

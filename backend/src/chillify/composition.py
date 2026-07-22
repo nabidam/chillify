@@ -36,11 +36,13 @@ from chillify.application.metadata import MetadataService
 from chillify.application.playlists import PlaylistService
 from chillify.application.reconciliation import ReconciliationService
 from chillify.application.search import SearchService
+from chillify.application.settings import SettingsService
 from chillify.config import Settings, preflight_mounted_roots
 from chillify.infrastructure.db.engine import create_database_engine, create_session_factory
 from chillify.infrastructure.logging.setup import redactor
 from chillify.infrastructure.providers.registry import ProviderRegistry, build_registry
 from chillify.infrastructure.queue.celery_app import create_celery_app, make_dispatcher
+from chillify.infrastructure.security.secrets import SecretCipher
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +149,18 @@ class Composition:
     def search_service(self) -> SearchService:
         """Bind explicit online discovery to the adapters this environment allows."""
         return SearchService(session_factory=self.session_factory, registry=self.registry)
+
+    def settings_service(self) -> SettingsService:
+        """Bind the proxy and provider settings use cases.
+
+        The cipher is built from the already-validated deployment key, so the
+        key is parsed once at startup and never re-read from the environment
+        here.
+        """
+        return SettingsService(
+            session_factory=self.session_factory,
+            cipher=SecretCipher.from_key(self.settings.secret_key),
+        )
 
     def link_inspection_service(self) -> LinkInspectionService:
         """Bind direct-link inspection to the inspectors this environment allows."""

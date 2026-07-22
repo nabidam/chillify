@@ -11,12 +11,30 @@ identically as strings.
 
 from __future__ import annotations
 
-from sqlalchemy import Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Float, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
     """Declarative base for every mapped table."""
+
+
+class SettingsRow(Base):
+    """One application setting: a proxy or a provider, keyed by a stable name.
+
+    `public_json` holds only what `GET /settings` may return; the optional
+    secret is encrypted before it reaches `secret_ciphertext` and is never part
+    of the public JSON. `revision` guards concurrent edits from two browser tabs
+    in the house.
+    """
+
+    __tablename__ = "settings"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    public_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    secret_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_at: Mapped[str] = mapped_column(String, nullable=False)
 
 
 class ProfileRow(Base):
