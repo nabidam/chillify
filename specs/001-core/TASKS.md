@@ -535,7 +535,7 @@ layer = "integration"
 Context pack (hint): `compose.yaml` backend services; `deploy/compose.gate.yaml`;
 Task 8 outbound policy.
 
-- **Done:** `PENDING` — evidence `specs/001-core/evidence/task-9a.txt`
+- **Done:** `4da9cd2` — evidence `specs/001-core/evidence/task-9a.txt`
   Gate 2 preflight finding (user, 2026-07-22): the proxy test failed on a host
   proxy at `socks5://host.docker.internal:10808`. On Linux that name does not
   resolve inside a container without an explicit host-gateway mapping, so the
