@@ -402,6 +402,33 @@ layer = "e2e"
 gate = 2
 ```
 
+- **Done:** `8d8ccef` — evidence `specs/001-core/evidence/task-7.txt`
+  The `[e2e@gate-2]` criterion is Task 10's demo gate and is not claimed here;
+  both integration criteria are demonstrated by tests that drive the real
+  services against a migrated SQLite and mounted temp files
+  (`tests/integration/test_queue_recovery.py` strands a running job by ageing
+  its lease, reconciles, and runs it to a single track/file;
+  `tests/integration/test_duplicates.py` covers duplicate races, the
+  queued/mid-download cancel with workspace cleanup, and the parent-linked
+  retry). The cooperative mid-download cancel is exercised across two threads —
+  worker and canceller — the same split the request and worker are in
+  production.
+  Deviations from the predicted file set, all additive wiring the criteria and
+  the ARCHITECTURE routes table (`POST /downloads/{id}/cancel` and `/retry`,
+  §5) require: cancel/retry needed repository methods, `DownloadService`
+  use cases, schema (`CancelRequestModel`), and routes in
+  `api/{routes,schemas}/downloads.py` and `db/repositories.py`; the recovery
+  triggers needed a `reconciliation_service()` factory in `composition.py`,
+  a `worker_ready`/lifespan hook in `worker/main.py` and `api/main.py`, and the
+  regenerated `frontend/src/api/generated.ts`. `DownloadRow.tsx` is reached by
+  swapping the inline active-queue row in `DownloadsPage.tsx` and adding a
+  Retry action to its finished-job diagnostics; the two mutation hooks live in
+  the feature's public module `downloadJobs.ts`.
+  One internal-ambiguity choice, noted in code: cancellation has two channels —
+  the durable `cancel_requested_at` flag for the cross-process case and an
+  in-process `ActiveAcquisitions` signal (plus the process-group teardown the
+  real subprocess adapters will use in Task 16) for the same-process fast path.
+
 ## Task 8 — Proxy-first settings and degraded local behavior
 
 ```toml
