@@ -583,6 +583,35 @@ task = 8
 
 Preflight: `./scripts/gate/prepare.sh gate-2 recovery` must establish `.gate/gate-2/` roots and its isolated Redis prefix before launch. Record the human walkthrough result in the evidence file.
 
+- **GATE 2 WALKED — PASS** (2026-07-22, user) — evidence `specs/001-core/evidence/task-10.txt`
+  The human walked all five journey steps against the recreated gate
+  composition and confirmed them. The journey is crystallized as
+  `frontend/tests/e2e/gate-2.spec.ts`, which reprovisions a fresh seeded gate
+  stack, walks the whole story — bulk-link rejection, YouTube review, a
+  worker-stopped cancel/retry and duplicate-reaches-existing-track, proxy
+  fail-closed with credential masking and a provider toggle, a household
+  deletion, and Redis stop/start with local playback retained — and tears the
+  stack down. Green in two consecutive runs (31–35s).
+  Recorded `launch`/`seed` were corrected here, the same overlay/label bug
+  caught at Gate 1: a gate launches the production composition **plus** the
+  fixture overlay in `gate` mode, so the runnable launch is
+  `./scripts/gate/prepare.sh gate-2 gate && docker compose --env-file
+  .gate/gate-2/.env -f compose.yaml -f deploy/compose.gate.yaml up --build -d`,
+  and the seed is `./scripts/gate/seed.sh gate-2` — `recovery` is the chunk
+  label, not a mode or a seed argument, and `seed.sh` takes only the gate name.
+  Two preflight findings, both non-blocking and user-triaged: the "Downloads
+  degraded" header is the real tools probe reporting spotdl absent from the
+  image (expected; the binary ships in Task 16), and a host proxy at
+  `socks5://host.docker.internal:PORT` was unreachable on Linux until Task 9a
+  mapped the host gateway.
+  The two browser-undrivable fault-injection guarantees the journey names — a
+  worker killed mid-download, and an edit that fails after writing its files
+  with restart-safe anonymous history — are asserted by the backend integration
+  suites (`test_queue_recovery`, `test_media_edit_recovery`,
+  `test_media_delete_recovery`) rather than re-driven through the browser.
+
+- **Done:** `PENDING` — evidence `specs/001-core/evidence/task-10.txt`
+
 ## Task 11 — Artist, album, and year contexts
 
 ```toml

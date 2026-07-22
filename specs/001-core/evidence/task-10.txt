@@ -1,0 +1,30 @@
+# Task 10 — DEMO GATE 2: acquisition and recovery
+# captured 2026-07-22T17:32:51Z
+
+## Human walkthrough
+GATE 2 WALKED — PASS (2026-07-22, user). All five journey steps observed
+against the recreated gate composition (nginx + api + worker + disposable
+Redis + fixture overlay): link inspection with bulk rejection and YouTube
+review, queue cancel/retry and duplicate-reaches-existing-track, proxy
+fail-closed with masked diagnostics and provider toggle, track deletion,
+and Redis loss/recovery with local playback retained.
+
+Two preflight findings, both non-blocking (user-triaged):
+ - 'Downloads degraded' header: spotdl binary absent from the image; the
+   tools probe is real even in gate mode. Expected, deferred to Task 16.
+ - Host-proxy unreachable (socks5://host.docker.internal:PORT) on Linux:
+   fixed by Task 9a (host-gateway mapping); proxy test now returns ok.
+
+## Crystallized journey (preflight command exercised live)
+$ GATE_NAME=gate-2 npx playwright test gate-2 --reporter=list
+seeded /home/dev/projects/chillify/.gate/gate-2
+
+Running 1 test using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/gate-2.spec.ts:46:1 › Gate 2 — acquisition and recovery, end to end (31.0s)
+removed /home/dev/projects/chillify/.gate/gate-2
+
+  1 passed (1.5m)
+
+$ ./scripts/verify.sh
+verify: all checks passed
