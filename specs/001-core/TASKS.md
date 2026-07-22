@@ -360,6 +360,28 @@ layer = "e2e"
 gate = 2
 ```
 
+- **Done:** `7c50e8d` — evidence `specs/001-core/evidence/task-6.txt`
+  The `[e2e@gate-2]` criterion is Task 10's demo gate and is not claimed here;
+  the unit and contract criteria are demonstrated by tests that drive the real
+  route and adapters (`tests/integration/test_link_inspection.py` posts
+  `/links/inspect` and asserts `GET /downloads` stays empty for every rejected
+  link; `tests/{unit/test_link_inspection,contract/test_ytdlp_contract,
+  contract/test_spotdl_contract}.py` cover the rest).
+  Deviations from the predicted file set, all additive: `label.tsx` already
+  existed from an earlier Shadcn install, so nothing was added there. Wiring the
+  new route and inspection use case required editing `composition.py`,
+  `api/{main,dependencies}.py`, and `infrastructure/providers/registry.py`
+  beyond the listed files (registry gained a `link_inspectors` capability, bound
+  to fixtures only in gate — the production adapters join it in Task 16, which
+  already lists `registry.py`). The wire-normalization functions live inside
+  `providers/{ytdlp,spotdl}.py` themselves rather than a separate `*_wire.py`,
+  matching how `deezer_wire.py` is shared. Two frontend files not in the list
+  were added to make the flow reachable and typed: the acquisition public module
+  `features/acquisition/acquisitionQueries.ts` and the sidebar Add-music button
+  in `app/AppSidebar.tsx` that opens S4. Two recorded fixtures were added under
+  `tests/fixtures/providers/` (`ytdlp_inspect.json`, `spotdl_metadata.json`),
+  which `scripts/gate/prepare.sh` already copies into every gate tree.
+
 ## Task 7 — Cancellation, retry, restart recovery, and deduplication
 
 ```toml
