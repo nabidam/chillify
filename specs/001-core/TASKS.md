@@ -756,6 +756,24 @@ layer = "e2e"
 gate = 3
 ```
 
+- **Done:** `615a6b4` — evidence `specs/001-core/evidence/task-14.txt`
+  - Added `DataState`/`ErrorState` and `DegradedBanner` (`features/shared`),
+    `RouteErrorBoundary`, a skip-to-content link + degraded banner in
+    `PersistentShell`, and the `breadcrumb`/`navigation-menu` Shadcn primitives.
+  - Scope expanded (user-approved) to fix app-wide **modal focus return**: no
+    dialog used `DialogTrigger`, so Radix restored focus to a null trigger and
+    it fell to `body`. Added `useRestoreFocusOnClose` and wired it into all five
+    dialogs (`PlaylistEditorDialog`, `TrackEditorDialog`, `DeleteTrackDialog`,
+    `AddLinkDialog`, `YouTubeReviewDialog`) — the generated `dialog.tsx`
+    primitive cannot be hand-edited per CONVENTIONS.
+  - `[unit]` `tests/component/screen-states.test.tsx` (10 cases) covers every
+    `DataState` branch, `DegradedBanner`, `RouteErrorBoundary` recovery, and
+    modal focus return. `[e2e@gate-3]` `tests/e2e/accessibility.spec.ts` adds
+    keyboard traversal, skip link, reduced motion, and axe scans — walked at
+    Gate 3 (Task 15).
+  - `./scripts/verify.sh --fast` green (build/audit + gate-3 e2e deferred to the
+    Docker composition at Gate 3).
+
 ## Task 15 — DEMO GATE 3: browse, organize, and listen
 
 ```toml
