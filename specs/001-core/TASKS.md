@@ -907,7 +907,7 @@ text = "All real adapters use the one proxy policy without direct fallback, and 
 layer = "integration"
 ```
 
-- **Done:** `c1cc89b` — evidence `specs/001-core/evidence/task-16.txt`
+- **Done:** `d182276` — evidence `specs/001-core/evidence/task-16.txt`
   Scoped to the adapter layer per a user decision recorded this turn: the
   worker never calls the Last.fm enricher nor applies the
   review→provider→Last.fm→Unknown pipeline (the `ENRICHING` phase is dead
