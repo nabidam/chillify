@@ -38,7 +38,7 @@ const navigation = [
  */
 export function AppSidebar() {
   const location = useLocation();
-  const { activeProfileId } = useActiveProfile();
+  const { activeProfileId, clearProfile } = useActiveProfile();
   const playlists = usePlaylists(activeProfileId).data ?? [];
   const [addOpen, setAddOpen] = useState(false);
 
@@ -52,6 +52,7 @@ export function AppSidebar() {
         <Button
           variant="ghost"
           className="justify-start gap-2 text-foreground-muted hover:text-foreground"
+          onClick={clearProfile}
         >
           <UserRound className="size-4" aria-hidden="true" />
           Choose profile
