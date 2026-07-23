@@ -25,6 +25,7 @@ import {
   useQueueReviewedDownload,
 } from "@/features/acquisition/acquisitionQueries";
 import { YouTubeReviewDialog } from "@/features/acquisition/YouTubeReviewDialog";
+import { useRestoreFocusOnClose } from "@/features/shared/restoreFocusOnClose";
 
 /**
  * S4 — Add Track by Link.
@@ -112,10 +113,12 @@ export function AddLinkDialog({
     );
   }
 
+  const onCloseAutoFocus = useRestoreFocusOnClose(open);
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent>
+        <DialogContent onCloseAutoFocus={onCloseAutoFocus}>
           <form onSubmit={submit} noValidate>
             <DialogHeader>
               <DialogTitle>Add music by link</DialogTitle>

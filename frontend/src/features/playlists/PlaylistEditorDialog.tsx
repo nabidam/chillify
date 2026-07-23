@@ -13,6 +13,7 @@ import {
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useCreatePlaylist, useRenamePlaylist } from "@/features/playlists/playlistQueries";
+import { useRestoreFocusOnClose } from "@/features/shared/restoreFocusOnClose";
 
 /**
  * S16 — Playlist editor dialog.
@@ -87,9 +88,11 @@ export function PlaylistEditorDialog({
     }
   }
 
+  const onCloseAutoFocus = useRestoreFocusOnClose(open);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent onCloseAutoFocus={onCloseAutoFocus}>
         <form onSubmit={submit} noValidate>
           <DialogHeader>
             <DialogTitle>{isRename ? "Rename playlist" : "New playlist"}</DialogTitle>

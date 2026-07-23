@@ -2,6 +2,7 @@ import { Navigate, Outlet, Route, Routes } from "react-router";
 import { useActiveProfile } from "@/app/activeProfile";
 import { PendingScreen } from "@/app/PendingScreen";
 import { PersistentShell } from "@/app/PersistentShell";
+import { RouteErrorBoundary } from "@/app/RouteErrorBoundary";
 import { routes } from "@/app/routes";
 import { DownloadsPage } from "@/features/downloads/DownloadsPage";
 import { ContextPage } from "@/features/library/ContextPage";
@@ -22,24 +23,32 @@ import { SettingsPage } from "@/features/settings/SettingsPage";
  */
 export function AppRoutes() {
   return (
-    <Routes>
-      <Route path={routes.profiles} element={<ProfileGate />} />
-      <Route element={<RequireProfile />}>
-        <Route element={<PersistentShell />}>
-          <Route index element={<Navigate to={routes.library} replace />} />
-          <Route path={routes.library} element={<LibraryPage />} />
-          <Route path="/library/artists/:contextKey" element={<ContextPage kind="artist" />} />
-          <Route path="/library/albums/:contextKey" element={<ContextPage kind="album" />} />
-          <Route path="/library/years/:contextKey" element={<ContextPage kind="year" />} />
-          <Route path={routes.search} element={<SearchPage />} />
-          <Route path={routes.playlists} element={<PlaylistsPage />} />
-          <Route path={`${routes.playlists}/:playlistId`} element={<PlaylistPage />} />
-          <Route path={routes.downloads} element={<DownloadsPage />} />
-          <Route path={routes.settings} element={<SettingsPage />} />
-          <Route path="*" element={<PendingScreen title="Not found" />} />
+    // An outer boundary so even the pre-shell screens (the profile chooser)
+    // degrade to a recoverable message instead of a blank page; the shell's own
+    // boundary catches content errors first and keeps the shell alive.
+    <RouteErrorBoundary>
+      <Routes>
+        <Route path={routes.profiles} element={<ProfileGate />} />
+        <Route element={<RequireProfile />}>
+          <Route element={<PersistentShell />}>
+            <Route index element={<Navigate to={routes.library} replace />} />
+            <Route path={routes.library} element={<LibraryPage />} />
+            <Route
+              path="/library/artists/:contextKey"
+              element={<ContextPage kind="artist" />}
+            />
+            <Route path="/library/albums/:contextKey" element={<ContextPage kind="album" />} />
+            <Route path="/library/years/:contextKey" element={<ContextPage kind="year" />} />
+            <Route path={routes.search} element={<SearchPage />} />
+            <Route path={routes.playlists} element={<PlaylistsPage />} />
+            <Route path={`${routes.playlists}/:playlistId`} element={<PlaylistPage />} />
+            <Route path={routes.downloads} element={<DownloadsPage />} />
+            <Route path={routes.settings} element={<SettingsPage />} />
+            <Route path="*" element={<PendingScreen title="Not found" />} />
+          </Route>
         </Route>
-      </Route>
-    </Routes>
+      </Routes>
+    </RouteErrorBoundary>
   );
 }
 

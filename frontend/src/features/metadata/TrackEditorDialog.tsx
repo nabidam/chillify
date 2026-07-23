@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArtworkPicker } from "@/features/metadata/ArtworkPicker";
 import { DeleteTrackDialog } from "@/features/metadata/DeleteTrackDialog";
+import { useRestoreFocusOnClose } from "@/features/shared/restoreFocusOnClose";
 
 interface EditorFields {
   title: string;
@@ -160,9 +161,11 @@ export function TrackEditorDialog({
     }
   }
 
+  const onCloseAutoFocus = useRestoreFocusOnClose(open);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl" onCloseAutoFocus={onCloseAutoFocus}>
         <form onSubmit={submit} noValidate>
           <DialogHeader>
             <DialogTitle>Track details</DialogTitle>

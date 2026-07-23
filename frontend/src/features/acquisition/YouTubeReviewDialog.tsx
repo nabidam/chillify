@@ -22,6 +22,7 @@ import {
   type TrackCandidate,
   useQueueReviewedDownload,
 } from "@/features/acquisition/acquisitionQueries";
+import { useRestoreFocusOnClose } from "@/features/shared/restoreFocusOnClose";
 
 interface ReviewFields {
   title: string;
@@ -129,9 +130,14 @@ export function YouTubeReviewDialog({
     }
   }
 
+  const onCloseAutoFocus = useRestoreFocusOnClose(open);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent
+        className="max-h-[85vh] overflow-y-auto"
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         <form onSubmit={submit} noValidate>
           <DialogHeader>
             <DialogTitle>Review before downloading</DialogTitle>

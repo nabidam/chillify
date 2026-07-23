@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { selectCurrentTrackId, usePlayerStore } from "@/features/player/playerStore";
+import { useRestoreFocusOnClose } from "@/features/shared/restoreFocusOnClose";
 
 /** How many times this track sits in the browser's current session queue. */
 function sessionOccurrences(queue: string[], trackId: string): number {
@@ -142,9 +143,11 @@ export function DeleteTrackDialog({
     }
   }
 
+  const onCloseAutoFocus = useRestoreFocusOnClose(open);
+
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent onCloseAutoFocus={onCloseAutoFocus}>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete this track for everyone?</AlertDialogTitle>
           <AlertDialogDescription>

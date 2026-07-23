@@ -1,0 +1,104 @@
+
+=== lockfile drift (backend)
+Resolved 86 packages in 6ms
+--- lockfile drift (backend): ok
+
+=== lockfile drift (frontend)
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: undefined,
+npm warn EBADENGINE   required: { node: '24.18.0', npm: '12.0.1' },
+npm warn EBADENGINE   current: { node: 'v24.18.0', npm: '11.16.0' }
+npm warn EBADENGINE }
+npm warn allow-scripts 1 package has install scripts not yet covered by allowScripts:
+npm warn allow-scripts   msw@2.15.0 (install: (install scripts present))
+npm warn allow-scripts
+npm warn allow-scripts Run `npm approve-scripts --allow-scripts-pending` to review, or `npm approve-scripts <pkg>` to allow.
+--- lockfile drift (frontend): ok
+
+=== backend lint
+All checks passed!
+--- backend lint: ok
+
+=== backend format
+121 files already formatted
+--- backend format: ok
+
+=== backend types
+Success: no issues found in 82 source files
+--- backend types: ok
+
+=== backend tests
+........................................................................ [ 17%]
+........................................................................ [ 34%]
+........................................................................ [ 52%]
+........................................................................ [ 69%]
+........................................................................ [ 87%]
+....................................................                     [100%]
+412 passed in 74.20s (0:01:14)
+--- backend tests: ok
+
+=== frontend lint
+/home/dev/projects/chillify/biome.json:32:13 deserialize  DEPRECATED  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i The use of the recommended field has been deprecated, and will removed in the next major version of Biome. Use preset instead.
+  
+    30 │     "parser": { "tailwindDirectives": true }
+    31 │   },
+  > 32 │   "linter": {
+       │             ^
+  > 33 │     "enabled": true,
+        ...
+  > 51 │     }
+  > 52 │   },
+       │   ^
+    53 │   "javascript": {
+    54 │     "formatter": { "quoteStyle": "double", "semicolons": "always", "trailingCommas": "all" }
+  
+  i Migrate the configuration with the proper command
+  
+  $ biome migrate
+  
+
+Checked 111 files in 90ms. No fixes applied.
+Found 1 info.
+--- frontend lint: ok
+
+=== frontend types
+--- frontend types: ok
+
+=== frontend tests
+
+ RUN  v4.1.10 /home/dev/projects/chillify/frontend
+
+
+ Test Files  9 passed (9)
+      Tests  93 passed (93)
+   Start at  11:52:35
+   Duration  10.43s (transform 4.56s, setup 6.96s, import 13.27s, tests 26.11s, environment 16.92s)
+
+--- frontend tests: ok
+
+=== raw color literals
+--- raw color literals: ok
+
+=== primitive boundary
+--- primitive boundary: ok
+
+=== domain boundary
+--- domain boundary: ok
+
+=== secret scan
+--- secret scan: ok
+
+verify: all checks passed
+
+=== acceptance: component states + modal focus return (npx vitest run tests/component/screen-states.test.tsx) ===
+
+ RUN  v4.1.10 /home/dev/projects/chillify/frontend
+
+
+ Test Files  1 passed (1)
+      Tests  10 passed (10)
+   Start at  11:53:09
+   Duration  2.46s (transform 559ms, setup 232ms, import 982ms, tests 485ms, environment 634ms)
+
