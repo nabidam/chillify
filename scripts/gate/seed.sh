@@ -2,16 +2,23 @@
 #
 # Seed a prepared gate environment with fixture data.
 #
-#   ./scripts/gate/seed.sh <name>
+#   ./scripts/gate/seed.sh <name> [scenario]
 #
 # Reads .gate/<name>/.env and writes only inside that tree. It refuses to run
 # against anything but a gate environment, so household data is unreachable
 # even if the wrong name is typed.
+#
+# `scenario` selects which fixture track set to seed (default: "default").
+# The browse/organize/listen gate passes "listening" for a library with
+# several artists, albums, years, and an Unknown Year grouping. An unknown
+# label falls back to the base track set, so a decorative chunk label is
+# harmless.
 
 set -Eeuo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 NAME="${1:-}"
+SCENARIO="${2:-default}"
 
 if [[ -z "$NAME" ]]; then
     printf 'usage: %s <name>\n' "$0" >&2
@@ -57,6 +64,6 @@ set +a
 mkdir -p "$CHILLIFY_DATA_ROOT/db"
 (cd "$REPO_ROOT/backend" && uv run alembic upgrade head)
 
-(cd "$REPO_ROOT/backend" && uv run python -m chillify.gate_seed --fixture-audio "$FIXTURE_AUDIO")
+(cd "$REPO_ROOT/backend" && uv run python -m chillify.gate_seed --fixture-audio "$FIXTURE_AUDIO" --scenario "$SCENARIO")
 
 printf 'seeded %s\n' "$GATE_ROOT"

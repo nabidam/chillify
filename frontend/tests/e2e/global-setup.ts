@@ -2,6 +2,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { compose, GATE, gateScript } from "./gate-stack";
 
 const BASE_URL = process.env.GATE_BASE_URL ?? "http://localhost:8788";
+const SCENARIO = process.env.GATE_SCENARIO ?? "default";
 
 /**
  * Bring up a fresh, seeded gate stack before the journey runs.
@@ -9,15 +10,16 @@ const BASE_URL = process.env.GATE_BASE_URL ?? "http://localhost:8788";
  * Every prior run is removed first, so the environment is provisioned from
  * nothing: prepare writes the disposable tree and its `.env`, Compose builds
  * and starts the production images plus the fixture overlay, and seed writes
- * the household and its two tracks once the api answers. A run therefore never
- * inherits a track a previous run downloaded.
+ * the household and its scenario's tracks (GATE_SCENARIO, default "default")
+ * once the api answers. A run therefore never inherits a track a previous run
+ * downloaded.
  */
 async function globalSetup(): Promise<void> {
   gateScript("cleanup.sh", GATE);
   gateScript("prepare.sh", GATE, "gate");
   compose("up", "--build", "-d");
   await waitForReady();
-  gateScript("seed.sh", GATE);
+  gateScript("seed.sh", GATE, SCENARIO);
 }
 
 async function waitForReady(): Promise<void> {

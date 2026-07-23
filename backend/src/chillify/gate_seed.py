@@ -42,11 +42,14 @@ class SeedTrack:
     title: str
     artist: str
     album: str
-    release_year: int
+    release_year: int | None
     track_number: int
 
 
-SEED_TRACKS = (
+# The default set every gate inherits: two tracks the acquisition and recovery
+# journeys look up by name. Kept exactly as the earlier gates seeded them so
+# their walkthroughs and e2e specs are unaffected.
+BASE_TRACKS = (
     SeedTrack(
         title="Harder Better Faster Stronger",
         artist="Daft Punk",
@@ -63,13 +66,68 @@ SEED_TRACKS = (
     ),
 )
 
+# The browse/organize/listen journey needs variety to browse over: several
+# artists, several albums, distinct release years, and a first-class Unknown
+# Year grouping (a track whose `release_year` is None). It keeps the base
+# tracks so any step that references them by name still works.
+LISTENING_TRACKS = (
+    *BASE_TRACKS,
+    SeedTrack(
+        title="Kiara",
+        artist="Bonobo",
+        album="Black Sands",
+        release_year=2010,
+        track_number=3,
+    ),
+    SeedTrack(
+        title="Kong",
+        artist="Bonobo",
+        album="Black Sands",
+        release_year=2010,
+        track_number=5,
+    ),
+    SeedTrack(
+        title="So What",
+        artist="Miles Davis",
+        album="Kind of Blue",
+        release_year=1959,
+        track_number=1,
+    ),
+    SeedTrack(
+        title="Rainfall",
+        artist="Field Recordings",
+        album="Untitled Sessions",
+        release_year=None,
+        track_number=1,
+    ),
+)
 
-def seed(*, fixture_audio: Path) -> int:
+# Scenario labels select a track set. `seed.sh` forwards the label a gate
+# records; an unrecognized label falls back to the base set, so a gate that
+# passes a decorative chunk label keeps seeding exactly the base tracks.
+SEED_SCENARIOS: dict[str, tuple[SeedTrack, ...]] = {
+    "default": BASE_TRACKS,
+    "listening": LISTENING_TRACKS,
+}
+
+DEFAULT_SCENARIO = "default"
+
+# Backwards-compatible alias for the default track set.
+SEED_TRACKS = BASE_TRACKS
+
+
+def tracks_for_scenario(scenario: str) -> tuple[SeedTrack, ...]:
+    """The seed track set for a scenario label, defaulting to the base set."""
+    return SEED_SCENARIOS.get(scenario, BASE_TRACKS)
+
+
+def seed(*, fixture_audio: Path, scenario: str = DEFAULT_SCENARIO) -> int:
     """Write the seed profile and tracks into the configured gate environment.
 
-    Returns the number of tracks inserted. Running twice is not an error: rows
-    that already exist are left alone, so re-seeding a prepared environment is
-    safe.
+    `scenario` selects which track set to seed; an unknown label falls back to
+    the base set. Returns the number of tracks inserted. Running twice is not an
+    error: rows that already exist are left alone, so re-seeding a prepared
+    environment is safe.
     """
     settings = load_settings()
     if not settings.is_gate:
@@ -83,20 +141,19 @@ def seed(*, fixture_audio: Path) -> int:
             "The fixture audio file to seed from does not exist.",
         )
 
+    tracks = tracks_for_scenario(scenario)
     composition = build_composition(settings)
     try:
         profile_id = _ensure_profile(composition)
         inserted = sum(
-            1
-            for track in SEED_TRACKS
-            if _insert_track(composition, track, fixture_audio=fixture_audio)
+            1 for track in tracks if _insert_track(composition, track, fixture_audio=fixture_audio)
         )
     finally:
         composition.dispose()
 
     logger.info(
         "gate environment seeded",
-        extra={"profile_id": str(profile_id), "tracks": inserted},
+        extra={"profile_id": str(profile_id), "scenario": scenario, "tracks": inserted},
     )
     return inserted
 
@@ -189,15 +246,20 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         help="Path to the decodable MP3 every seeded track is copied from.",
     )
+    parser.add_argument(
+        "--scenario",
+        default=DEFAULT_SCENARIO,
+        help="Track set to seed; unknown labels fall back to the base set.",
+    )
     arguments = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
     try:
-        inserted = seed(fixture_audio=arguments.fixture_audio)
+        inserted = seed(fixture_audio=arguments.fixture_audio, scenario=arguments.scenario)
     except ConfigurationError as failure:
         logger.error("seed refused", extra={"error_code": failure.code})
         return 2
-    logger.info("seed complete", extra={"tracks": inserted})
+    logger.info("seed complete", extra={"scenario": arguments.scenario, "tracks": inserted})
     return 0
 
 
