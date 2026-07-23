@@ -1,0 +1,17 @@
+# Task 14b — Wire the sidebar Choose profile button
+# captured 2026-07-23T09:23:52Z
+
+## [unit] frontend/tests/component/choose-profile.test.tsx
+$ npx vitest run tests/component/choose-profile.test.tsx
+ RUN  v4.1.10 /home/dev/projects/chillify/frontend
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  12:53:53
+   Duration  1.74s (transform 276ms, setup 265ms, import 541ms, tests 187ms, environment 609ms)
+
+
+## [static] ./scripts/verify.sh (EXIT=0)
+
+verify: all checks passed

@@ -811,6 +811,31 @@ layer = "integration"
     offers ≥3 artists/albums/years with exactly one Unknown Year.
   - `./scripts/verify.sh` green (EXIT=0).
 
+## Task 14b — Wire the sidebar "Choose profile" button
+
+Raised by the Task 15 (Gate 3) crystallization: the sidebar's "Choose profile" button rendered with no handler, and `clearProfile` — the only action that clears the browser-session queue before the shell is left (`AppProviders.tsx`) — was invoked from nowhere. Switching profiles was unreachable from the shell, so journey step 3 (*switch profile without leaking session state*) could not be walked or encoded. This task wires the button to `clearProfile`.
+
+```toml
+id = "14b"
+type = "fix"
+chunk = 12
+deps = [14]
+files = ["frontend/src/app/AppSidebar.tsx", "frontend/tests/component/choose-profile.test.tsx"]
+[[criteria]]
+text = "The sidebar 'Choose profile' button invokes clearProfile, which clears the session queue and drops the stored profile so RequireProfile returns to the chooser."
+layer = "unit"
+```
+
+- **Done:** `2d24cf2` — evidence `specs/001-core/evidence/task-14b.txt`
+  - `AppSidebar.tsx` now reads `clearProfile` from `useActiveProfile` and calls
+    it from the button's `onClick`. `clearProfile` already clears the session
+    queue, removes the stored profile, and invalidates playlist queries; with
+    the profile null, `RequireProfile` redirects to `/profiles`.
+  - `[unit]` `tests/component/choose-profile.test.tsx` renders the sidebar with
+    a spy session and asserts the button invokes `clearProfile` exactly once, so
+    the wiring cannot silently regress.
+  - `./scripts/verify.sh` green (EXIT=0).
+
 ## Task 15 — DEMO GATE 3: browse, organize, and listen
 
 ```toml
