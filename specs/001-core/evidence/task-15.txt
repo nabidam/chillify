@@ -1,0 +1,41 @@
+# Task 15 — DEMO GATE 3: browse, organize, and listen
+# captured 2026-07-23
+
+## Human walkthrough
+GATE 3 WALKED — PASS (2026-07-23, user). The user reported "everything
+observed, check as pass" after walking the seeded "listening" library
+(Household profile) at http://localhost:8788 against the recreated gate
+composition (nginx + api + worker + disposable Redis + fixture overlay):
+browse Tracks/Artists/Albums/Years including Unknown Year and compare the
+per-context queue order; create a profile-specific playlist, add/remove
+shared tracks and play in order; reorder/remove upcoming session items,
+navigate the primary routes, refresh, and switch profile without leaking
+session state; keyboard focus, reduced motion, and empty/loading/error/
+reconnecting states; and the invalid-input step (preserved input, inline
+validation, no durable mutation).
+
+Two preflight fixes landed before the gate could be walked or encoded,
+both raised by this gate and taken as head-of-queue fix tasks:
+ - Task 14a: the gate seed wrote only two same-artist/album/year tracks
+   with no Unknown Year, so the browse journey had nothing to browse.
+   Made seeding scenario-aware; the "listening" scenario seeds several
+   artists/albums/years plus one Unknown-Year track. Gate 1/2 seeds
+   unchanged.
+ - Task 14b: the sidebar "Choose profile" button was unwired, so
+   switching profiles (and the session no-leak guarantee) was
+   unreachable from the shell. Wired it to clearProfile.
+
+## Crystallized journey (preflight command exercised live)
+$ GATE_NAME=gate-3 GATE_SCENARIO=listening npx playwright test gate-3 --reporter=list
+seeded /home/dev/projects/chillify/.gate/gate-3
+
+Running 1 test using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/gate-3.spec.ts:42:1 › Gate 3 — browse, organize, and listen, end to end (11.8s)
+removed /home/dev/projects/chillify/.gate/gate-3
+
+  1 passed (1.1m)
+
+## Static verification
+$ ./scripts/verify.sh   # EXIT=0
+verify: all checks passed

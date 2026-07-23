@@ -873,6 +873,23 @@ task = 14
 
 Preflight: `./scripts/gate/prepare.sh gate-3 listening` must create only `.gate/gate-3/` roots and the isolated prefix. Record the human walkthrough result in the evidence file.
 
+- **Done:** `01153c1` — evidence `specs/001-core/evidence/task-15.txt`
+  - **GATE 3 WALKED — PASS** (2026-07-23, user: "everything observed, check
+    as pass"). Preflight recreated the gate composition, seeded the
+    `listening` library (6 tracks / 4 artists / 4 albums / years 1959, 2001,
+    2010, Unknown), and confirmed every journey entry point reachable before
+    the walkthrough.
+  - Two preflight findings became head-of-queue fix tasks, both landed before
+    the gate: [[task-14a]] scenario-aware seed (browse needed variety and an
+    Unknown Year) and [[task-14b]] wiring the dead "Choose profile" button (the
+    profile-switch no-leak guarantee was unreachable). See Task 14a/14b.
+  - Crystallization: `frontend/tests/e2e/gate-3.spec.ts` encodes the full
+    journey (browse + per-context queue order incl. Unknown Year, profile
+    playlists add/remove/play-in-order, session prune, refresh + profile-switch
+    no-leak, invalid profile/playlist input) and is **green**:
+    `GATE_NAME=gate-3 GATE_SCENARIO=listening npx playwright test gate-3` →
+    `1 passed`. `./scripts/verify.sh` green (EXIT=0).
+
 ## Task 16 — Production provider implementations
 
 ```toml
