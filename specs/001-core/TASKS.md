@@ -774,6 +774,43 @@ gate = 3
   - `./scripts/verify.sh --fast` green (build/audit + gate-3 e2e deferred to the
     Docker composition at Gate 3).
 
+## Task 14a — Scenario-aware gate seed for the browse journey
+
+Raised by the Task 15 preflight: the Gate 3 journey walks *Browse seeded Tracks, Artists, Albums, and Years including Unknown Year… and compare Queue order*, but the gate seed only wrote two tracks by the same artist, album, and year (Daft Punk / Discovery / 2001) with no way to express an Unknown Year — so step 1 of the journey was not walkable. The domain, library API, and browse screens already model `release_year: int | None` (Unknown Year last); the gap was fixture data only. This task makes seeding scenario-aware so the browse gate seeds variety while the earlier gates keep their exact two base tracks.
+
+```toml
+id = "14a"
+type = "fix"
+chunk = 12
+deps = [14]
+files = ["backend/src/chillify/gate_seed.py", "scripts/gate/seed.sh", "frontend/tests/e2e/global-setup.ts", "backend/tests/unit/test_gate_seed.py"]
+[[criteria]]
+text = "The `listening` scenario seeds several artists, albums, and distinct release years plus exactly one Unknown Year (release_year None) track, keeping the two base tracks."
+layer = "unit"
+[[criteria]]
+text = "The default (and any unrecognized) scenario seeds exactly the two base tracks, so the Gate 1 and Gate 2 seeds are byte-identical."
+layer = "unit"
+[[criteria]]
+text = "seed.sh forwards an optional scenario label and the e2e global setup forwards GATE_SCENARIO (default \"default\"), so a gate can request the listening library without changing the others."
+layer = "integration"
+```
+
+- **Done:** `f8cee5f` — evidence `specs/001-core/evidence/task-14a.txt`
+  - `SeedTrack.release_year` is now `int | None`. `BASE_TRACKS` is the two
+    Daft Punk tracks the earlier gates seed; `LISTENING_TRACKS` adds Bonobo
+    (Black Sands, 2010), Miles Davis (Kind of Blue, 1959), and a None-year
+    Field Recordings track — three artists/albums/known-years plus one
+    first-class Unknown Year.
+  - `tracks_for_scenario` maps a label to a set, unknown → base, so a
+    decorative chunk label seeds exactly the base tracks. `seed(...)` and the
+    `--scenario` CLI flag thread it through; `seed.sh <name> [scenario]`
+    forwards it; `global-setup.ts` forwards `GATE_SCENARIO` (default
+    `"default"`), leaving Gate 1/2 seeds byte-identical.
+  - `[unit]` `tests/unit/test_gate_seed.py` (5 cases): default is the two base
+    tracks, unknown label falls back, listening keeps the base tracks and
+    offers ≥3 artists/albums/years with exactly one Unknown Year.
+  - `./scripts/verify.sh` green (EXIT=0).
+
 ## Task 15 — DEMO GATE 3: browse, organize, and listen
 
 ```toml

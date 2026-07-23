@@ -1,0 +1,24 @@
+# Task 14a — Scenario-aware gate seed for the browse journey
+# captured 2026-07-23T08:57:01Z
+
+## [unit] backend/tests/unit/test_gate_seed.py
+$ uv run pytest tests/unit/test_gate_seed.py -v
+rootdir: /home/dev/projects/chillify/backend
+configfile: pyproject.toml
+plugins: respx-0.23.1, anyio-4.14.2
+collecting ... collected 5 items
+
+tests/unit/test_gate_seed.py::test_default_scenario_is_the_two_base_tracks PASSED [ 20%]
+tests/unit/test_gate_seed.py::test_unknown_scenario_falls_back_to_the_base_tracks PASSED [ 40%]
+tests/unit/test_gate_seed.py::test_listening_scenario_keeps_the_base_tracks PASSED [ 60%]
+tests/unit/test_gate_seed.py::test_listening_scenario_offers_browse_variety PASSED [ 80%]
+tests/unit/test_gate_seed.py::test_listening_scenario_has_exactly_one_unknown_year_track PASSED [100%]
+
+============================== 5 passed in 0.02s ===============================
+
+## [static] ./scripts/verify.sh
+$ ./scripts/verify.sh   # EXIT=0
+  npm audit fix --force
+--- frontend dependency audit: ok
+
+verify: all checks passed
