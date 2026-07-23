@@ -13,19 +13,28 @@ track must normalize cleanly with its ISRC and numbering intact.
 from __future__ import annotations
 
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
 
-from chillify.domain.errors import ProviderResponseError, UnsupportedEntityError
-from chillify.domain.protocols import LinkInspector
+from chillify.domain.errors import (
+    AcquisitionCancelledError,
+    AcquisitionFailedError,
+    ProviderResponseError,
+    UnsupportedEntityError,
+)
+from chillify.domain.protocols import LinkInspector, TrackCandidate
 from chillify.infrastructure.providers.spotdl import (
     FixtureSpotdlInspector,
+    SpotdlAcquisitionProvider,
+    SpotdlInspector,
+    SubprocessResult,
     candidate_from_metadata,
 )
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
+GATE_TONE = FIXTURES / "media" / "gate-tone.mp3"
 
 TRACK_ID = "2cGxRwrMyEAp8dEbuZaVv6"
 TRACK_URL = f"https://open.spotify.com/track/{TRACK_ID}"
@@ -34,8 +43,29 @@ ALBUM_URL = "https://open.spotify.com/album/1DFixLWuPkv3KT3TnV35m3"
 PLAYLIST_URL = "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
 ARTIST_URL = "https://open.spotify.com/artist/4tZwfgrHOc3mvqYlEYSvVi"
 
+
+def _recorded_inspect_factory(root: Path) -> SpotdlInspector:
+    """A production inspector whose SpotDL runner writes the recorded metadata.
+
+    The runner performs the same side effect the real `spotdl save` would — one
+    metadata document at the requested `--save-file` — so the production adapter
+    is held to the identical inspection contract without invoking SpotDL.
+    """
+    payload = (root / "providers" / "spotdl_metadata.json").read_text(encoding="utf-8")
+
+    def runner(
+        argv: Sequence[str], *, timeout: float, cancelled: object = None
+    ) -> SubprocessResult:
+        save_file = Path(argv[argv.index("--save-file") + 1])
+        save_file.write_text(payload, encoding="utf-8")
+        return SubprocessResult(returncode=0, stdout="", stderr="")
+
+    return SpotdlInspector(runner=runner)
+
+
 INSPECTOR_FACTORIES: list[tuple[str, Callable[[Path], LinkInspector]]] = [
     ("fixture", lambda root: FixtureSpotdlInspector(fixture_root=root)),
+    ("production", _recorded_inspect_factory),
 ]
 
 
@@ -131,3 +161,121 @@ class TestSpotdlWireNormalization:
         candidate = self._candidate([{"name": "A", "artist": "X", "duration": 337.56}])
 
         assert candidate.duration_ms == 337_560
+
+
+def _track_candidate() -> TrackCandidate:
+    return TrackCandidate(
+        provider="spotify",
+        source_id=TRACK_ID,
+        source_url=TRACK_URL,
+        title="Instant Crush",
+        artist="Daft Punk",
+        album="Random Access Memories",
+        release_year=2013,
+        disc_number=1,
+        track_number=5,
+        duration_ms=337_560,
+        isrc="USQX91300108",
+        artwork_url=None,
+        acquisition_locator=TRACK_URL,
+        raw_fingerprint=None,
+    )
+
+
+def _download_runner(
+    *, returncode: int = 0, produce_mp3: bool = True, captured: list[list[str]] | None = None
+) -> Callable[..., SubprocessResult]:
+    """A SpotDL download runner double that leaves one MP3 in the output dir."""
+
+    def runner(
+        argv: Sequence[str], *, timeout: float, cancelled: object = None
+    ) -> SubprocessResult:
+        if captured is not None:
+            captured.append(list(argv))
+        if produce_mp3 and returncode == 0:
+            out_template = argv[argv.index("--output") + 1]
+            out_dir = Path(out_template).parent
+            shutil.copyfile(GATE_TONE, out_dir / "acquired.mp3")
+        return SubprocessResult(returncode=returncode, stdout="", stderr="")
+
+    return runner
+
+
+@pytest.mark.contract
+class TestSpotdlAcquisitionContract:
+    def test_a_track_yields_one_valid_mp3(self, tmp_path: Path) -> None:
+        adapter = SpotdlAcquisitionProvider(runner=_download_runner())
+        artifact = adapter.acquire(
+            _track_candidate(), str(tmp_path), None, lambda _p: None, lambda: False
+        )
+
+        acquired = Path(artifact.location)
+        assert acquired.is_file()
+        assert acquired.parent == tmp_path
+        assert artifact.byte_size > 0
+        assert artifact.duration_ms is not None and artifact.duration_ms > 0
+
+    def test_a_cancellation_before_work_leaves_the_workspace_empty(self, tmp_path: Path) -> None:
+        adapter = SpotdlAcquisitionProvider(runner=_download_runner())
+        with pytest.raises(AcquisitionCancelledError):
+            adapter.acquire(_track_candidate(), str(tmp_path), None, lambda _p: None, lambda: True)
+
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_nonzero_exit_fails_and_cleans_up(self, tmp_path: Path) -> None:
+        adapter = SpotdlAcquisitionProvider(runner=_download_runner(returncode=1))
+        with pytest.raises(AcquisitionFailedError):
+            adapter.acquire(_track_candidate(), str(tmp_path), None, lambda _p: None, lambda: False)
+
+        assert list(tmp_path.iterdir()) == []
+
+    def test_exit_zero_without_an_mp3_still_fails(self, tmp_path: Path) -> None:
+        adapter = SpotdlAcquisitionProvider(runner=_download_runner(produce_mp3=False))
+        with pytest.raises(AcquisitionFailedError):
+            adapter.acquire(_track_candidate(), str(tmp_path), None, lambda _p: None, lambda: False)
+
+
+@pytest.mark.contract
+class TestSpotdlCliContract:
+    """The exact SpotDL argument vector, pinned in one place as the plan requires."""
+
+    def test_the_download_invocation_names_the_track_output_and_mp3_format(
+        self, tmp_path: Path
+    ) -> None:
+        captured: list[list[str]] = []
+        adapter = SpotdlAcquisitionProvider(
+            executable="/opt/spotdl/bin/spotdl", runner=_download_runner(captured=captured)
+        )
+        adapter.acquire(
+            _track_candidate(),
+            str(tmp_path),
+            "socks5://p.invalid:1080",
+            lambda _p: None,
+            lambda: False,
+        )
+
+        argv = captured[0]
+        assert argv[:3] == ["/opt/spotdl/bin/spotdl", "download", TRACK_URL]
+        assert "--format" in argv and argv[argv.index("--format") + 1] == "mp3"
+        assert argv[argv.index("--output") + 1].startswith(str(tmp_path))
+        # The saved proxy is passed to the child, never the parent environment.
+        assert argv[argv.index("--proxy") + 1] == "socks5://p.invalid:1080"
+
+    def test_the_save_invocation_names_the_url_and_a_save_file(self, tmp_path: Path) -> None:
+        captured: list[list[str]] = []
+
+        def runner(
+            argv: Sequence[str], *, timeout: float, cancelled: object = None
+        ) -> SubprocessResult:
+            captured.append(list(argv))
+            Path(argv[argv.index("--save-file") + 1]).write_text(
+                (FIXTURES / "providers" / "spotdl_metadata.json").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            return SubprocessResult(returncode=0, stdout="", stderr="")
+
+        SpotdlInspector(executable="/opt/spotdl/bin/spotdl", runner=runner).inspect(TRACK_URL, None)
+
+        argv = captured[0]
+        assert argv[:3] == ["/opt/spotdl/bin/spotdl", "save", TRACK_URL]
+        assert "--save-file" in argv

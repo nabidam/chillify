@@ -12,17 +12,31 @@ through unnormalized, is the failure this suite exists to catch.
 
 from __future__ import annotations
 
+import json
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from chillify.domain.errors import ProviderResponseError, UnsupportedEntityError
-from chillify.domain.protocols import LinkInspector
-from chillify.infrastructure.providers.ytdlp import FixtureYouTubeInspector, candidate_from_info
+from chillify.domain.errors import (
+    AcquisitionCancelledError,
+    AcquisitionFailedError,
+    ProviderResponseError,
+    UnsupportedEntityError,
+)
+from chillify.domain.protocols import LinkInspector, TrackCandidate
+from chillify.infrastructure.providers.ytdlp import (
+    FixtureYouTubeInspector,
+    YouTubeInspector,
+    YtDlpAcquisitionProvider,
+    candidate_from_info,
+)
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
+GATE_TONE = FIXTURES / "media" / "gate-tone.mp3"
 
 VIDEO_URL = "https://www.youtube.com/watch?v=u7K72X4eo_s"
 SHORT_URL = "https://youtu.be/u7K72X4eo_s"
@@ -30,10 +44,32 @@ VIDEO_IN_PLAYLIST = "https://www.youtube.com/watch?v=u7K72X4eo_s&list=PL12345678
 PLAYLIST_URL = "https://www.youtube.com/playlist?list=PL1234567890"
 CHANNEL_URL = "https://www.youtube.com/@massiveattack"
 
-# Adapter factories under the shared suite. The production adapter is bound in
-# Task 16 and is appended here, against these same cases.
+
+def _recorded_inspect_factory(root: Path) -> YouTubeInspector:
+    """A production inspector whose yt-dlp handle returns the recorded document.
+
+    The production adapter reads the same sanitized `extract_info` fixture the
+    gate inspector does, so both are held to the identical inspection contract
+    without contacting YouTube.
+    """
+    info = json.loads((root / "providers" / "ytdlp_inspect.json").read_text(encoding="utf-8"))
+
+    @contextmanager
+    def ydl_factory(_options: dict[str, Any]) -> Iterator[object]:
+        class _Ydl:
+            def extract_info(self, url: str, *, download: bool) -> object:
+                return info
+
+        yield _Ydl()
+
+    return YouTubeInspector(ydl_factory=ydl_factory)
+
+
+# Adapter factories under the shared inspection suite: the production adapter
+# joins the fixture adapter against these same cases.
 INSPECTOR_FACTORIES: list[tuple[str, Callable[[Path], LinkInspector]]] = [
     ("fixture", lambda root: FixtureYouTubeInspector(fixture_root=root)),
+    ("production", _recorded_inspect_factory),
 ]
 
 
@@ -149,3 +185,149 @@ class TestYouTubeWireNormalization:
         )
 
         assert candidate.duration_ms == 331_000
+
+
+def _youtube_candidate() -> TrackCandidate:
+    """A direct YouTube candidate: its own video is the acquisition target."""
+    return TrackCandidate(
+        provider="youtube",
+        source_id="u7K72X4eo_s",
+        source_url=VIDEO_URL,
+        title="Teardrop",
+        artist="Massive Attack",
+        album=None,
+        release_year=None,
+        disc_number=None,
+        track_number=None,
+        duration_ms=None,
+        isrc=None,
+        artwork_url=None,
+        acquisition_locator=VIDEO_URL,
+        raw_fingerprint=None,
+    )
+
+
+def _deezer_candidate(duration_ms: int | None) -> TrackCandidate:
+    """A Deezer candidate acquired via `ytsearch1:`; its match is verified."""
+    return TrackCandidate(
+        provider="deezer",
+        source_id="3135556",
+        source_url="https://www.deezer.com/track/3135556",
+        title="Harder Better Faster Stronger",
+        artist="Daft Punk",
+        album="Discovery",
+        release_year=None,
+        disc_number=None,
+        track_number=None,
+        duration_ms=duration_ms,
+        isrc=None,
+        artwork_url=None,
+        acquisition_locator="ytsearch1:Daft Punk Harder Better Faster Stronger",
+        raw_fingerprint=None,
+    )
+
+
+_DOWNLOADING_STEPS = (
+    {"status": "downloading", "downloaded_bytes": 25, "total_bytes": 100},
+    {"status": "downloading", "downloaded_bytes": 50, "total_bytes": 100},
+    {"status": "downloading", "downloaded_bytes": 100, "total_bytes": 100},
+)
+
+
+def _acquisition(
+    *,
+    produce_mp3: bool = True,
+    steps: tuple[dict[str, Any], ...] = _DOWNLOADING_STEPS,
+    info: dict[str, Any] | None = None,
+) -> YtDlpAcquisitionProvider:
+    """A production acquisition adapter whose yt-dlp handle is a recorded double.
+
+    The double drives the real progress hooks, then copies the sanitized tone
+    into the task workspace exactly as a finished download would leave one MP3.
+    """
+
+    @contextmanager
+    def ydl_factory(options: dict[str, Any]) -> Iterator[object]:
+        out_dir = Path(options["outtmpl"]["default"]).parent
+
+        class _Ydl:
+            def extract_info(self, url: str, *, download: bool) -> object:
+                for step in steps:
+                    for hook in options.get("progress_hooks", []):
+                        hook(step)
+                if produce_mp3:
+                    shutil.copyfile(GATE_TONE, out_dir / "acquired.mp3")
+                return info if info is not None else {"entries": [{"title": "x", "uploader": "y"}]}
+
+        yield _Ydl()
+
+    return YtDlpAcquisitionProvider(ydl_factory=ydl_factory)
+
+
+@pytest.mark.contract
+class TestYtDlpAcquisitionContract:
+    def test_a_direct_video_yields_one_valid_mp3(self, tmp_path: Path) -> None:
+        artifact = _acquisition().acquire(
+            _youtube_candidate(), str(tmp_path), None, lambda _p: None, lambda: False
+        )
+
+        acquired = Path(artifact.location)
+        assert acquired.is_file()
+        assert acquired.parent == tmp_path
+        assert artifact.byte_size > 0
+        assert artifact.duration_ms is not None and artifact.duration_ms > 0
+
+    def test_progress_is_reported_monotonically_and_never_invented(self, tmp_path: Path) -> None:
+        reported: list[float | None] = []
+        _acquisition().acquire(
+            _youtube_candidate(), str(tmp_path), None, reported.append, lambda: False
+        )
+
+        known = [value for value in reported if value is not None]
+        assert known == sorted(known)
+        assert all(0.0 <= value <= 100.0 for value in known)
+
+    def test_a_cancellation_before_work_leaves_the_workspace_empty(self, tmp_path: Path) -> None:
+        with pytest.raises(AcquisitionCancelledError):
+            _acquisition().acquire(
+                _youtube_candidate(), str(tmp_path), None, lambda _p: None, lambda: True
+            )
+
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_cancellation_during_download_stops_and_cleans_up(self, tmp_path: Path) -> None:
+        checks = iter([False, True, True, True, True])
+
+        with pytest.raises(AcquisitionCancelledError):
+            _acquisition().acquire(
+                _youtube_candidate(),
+                str(tmp_path),
+                None,
+                lambda _p: None,
+                lambda: next(checks, True),
+            )
+
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_search_match_that_runs_too_long_is_refused(self, tmp_path: Path) -> None:
+        """A `ytsearch1:` result whose duration disagrees is never accepted."""
+        info = {"entries": [{"title": "Harder Better Faster Stronger", "uploader": "Daft Punk"}]}
+        with pytest.raises(AcquisitionFailedError):
+            _acquisition(info=info).acquire(
+                _deezer_candidate(224_000), str(tmp_path), None, lambda _p: None, lambda: False
+            )
+
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_search_result_with_a_foreign_title_is_refused(self, tmp_path: Path) -> None:
+        info = {"entries": [{"title": "Something Entirely Different", "uploader": "Nobody"}]}
+        with pytest.raises(AcquisitionFailedError):
+            _acquisition(info=info).acquire(
+                _deezer_candidate(None), str(tmp_path), None, lambda _p: None, lambda: False
+            )
+
+    def test_a_download_that_produces_no_mp3_fails(self, tmp_path: Path) -> None:
+        with pytest.raises(AcquisitionFailedError):
+            _acquisition(produce_mp3=False).acquire(
+                _youtube_candidate(), str(tmp_path), None, lambda _p: None, lambda: False
+            )

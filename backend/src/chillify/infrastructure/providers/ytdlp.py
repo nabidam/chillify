@@ -16,19 +16,37 @@ import hashlib
 import json
 import logging
 import re
-from dataclasses import dataclass
+from collections.abc import Callable
+from contextlib import AbstractContextManager
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Protocol
 from urllib.parse import parse_qs, urlsplit
 
-from chillify.domain.errors import ProviderResponseError, UnsupportedEntityError
-from chillify.domain.normalization import collapse_whitespace
-from chillify.domain.protocols import TrackCandidate
+from chillify.domain.errors import (
+    AcquisitionCancelledError,
+    AcquisitionFailedError,
+    ProviderResponseError,
+    UnsupportedEntityError,
+)
+from chillify.domain.normalization import collapse_whitespace, normalize_key
+from chillify.domain.protocols import (
+    AudioArtifact,
+    CancelledCallback,
+    ProgressCallback,
+    TrackCandidate,
+)
+from chillify.infrastructure.providers.mp3 import single_valid_mp3
 
 logger = logging.getLogger(__name__)
 
 PROVIDER_NAME: Final = "youtube"
+
+# Duration agreement for a Deezer `ytsearch1:` match: the wider of ten seconds
+# or fifteen percent, so a weak match is refused rather than silently accepted.
+_MIN_DURATION_TOLERANCE_MS: Final = 10_000
+_DURATION_TOLERANCE_FRACTION: Final = 0.15
 
 # Layout beneath CHILLIFY_FIXTURE_ROOT. One recorded, sanitized `extract_info`
 # document with `skip_download`, exactly as the production adapter would receive.
@@ -183,6 +201,222 @@ class FixtureYouTubeInspector:
         )
         logger.info("fixture youtube inspection complete", extra={"provider": self.name})
         return candidate
+
+
+class YoutubeDLLike(Protocol):
+    """The one yt-dlp method these adapters use, so a test can inject a double."""
+
+    def extract_info(self, url: str, *, download: bool) -> object: ...
+
+
+# Opens a configured yt-dlp handle as a context manager. Real `yt_dlp.YoutubeDL`
+# already is one; a test supplies a double so no case here touches the network.
+YdlFactory = Callable[[dict[str, Any]], AbstractContextManager[YoutubeDLLike]]
+
+
+class _AcquisitionAbortedError(Exception):
+    """Internal signal raised inside a progress hook to stop a cancelled run."""
+
+
+def _default_ydl_factory(options: dict[str, Any]) -> AbstractContextManager[YoutubeDLLike]:
+    """Build a real yt-dlp handle. Imported lazily so the package loads once."""
+    import yt_dlp
+
+    return yt_dlp.YoutubeDL(options)  # type: ignore[no-any-return]
+
+
+@dataclass(frozen=True, slots=True)
+class YouTubeInspector:
+    """Production YouTube inspection through the injected yt-dlp Python API.
+
+    Recognition and bulk rejection are URL-only and identical to the fixture
+    inspector's; only the metadata source differs, so both are held to one
+    contract. `skip_download` and `noplaylist` keep inspection metadata-only.
+    """
+
+    ydl_factory: YdlFactory = field(default=_default_ydl_factory)
+    name: str = "yt_dlp"
+
+    def supports(self, url: str) -> bool:
+        return recognize(url) is not None
+
+    def inspect(self, url: str, proxy: str | None) -> TrackCandidate:
+        link = recognize(url)
+        if link is None or link.kind is LinkKind.BULK or link.canonical_url is None:
+            raise UnsupportedEntityError(
+                "That is a playlist or channel. Add one video at a time.",
+                field="url",
+                context={"provider": PROVIDER_NAME, "reason": "bulk"},
+            )
+        options: dict[str, Any] = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "noplaylist": True,
+            "extract_flat": False,
+        }
+        if proxy is not None:
+            options["proxy"] = proxy
+        try:
+            with self.ydl_factory(options) as ydl:
+                info = ydl.extract_info(link.canonical_url, download=False)
+        except _AcquisitionAbortedError:
+            raise
+        except Exception as exc:
+            # The adapter boundary translates the third-party failure once; the
+            # yt-dlp message (which can carry the URL) never travels onward.
+            raise ProviderResponseError(
+                "YouTube could not be inspected.", context={"provider": PROVIDER_NAME}
+            ) from exc
+        candidate = candidate_from_info(
+            info, video_id=link.video_id or "", canonical_url=link.canonical_url
+        )
+        logger.info("youtube inspection complete", extra={"provider": self.name})
+        return candidate
+
+
+@dataclass(frozen=True, slots=True)
+class YtDlpAcquisitionProvider:
+    """Production audio retrieval through the injected yt-dlp Python API.
+
+    A direct YouTube candidate acquires its canonical video; a Deezer candidate
+    acquires `ytsearch1:{artist} {title}` and its first match must agree on
+    title/artist and, when both are known, duration — a weak match fails rather
+    than downloading quietly. Cancellation is consulted inside the progress hook
+    and between phases, and a cancelled or failed run leaves no file behind.
+    """
+
+    ydl_factory: YdlFactory = field(default=_default_ydl_factory)
+    name: str = "yt_dlp"
+
+    def acquire(
+        self,
+        candidate: TrackCandidate,
+        workspace: str,
+        proxy: str | None,
+        progress: ProgressCallback,
+        cancelled: CancelledCallback,
+    ) -> AudioArtifact:
+        workspace_path = Path(workspace)
+        if cancelled():
+            raise AcquisitionCancelledError("That download was cancelled.")
+
+        aborted = {"tripped": False}
+
+        def hook(status: dict[str, Any]) -> None:
+            if cancelled():
+                aborted["tripped"] = True
+                raise _AcquisitionAbortedError
+            if status.get("status") == "downloading":
+                progress(_download_percent(status))
+
+        options: dict[str, Any] = {
+            "format": "bestaudio/best",
+            "noplaylist": True,
+            "quiet": True,
+            "no_warnings": True,
+            "outtmpl": {"default": str(workspace_path / "%(id)s.%(ext)s")},
+            "progress_hooks": [hook],
+            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}],
+        }
+        if proxy is not None:
+            options["proxy"] = proxy
+
+        info: object
+        try:
+            with self.ydl_factory(options) as ydl:
+                info = ydl.extract_info(candidate.acquisition_locator, download=True)
+        except _AcquisitionAbortedError as exc:
+            _clear(workspace_path)
+            raise AcquisitionCancelledError("That download was cancelled.") from exc
+        except Exception as exc:
+            _clear(workspace_path)
+            if aborted["tripped"] or cancelled():
+                # yt-dlp may wrap the hook's abort in its own error; a cancel
+                # that was requested is reported as a cancel, never a failure.
+                raise AcquisitionCancelledError("That download was cancelled.") from exc
+            raise AcquisitionFailedError(
+                "YouTube audio could not be downloaded.", context={"provider": self.name}
+            ) from exc
+
+        try:
+            audio_path, duration_ms = single_valid_mp3(workspace_path, provider=self.name)
+            if candidate.acquisition_locator.startswith("ytsearch"):
+                _enforce_search_match(candidate, info, duration_ms, provider=self.name)
+        except AcquisitionFailedError:
+            # A produced-but-rejected file — a weak search match or an invalid
+            # MP3 — is never kept; the workspace is left clean for the retry.
+            _clear(workspace_path)
+            raise
+        progress(100.0)
+        logger.info("youtube acquisition complete", extra={"provider": self.name})
+        return AudioArtifact(
+            location=str(audio_path),
+            duration_ms=duration_ms,
+            byte_size=audio_path.stat().st_size,
+        )
+
+
+def _download_percent(status: dict[str, Any]) -> float | None:
+    """Real downloaded fraction when a total is known, else None. Never invented."""
+    downloaded = status.get("downloaded_bytes")
+    total = status.get("total_bytes") or status.get("total_bytes_estimate")
+    if not isinstance(downloaded, int | float) or not isinstance(total, int | float) or total <= 0:
+        return None
+    return max(0.0, min(100.0, downloaded / total * 100.0))
+
+
+def _enforce_search_match(
+    candidate: TrackCandidate, info: object, duration_ms: int, *, provider: str
+) -> None:
+    """Refuse a `ytsearch1:` result that does not match the Deezer candidate."""
+    entry = _first_entry(info)
+    title = _text(entry.get("track")) or _text(entry.get("title"))
+    artist = (
+        _text(entry.get("artist")) or _text(entry.get("uploader")) or _text(entry.get("channel"))
+    )
+    if title is None or artist is None:
+        raise AcquisitionFailedError(
+            "The search result had no usable title to verify.", context={"provider": provider}
+        )
+    if normalize_key(candidate.title, fallback="") not in normalize_key(title, fallback="") and (
+        normalize_key(title, fallback="") not in normalize_key(candidate.title, fallback="")
+    ):
+        raise AcquisitionFailedError(
+            "The best audio match did not match the requested track.",
+            context={"provider": provider},
+        )
+    if candidate.duration_ms is not None and duration_ms > 0:
+        tolerance = max(
+            _MIN_DURATION_TOLERANCE_MS,
+            int(candidate.duration_ms * _DURATION_TOLERANCE_FRACTION),
+        )
+        if abs(candidate.duration_ms - duration_ms) > tolerance:
+            raise AcquisitionFailedError(
+                "The best audio match ran too long or short to be the same track.",
+                context={"provider": provider},
+            )
+
+
+def _first_entry(info: object) -> dict[str, Any]:
+    if isinstance(info, dict):
+        entries = info.get("entries")
+        if isinstance(entries, list):
+            for entry in entries:
+                if isinstance(entry, dict):
+                    return entry
+            return {}
+        return info
+    return {}
+
+
+def _clear(workspace: Path) -> None:
+    """Remove every partial file a cancelled or failed run may have left."""
+    if not workspace.is_dir():
+        return
+    for path in workspace.iterdir():
+        if path.is_file():
+            path.unlink(missing_ok=True)
 
 
 def _release_year(info: dict[str, Any]) -> int | None:

@@ -15,24 +15,46 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
-from dataclasses import dataclass
+import signal
+import subprocess
+import tempfile
+import time
+from collections.abc import Callable, Sequence
+from contextlib import suppress
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Final
 from urllib.parse import urlsplit
 
 from chillify.domain.errors import (
+    AcquisitionCancelledError,
+    AcquisitionFailedError,
     ProviderResponseError,
     UnsupportedEntityError,
     ValidationFailedError,
 )
 from chillify.domain.normalization import collapse_whitespace, normalize_isrc
-from chillify.domain.protocols import TrackCandidate
+from chillify.domain.protocols import (
+    AudioArtifact,
+    CancelledCallback,
+    ProgressCallback,
+    TrackCandidate,
+)
+from chillify.infrastructure.providers.mp3 import single_valid_mp3
 
 logger = logging.getLogger(__name__)
 
 PROVIDER_NAME: Final = "spotify"
+
+# SpotDL is invoked as an argument vector, never a shell. These timeouts bound a
+# metadata inspection and a full download respectively.
+_INSPECT_TIMEOUT_SECONDS: Final = 60.0
+_DOWNLOAD_TIMEOUT_SECONDS: Final = 600.0
+# How often the download runner checks the cancellation flag while SpotDL runs.
+_CANCEL_POLL_SECONDS: Final = 0.2
 
 # Layout beneath CHILLIFY_FIXTURE_ROOT. One recorded, sanitized SpotDL metadata
 # document, exactly the shape the isolated CLI emits for a single track query.
@@ -158,6 +180,189 @@ class FixtureSpotdlInspector:
         )
         logger.info("fixture spotify inspection complete", extra={"provider": self.name})
         return candidate
+
+
+@dataclass(frozen=True, slots=True)
+class SubprocessResult:
+    """The captured outcome of one SpotDL invocation."""
+
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+# Runs one SpotDL argument vector and returns its captured result. A test injects
+# a double so no case here launches a real process. `cancelled` is consulted by
+# the download runner while the child runs; inspection passes None.
+SpotdlRunner = Callable[..., SubprocessResult]
+
+
+def _default_spotdl_runner(
+    argv: Sequence[str],
+    *,
+    timeout: float,
+    cancelled: CancelledCallback | None = None,
+) -> SubprocessResult:
+    """Launch SpotDL in its own process group and capture its output.
+
+    The child runs in a new session so a cancellation can terminate the whole
+    process group, not just the parent shell SpotDL would otherwise leave. When
+    `cancelled` is supplied it is polled while the child runs and the group is
+    killed the moment a cancel is seen.
+    """
+    process = subprocess.Popen(
+        list(argv),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            stdout, stderr = process.communicate(timeout=_CANCEL_POLL_SECONDS)
+        except subprocess.TimeoutExpired:
+            if cancelled is not None and cancelled():
+                _terminate_group(process)
+                raise AcquisitionCancelledError("That download was cancelled.") from None
+            if time.monotonic() > deadline:
+                _terminate_group(process)
+                raise AcquisitionFailedError(
+                    "SpotDL did not finish in time.", context={"provider": PROVIDER_NAME}
+                ) from None
+            continue
+        return SubprocessResult(returncode=process.returncode, stdout=stdout, stderr=stderr)
+
+
+def _terminate_group(process: subprocess.Popen[str]) -> None:
+    with suppress(ProcessLookupError, PermissionError):
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+
+
+@dataclass(frozen=True, slots=True)
+class SpotdlInspector:
+    """Production Spotify inspection through the isolated SpotDL CLI.
+
+    Recognition and collection rejection are URL-only and identical to the
+    fixture inspector's; SpotDL is invoked with `save` to emit one metadata
+    document, which normalizes through the same `candidate_from_metadata` the
+    fixture uses. The exact flags are the contract this adapter's test pins.
+    """
+
+    executable: str = "spotdl"
+    runner: SpotdlRunner = field(default=_default_spotdl_runner)
+    name: str = "spotdl"
+
+    def supports(self, url: str) -> bool:
+        return recognize(url) is not None
+
+    def inspect(self, url: str, proxy: str | None) -> TrackCandidate:
+        link = recognize(url)
+        if link is None or link.kind is LinkKind.BULK or link.canonical_url is None:
+            raise UnsupportedEntityError(
+                "That is an album, playlist, or artist. Add one track at a time.",
+                field="url",
+                context={"provider": PROVIDER_NAME, "reason": "bulk"},
+            )
+        with tempfile.TemporaryDirectory(prefix="chillify-spotdl-") as directory:
+            save_file = Path(directory) / "metadata.spotdl"
+            argv = [
+                self.executable,
+                "save",
+                link.canonical_url,
+                "--save-file",
+                str(save_file),
+            ]
+            if proxy is not None:
+                argv += ["--proxy", proxy]
+            result = self.runner(argv, timeout=_INSPECT_TIMEOUT_SECONDS)
+            if result.returncode != 0 or not save_file.is_file():
+                # The captured stderr can carry the URL and the proxy; it is
+                # logged under the provider, never returned to the browser.
+                logger.info(
+                    "spotdl inspection failed",
+                    extra={"provider": self.name, "returncode": result.returncode},
+                )
+                raise ProviderResponseError(
+                    "Spotify could not be inspected.", context={"provider": PROVIDER_NAME}
+                )
+            payload = _read_json(save_file)
+        candidate = candidate_from_metadata(
+            payload, track_id=link.track_id or "", canonical_url=link.canonical_url
+        )
+        logger.info("spotify inspection complete", extra={"provider": self.name})
+        return candidate
+
+
+@dataclass(frozen=True, slots=True)
+class SpotdlAcquisitionProvider:
+    """Production audio retrieval through the isolated SpotDL CLI subprocess.
+
+    One canonical track URL is downloaded to a task-local output as MP3, in a
+    dedicated process group so a cancel can stop it. Exit zero is not trusted:
+    exactly one decodable MP3 must exist in the workspace afterwards.
+    """
+
+    executable: str = "spotdl"
+    runner: SpotdlRunner = field(default=_default_spotdl_runner)
+    name: str = "spotdl"
+
+    def acquire(
+        self,
+        candidate: TrackCandidate,
+        workspace: str,
+        proxy: str | None,
+        progress: ProgressCallback,
+        cancelled: CancelledCallback,
+    ) -> AudioArtifact:
+        workspace_path = Path(workspace)
+        if cancelled():
+            raise AcquisitionCancelledError("That download was cancelled.")
+
+        argv = [
+            self.executable,
+            "download",
+            candidate.acquisition_locator,
+            "--output",
+            str(workspace_path / "{track-id}.{output-ext}"),
+            "--format",
+            "mp3",
+        ]
+        if proxy is not None:
+            argv += ["--proxy", proxy]
+
+        try:
+            result = self.runner(argv, timeout=_DOWNLOAD_TIMEOUT_SECONDS, cancelled=cancelled)
+        except AcquisitionCancelledError:
+            _clear(workspace_path)
+            raise
+        if result.returncode != 0:
+            _clear(workspace_path)
+            logger.info(
+                "spotdl download failed",
+                extra={"provider": self.name, "returncode": result.returncode},
+            )
+            raise AcquisitionFailedError(
+                "Spotify audio could not be downloaded.", context={"provider": self.name}
+            )
+
+        audio_path, duration_ms = single_valid_mp3(workspace_path, provider=self.name)
+        progress(100.0)
+        logger.info("spotify acquisition complete", extra={"provider": self.name})
+        return AudioArtifact(
+            location=str(audio_path),
+            duration_ms=duration_ms,
+            byte_size=audio_path.stat().st_size,
+        )
+
+
+def _clear(workspace: Path) -> None:
+    """Remove every partial file a cancelled or failed run may have left."""
+    if not workspace.is_dir():
+        return
+    for path in workspace.iterdir():
+        if path.is_file():
+            path.unlink(missing_ok=True)
 
 
 def _single_song(payload: object) -> dict[str, Any]:

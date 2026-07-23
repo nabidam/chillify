@@ -907,6 +907,50 @@ text = "All real adapters use the one proxy policy without direct fallback, and 
 layer = "integration"
 ```
 
+- **Done:** `c1cc89b` — evidence `specs/001-core/evidence/task-16.txt`
+  Scoped to the adapter layer per a user decision recorded this turn: the
+  worker never calls the Last.fm enricher nor applies the
+  review→provider→Last.fm→Unknown pipeline (the `ENRICHING` phase is dead
+  code), and Task 16's file list is provider adapters + contract tests only.
+  Rather than silently expand into `downloads.py`/`composition.py` or silently
+  drop the behaviour, the enricher/precedence *wiring* is left as a flagged
+  follow-up; this task delivers the production adapters and holds them to the
+  same contracts as the fixtures. See the `[integration]` criterion below —
+  interpreted at the adapter layer (deterministic gap merge + within-provider
+  field precedence + one proxy policy), which is what the file set can carry.
+  - Delivered: production `DeezerDiscoveryProvider` and `LastfmEnricher`
+    already existed and route through `OutboundHttp`; added production
+    `YouTubeInspector`/`YtDlpAcquisitionProvider` (injected yt-dlp Python API,
+    `bestaudio`→FFmpeg mp3, real progress hooks, cancellation, and the
+    `ytsearch1:` weak-match guard on title + duration tolerance), production
+    `SpotdlInspector`/`SpotdlAcquisitionProvider` (isolated argument-vector CLI
+    in its own process group, injected runner, saved proxy passed only to the
+    child, exit-zero-is-insufficient MP3 validation), and the new
+    `HttpArtworkFetcher` (one proxy policy, ≤3 redirects, 10 MiB cap,
+    `normalize_cover`). `registry.build_registry` now binds the production
+    adapters in production mode and the fixtures in gate mode as two
+    import-isolated branches; production binds `artwork['url']`.
+  - `[contract]`: the production adapters join the existing shared suites —
+    `test_ytdlp_contract`/`test_spotdl_contract` gained a `production` inspector
+    factory (injected doubles over the same recorded fixtures) plus production
+    acquisition + SpotDL CLI-flag suites; new `test_deezer_contract`,
+    `test_lastfm_contract`, `test_artwork_contract` drive the HTTP adapters
+    under respx with sanitized success/error payloads.
+  - `[integration]`: each real HTTP adapter's dedicated contract file asserts
+    the saved proxy reaches every client with no direct-fallback (joining the
+    Task 8 `test_outbound_policy` proof), and `test_lastfm_contract` pins the
+    deterministic gap merge (only requested-missing fields returned, identical
+    output for identical input, non-fatal on every failure).
+  - Additive files beyond the predicted list, both noted: `providers/mp3.py`
+    (one shared `single_valid_mp3` validator so the two audio adapters cannot
+    disagree, mirroring the shared `deezer_wire` rationale). The Last.fm
+    enricher and a Last.fm cover fetcher are deliberately **not** bound in the
+    registry: both need the DB-stored API key, which the Settings-only
+    `build_registry` cannot read — the same reason the enricher wiring is the
+    flagged follow-up above.
+  - `./scripts/verify.sh` → all checks passed (EXIT=0); full backend suite 466
+    passed.
+
 ## Task 17 — Security, recovery, and storage hardening
 
 ```toml

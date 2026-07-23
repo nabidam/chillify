@@ -5,14 +5,18 @@ application layer asks "who can acquire a YouTube video" rather than importing
 yt-dlp. A provider that is not bound is reported as disabled, which is exactly
 what the Settings screen and the degraded-state banner already know how to say.
 
-Production adapters are not bound in this milestone; the fixture adapters serve
-the gate environment while the acquisition machinery is proved. Task 16 binds
-the real ones into the same registry, against the same protocols.
+Production adapters are bound in production mode and the fixture adapters in gate
+mode, against the same protocols. A production process never imports fixture
+code, and a gate process never imports a real provider package; the two branches
+below keep that separation an import-time fact, not a runtime check. The Last.fm
+enricher and the Last.fm cover fetcher are not bound here: both need the
+DB-stored API key, which this Settings-only builder cannot read.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
 
 from chillify.config import Settings
@@ -69,30 +73,58 @@ class ProviderRegistry:
 def build_registry(settings: Settings) -> ProviderRegistry:
     """Bind the adapters this environment is allowed to use.
 
-    The fixture import lives inside the gate branch: a production process never
-    imports fixture code, so it cannot bind it by accident.
+    The fixture import lives inside the gate branch and the production imports in
+    the other: a process only ever imports the adapters it is allowed to bind, so
+    it cannot bind the wrong family by accident.
     """
-    if not settings.is_gate or settings.fixture_root is None:
-        return ProviderRegistry()
+    if settings.is_gate and settings.fixture_root is not None:
+        from chillify.infrastructure.providers.fixtures import (
+            FixtureAcquisitionProvider,
+            FixtureDiscoveryProvider,
+        )
+        from chillify.infrastructure.providers.spotdl import FixtureSpotdlInspector
+        from chillify.infrastructure.providers.ytdlp import FixtureYouTubeInspector
 
-    from chillify.infrastructure.providers.fixtures import (
-        FixtureAcquisitionProvider,
-        FixtureDiscoveryProvider,
+        fixture_root = settings.fixture_root
+        acquisition = FixtureAcquisitionProvider(fixture_root=fixture_root)
+        logger.info("binding fixture provider adapters", extra={"environment": "gate"})
+        return ProviderRegistry(
+            discovery={"deezer": FixtureDiscoveryProvider(fixture_root=fixture_root)},
+            acquisition={
+                JobProvider.YT_DLP: acquisition,
+                JobProvider.SPOTDL: acquisition,
+            },
+            link_inspectors={
+                JobProvider.YT_DLP: FixtureYouTubeInspector(fixture_root=fixture_root),
+                JobProvider.SPOTDL: FixtureSpotdlInspector(fixture_root=fixture_root),
+            },
+        )
+
+    from chillify.infrastructure.providers.artwork_http import HttpArtworkFetcher
+    from chillify.infrastructure.providers.deezer import DeezerDiscoveryProvider
+    from chillify.infrastructure.providers.spotdl import (
+        SpotdlAcquisitionProvider,
+        SpotdlInspector,
     )
-    from chillify.infrastructure.providers.spotdl import FixtureSpotdlInspector
-    from chillify.infrastructure.providers.ytdlp import FixtureYouTubeInspector
+    from chillify.infrastructure.providers.ytdlp import (
+        YouTubeInspector,
+        YtDlpAcquisitionProvider,
+    )
 
-    fixture_root = settings.fixture_root
-    acquisition = FixtureAcquisitionProvider(fixture_root=fixture_root)
-    logger.info("binding fixture provider adapters", extra={"environment": "gate"})
+    # SpotDL lives in an isolated environment kept off PATH, reached only through
+    # its pinned absolute path; the resolver falls back to the name for local
+    # development where it is on PATH.
+    spotdl_bin = os.environ.get("CHILLIFY_SPOTDL_BIN", "").strip() or "spotdl"
+    logger.info("binding production provider adapters", extra={"environment": "production"})
     return ProviderRegistry(
-        discovery={"deezer": FixtureDiscoveryProvider(fixture_root=fixture_root)},
+        discovery={"deezer": DeezerDiscoveryProvider()},
         acquisition={
-            JobProvider.YT_DLP: acquisition,
-            JobProvider.SPOTDL: acquisition,
+            JobProvider.YT_DLP: YtDlpAcquisitionProvider(),
+            JobProvider.SPOTDL: SpotdlAcquisitionProvider(executable=spotdl_bin),
         },
         link_inspectors={
-            JobProvider.YT_DLP: FixtureYouTubeInspector(fixture_root=fixture_root),
-            JobProvider.SPOTDL: FixtureSpotdlInspector(fixture_root=fixture_root),
+            JobProvider.YT_DLP: YouTubeInspector(),
+            JobProvider.SPOTDL: SpotdlInspector(executable=spotdl_bin),
         },
+        artwork={"url": HttpArtworkFetcher()},
     )

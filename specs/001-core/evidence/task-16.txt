@@ -1,0 +1,13 @@
+$ uv run pytest tests/contract/{test_deezer,test_lastfm,test_artwork,test_ytdlp,test_spotdl,test_provider_protocols,test_outbound_policy}_contract... -q
+--- production adapters join the shared protocol suites + dedicated respx/injected-double contracts ---
+........................................................................ [ 74%]
+.........................                                                [100%]
+97 passed in 7.02s
+
+$ ./scripts/verify.sh  (canonical; EXIT below)
+--- frontend dependency audit: ok
+
+verify: all checks passed
+
+$ uv run pytest -q   (full backend suite, no regressions)
+466 passed in 74.64s
