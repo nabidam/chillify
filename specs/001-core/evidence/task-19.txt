@@ -1,0 +1,242 @@
+Task 19 — Production-composition proof
+Evidence captured live at HEAD e5eb2e8 (before this task's own commit).
+
+======================================================================
+1. The task's exact `produces` invocation, live, against a fresh
+   disposable "release" environment.
+======================================================================
+
+Commands:
+  ./scripts/gate/prepare.sh release production
+  ./scripts/production_canary.sh --env-file .gate/release/.env --no-live-success
+
+Live output (build noise trimmed; every non-Docker-build line kept):
+
+prepared /home/dev/projects/chillify/.gate/release (production)
+launch: docker compose --env-file .gate/release/.env up --build -d
+...
+ Image chillify-api Built
+ Image chillify-web Built
+ Image chillify-worker Built
+ Image chillify-migrate Built
+ Network chillify_default Creating
+ Network chillify_default Created
+ Container chillify-migrate-1 Creating
+ Container chillify-migrate-1 Created
+ Container chillify-api-1 Creating
+ Container chillify-worker-1 Creating
+ Container chillify-api-1 Created
+ Container chillify-web-1 Creating
+ Container chillify-worker-1 Created
+ Container chillify-web-1 Created
+ Container chillify-migrate-1 Starting
+ Container chillify-migrate-1 Started
+ Container chillify-migrate-1 Waiting
+ Container chillify-migrate-1 Waiting
+ Container chillify-migrate-1 Exited
+ Container chillify-api-1 Starting
+ Container chillify-migrate-1 Exited
+ Container chillify-worker-1 Starting
+ Container chillify-worker-1 Started
+ Container chillify-api-1 Started
+ Container chillify-api-1 Waiting
+ Container chillify-api-1 Healthy
+ Container chillify-web-1 Starting
+ Container chillify-web-1 Started
+production_canary: waiting for http://localhost:8788/api/v1/system/status
+production_canary: ready=true degraded=true environment=production
+production_canary: database: {"name": "database", "health": "ok", "detail": "migrated to 0001_core"}
+production_canary: storage: {"name": "data_root", "health": "ok", "detail": "15554 MiB free"}
+production_canary: storage: {"name": "music_root", "health": "ok", "detail": "15554 MiB free"}
+production_canary: redis: {"name": "redis", "health": "unavailable", "detail": "queue transport is unreachable"}
+production_canary: tool: {"name": "ffmpeg", "health": "ok", "detail": "ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers"}
+production_canary: tool: {"name": "ffprobe", "health": "ok", "detail": "ffprobe version 8.1.2 Copyright (c) 2007-2026 the FFmpeg developers"}
+production_canary: tool: {"name": "yt_dlp", "health": "ok", "detail": "2026.07.04"}
+production_canary: tool: {"name": "spotdl", "health": "ok", "detail": "4.5.2"}
+production_canary: tool: {"name": "deno", "health": "ok", "detail": "deno 2.9.3 (stable, release, x86_64-unknown-linux-gnu)"}
+production_canary: provider: {"name": "deezer", "enabled": true, "configured": true}
+production_canary: provider: {"name": "spotdl", "enabled": true, "configured": true}
+production_canary: provider: {"name": "yt_dlp", "enabled": true, "configured": true}
+production_canary: provider: {"name": "lastfm", "enabled": false, "configured": false}
+production_canary: probing live reachability at https://api.deezer.com/
+production_canary: live reachability ok (https://api.deezer.com/ -> HTTP 200)
+production_canary: PASS
+production_canary: tearing down /home/dev/projects/chillify/.gate/release/.env
+ Container chillify-web-1 Stopping
+ Container chillify-worker-1 Stopping
+ Container chillify-web-1 Stopped
+ Container chillify-web-1 Removing
+ Container chillify-web-1 Removed
+ Container chillify-api-1 Stopping
+ Container chillify-api-1 Stopped
+ Container chillify-api-1 Removing
+ Container chillify-api-1 Removed
+ Container chillify-worker-1 Stopped
+ Container chillify-worker-1 Removing
+ Container chillify-worker-1 Removed
+ Container chillify-migrate-1 Stopping
+ Container chillify-migrate-1 Stopped
+ Container chillify-migrate-1 Removing
+ Container chillify-migrate-1 Removed
+ Network chillify_default Removing
+ Network chillify_default Removed
+
+This is real: `redis: unavailable` because .gate/release's REDIS_URL points at
+127.0.0.1:6379 from inside the container's own network namespace, where
+nothing listens — exactly the disposable-root case criterion 1 asks for
+(ready AND degraded, never a crash). `ready=true` proves database migration,
+mounted-root writability, and the real Deezer/SpotDL/yt-dlp/HTTP-artwork/tool
+classes all resolved. The live reachability probe (unaffected by
+--no-live-success, which only relaxes the *requirement*) genuinely reached
+api.deezer.com over the real network. `.gate/release` was removed with
+`./scripts/gate/cleanup.sh release` immediately after.
+
+======================================================================
+2. Household-root and gate-mode refusals, and the no-fallback network
+   failure, both live and at the contract layer.
+======================================================================
+
+Live, manual (same shell, disposable roots only):
+
+$ CHILLIFY_CANARY_LIVE_URL="http://198.51.100.1:65500/" \
+    ./scripts/production_canary.sh --env-file .gate/gate-4-production-canary/.env
+... (real containers up, real adapters reported, ready=true degraded=true) ...
+production_canary: probing live reachability at http://198.51.100.1:65500/
+production_canary: live reachability failed (http://198.51.100.1:65500/ -> HTTP 503)
+production_canary: FAILED — live reachability is required and was not satisfied; pass --no-live-success to skip this requirement
+production_canary: tearing down ...
+$ echo $?
+1
+
+$ CHILLIFY_CANARY_LIVE_URL="http://198.51.100.1:65500/" \
+    ./scripts/production_canary.sh --env-file .gate/gate-4-production-canary/.env --no-live-success
+...
+production_canary: live reachability failed (http://198.51.100.1:65500/ -> HTTP 503)
+production_canary: live reachability not required (--no-live-success); continuing
+production_canary: PASS
+$ echo $?
+0
+
+Contract-layer (fast, no Docker): backend/tests/integration/test_production_composition.py::TestCanaryFailsClosedBeforeAnyContainerStarts
+
+$ uv run pytest tests/integration/test_production_composition.py -v
+============================= test session starts ==============================
+platform linux -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- .../python
+collecting ... collected 15 items
+
+tests/integration/test_production_composition.py::TestRealAdapterResolution::test_discovery_is_the_real_deezer_adapter PASSED [  6%]
+tests/integration/test_production_composition.py::TestRealAdapterResolution::test_acquisition_adapters_are_the_real_ytdlp_and_spotdl_classes PASSED [ 13%]
+tests/integration/test_production_composition.py::TestRealAdapterResolution::test_link_inspectors_are_the_real_ytdlp_and_spotdl_classes PASSED [ 20%]
+tests/integration/test_production_composition.py::TestRealAdapterResolution::test_artwork_fetcher_is_the_real_http_adapter PASSED [ 26%]
+tests/integration/test_production_composition.py::TestRealAdapterResolution::test_no_fixture_module_is_importable_from_the_production_registry PASSED [ 33%]
+tests/integration/test_production_composition.py::TestReadyAndDegradedStates::test_a_migrated_disposable_root_is_ready PASSED [ 40%]
+tests/integration/test_production_composition.py::TestReadyAndDegradedStates::test_unreachable_redis_degrades_acquisition_without_failing_readiness PASSED [ 46%]
+tests/integration/test_production_composition.py::TestReadyAndDegradedStates::test_every_named_tool_and_provider_is_reported PASSED [ 53%]
+tests/integration/test_production_composition.py::TestCanaryFailsClosedBeforeAnyContainerStarts::test_the_script_is_executable PASSED [ 60%]
+tests/integration/test_production_composition.py::TestCanaryFailsClosedBeforeAnyContainerStarts::test_a_missing_env_file_flag_is_a_usage_error PASSED [ 66%]
+tests/integration/test_production_composition.py::TestCanaryFailsClosedBeforeAnyContainerStarts::test_a_nonexistent_env_file_is_refused PASSED [ 73%]
+tests/integration/test_production_composition.py::TestCanaryFailsClosedBeforeAnyContainerStarts::test_an_env_file_outside_gate_is_refused PASSED [ 80%]
+tests/integration/test_production_composition.py::TestCanaryFailsClosedBeforeAnyContainerStarts::test_a_gate_mode_env_file_is_refused PASSED [ 86%]
+tests/integration/test_production_composition.py::TestCanaryFailsClosedBeforeAnyContainerStarts::test_a_household_data_root_is_refused_even_inside_a_disposable_env_file PASSED [ 93%]
+tests/integration/test_production_composition.py::TestCanaryFailsClosedBeforeAnyContainerStarts::test_an_unrecognized_flag_is_a_usage_error PASSED [100%]
+
+============================== 15 passed in 6.68s ==============================
+
+======================================================================
+3. e2e@gate-4 — the unchanged production composition proven through a
+   real browser-suite Compose lifecycle, before the shared fixture
+   stack is used by anything else in the same run.
+======================================================================
+
+Command: GATE_NAME=gate-4-shared npx --no-install playwright test production-composition --project=chromium
+(run from frontend/; global-setup.ts first brings up the shared gate-4-shared
+fixture stack, then this spec's own beforeAll tears it down, proves the
+production composition three ways on its own disposable environment while
+nothing else is running, and its afterAll restores the fixture stack exactly
+as global-setup provisioned it)
+
+Live output (last portion):
+
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+mounted root ready
+mounted root ready
+binding fixture provider adapters
+gate environment seeded
+seed complete
+seeded /home/dev/projects/chillify/.gate/gate-4-shared
+  ✓  3 [chromium] › tests/e2e/production-composition.spec.ts:205:5 › production composition canary (gate 4) › refuses an env file outside the disposable .gate/ tree, before any container starts (302ms)
+removed /home/dev/projects/chillify/.gate/gate-4-shared
+
+  3 passed (2.6m)
+
+The three tests: (1) resolves real provider/tool/Redis/SQLite/media adapters
+and reaches ready or degraded — asserting `ready=true`, every named
+provider/tool line, and `PASS`; (2) a network failure is a clear canary
+failure with no fallback, unless --no-live-success is passed — driving the
+real script against an unreachable RFC 5737 TEST-NET-2 address, asserting the
+required run fails closed and the --no-live-success run still reports the
+failed probe but passes; (3) refuses an env file outside the disposable
+.gate/ tree, before any container starts — the fast local refusal, from this
+suite's own shell.
+
+======================================================================
+4. `./scripts/verify.sh` (full, not --fast) — green after this task's
+   changes.
+======================================================================
+
+Last ~30 lines of live output:
+
+=== frontend build
+vite v8.1.5 building client environment for production...
+[2Ktransforming...✓ 2078 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.64 kB │ gzip:   0.38 kB
+dist/assets/index-C7HJntKs.css   88.29 kB │ gzip:  14.99 kB
+dist/assets/index-RJ-5HfIO.js   735.64 kB │ gzip: 220.77 kB │ map: 3,278.76 kB
+
+✓ built in 939ms
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+--- frontend build: ok
+
+=== backend dependency audit
+Uninstalled 1 package in 0.91ms
+Installed 1 package in 3ms
+No known vulnerabilities found
+Name     Skip Reason
+-------- -------------------------------
+chillify distribution marked as editable
+--- backend dependency audit: ok
+
+=== frontend dependency audit
+found 0 vulnerabilities
+--- frontend dependency audit: ok
+
+verify: all checks passed
+
+(backend tests: 543 passed; frontend tests: 97 passed across 11 files;
+backend lint/format/types, frontend lint/types, raw color literals, primitive
+boundary, domain boundary, secret scan, and both lockfiles all ok — the full
+list above this excerpt, unabridged, was also green in the run this excerpt
+is taken from.)
+
+======================================================================
+Notes
+======================================================================
+
+- No changes were needed to backend/src/chillify/composition.py or
+  scripts/gate/prepare.sh: composition.py's existing system_status()/registry
+  already resolve real adapters and report ready/degraded correctly on a
+  disposable root, and prepare.sh's existing "production" mode already writes
+  exactly the env shape (CHILLIFY_ENV=production, blank
+  CHILLIFY_GATE_ROOT/CHILLIFY_FIXTURE_ROOT, roots beneath .gate/) the canary
+  needs. Both were read and verified against this task's acceptance criteria,
+  not modified, per the ambiguity rule (no behavior to change or drop).
+- README.md did not exist before this task; it is new, documenting how to run
+  the app, verify a change, and use the disposable-environment scripts
+  including the new canary.

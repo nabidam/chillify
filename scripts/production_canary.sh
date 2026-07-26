@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+#
+# The production-composition canary.
+#
+#   ./scripts/production_canary.sh --env-file <path> [--no-live-success]
+#
+# Proves that the unchanged production Compose entry point (`docker compose
+# up`, no gate overlay, no fixture adapters) resolves real provider/tool/
+# Redis/SQLite/media implementations and reaches ready or degraded state on a
+# disposable root — before any deterministic fixture is ever mounted. This is
+# not a gate: it never applies `deploy/compose.gate.yaml`, never accepts
+# `CHILLIFY_ENV=gate`, and refuses an env file that declares one.
+#
+# Containment-first, like every other canary/gate script in this repository: a
+# household `.env`, or a gate-shaped one that was hand-edited to point at real
+# household storage, is refused before a single container starts.
+#
+# `--no-live-success` skips *requiring* the live outbound reachability probe to
+# succeed — Task 20's own preflight environment has no guaranteed egress. The
+# probe still runs and its result is still reported either way. Without the
+# flag, a reachability failure is a canary failure with no fallback: it is
+# reported and the script exits non-zero, never silently downgraded to a
+# partial pass. `CHILLIFY_CANARY_LIVE_URL` overrides the probed URL (default
+# `https://api.deezer.com/`, the same keyless discovery adapter production
+# binds), which is what makes the network-failure path deterministic to test.
+
+set -Eeuo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+ENV_FILE=""
+NO_LIVE_SUCCESS=0
+
+usage() {
+    printf 'usage: %s --env-file <path> [--no-live-success]\n' "$0" >&2
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --env-file)
+            if [[ $# -lt 2 ]]; then
+                usage
+                exit 2
+            fi
+            ENV_FILE="$2"
+            shift 2
+            ;;
+        --no-live-success)
+            NO_LIVE_SUCCESS=1
+            shift
+            ;;
+        *)
+            usage
+            exit 2
+            ;;
+    esac
+done
+
+if [[ -z "$ENV_FILE" ]]; then
+    usage
+    exit 2
+fi
+
+# Reserved and pseudo filesystems are refused by name before any resolution is
+# attempted, exactly as in scripts/verify/security.sh.
+case "$ENV_FILE" in
+    / | /proc | /proc/* | /sys | /sys/* | /dev | /dev/* | /run | /run/* | /var/lib/docker | /var/lib/docker/*)
+        printf 'production_canary: refusing a container-layer target (%s)\n' "$ENV_FILE" >&2
+        exit 1
+        ;;
+esac
+
+if [[ ! -f "$ENV_FILE" ]]; then
+    printf 'production_canary: %s does not exist\n' "$ENV_FILE" >&2
+    exit 1
+fi
+
+ENV_FILE="$(cd "$(dirname "$ENV_FILE")" && pwd -P)/$(basename "$ENV_FILE")"
+
+DISPOSABLE_ROOT="$(cd "$REPO_ROOT" && mkdir -p .gate && cd .gate && pwd -P)"
+case "$ENV_FILE" in
+    "$DISPOSABLE_ROOT"/*) ;;
+    *)
+        printf 'production_canary: refusing a non-disposable env file (%s is not beneath %s)\n' \
+            "$ENV_FILE" "$DISPOSABLE_ROOT" >&2
+        exit 1
+        ;;
+esac
+
+# Read specific values out of the file rather than sourcing it, so a canary run
+# never executes arbitrary content from an `.env`.
+read_var() {
+    local key="$1"
+    grep -E "^${key}=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true
+}
+
+# Resolve a path for containment comparison without ever creating it: the
+# whole point of the household-root check below is to refuse before anything
+# is touched, including `mkdir`.
+resolve_no_create() {
+    if command -v realpath >/dev/null 2>&1; then
+        realpath -m "$1"
+    else
+        printf '%s\n' "$1"
+    fi
+}
+
+ENV_MODE="$(read_var CHILLIFY_ENV)"
+DATA_ROOT="$(read_var CHILLIFY_DATA_ROOT)"
+MUSIC_ROOT="$(read_var CHILLIFY_MUSIC_ROOT)"
+GATE_ROOT_VALUE="$(read_var CHILLIFY_GATE_ROOT)"
+FIXTURE_ROOT_VALUE="$(read_var CHILLIFY_FIXTURE_ROOT)"
+BIND_PORT="$(read_var CHILLIFY_BIND_PORT)"
+BIND_PORT="${BIND_PORT:-8787}"
+
+if [[ "$ENV_MODE" != "production" ]]; then
+    printf 'production_canary: refuses CHILLIFY_ENV=%s; this canary proves the unchanged production composition, not a gate\n' \
+        "${ENV_MODE:-<unset>}" >&2
+    exit 1
+fi
+
+if [[ -n "$GATE_ROOT_VALUE" || -n "$FIXTURE_ROOT_VALUE" ]]; then
+    printf 'production_canary: refuses a gate-declaring env file (CHILLIFY_GATE_ROOT/CHILLIFY_FIXTURE_ROOT must be unset in production mode)\n' >&2
+    exit 1
+fi
+
+for entry in "CHILLIFY_DATA_ROOT=$DATA_ROOT" "CHILLIFY_MUSIC_ROOT=$MUSIC_ROOT"; do
+    name="${entry%%=*}"
+    value="${entry#*=}"
+    if [[ -z "$value" ]]; then
+        printf 'production_canary: %s is not set in %s\n' "$name" "$ENV_FILE" >&2
+        exit 1
+    fi
+    resolved="$(resolve_no_create "$value")"
+    case "$resolved" in
+        "$DISPOSABLE_ROOT"/*) ;;
+        *)
+            printf 'production_canary: refusing a household %s (%s is not beneath %s)\n' \
+                "$name" "$resolved" "$DISPOSABLE_ROOT" >&2
+            exit 1
+            ;;
+    esac
+done
+
+BASE_URL="${CHILLIFY_CANARY_BASE_URL:-http://localhost:${BIND_PORT}}"
+LIVE_URL="${CHILLIFY_CANARY_LIVE_URL:-https://api.deezer.com/}"
+
+CLEANED_UP=0
+cleanup() {
+    if [[ "$CLEANED_UP" -eq 1 ]]; then
+        return
+    fi
+    CLEANED_UP=1
+    printf 'production_canary: tearing down %s\n' "$ENV_FILE"
+    (cd "$REPO_ROOT" && docker compose --env-file "$ENV_FILE" down --remove-orphans) || true
+}
+trap cleanup EXIT
+
+printf 'production_canary: bringing up the unchanged production composition from %s\n' "$ENV_FILE"
+(cd "$REPO_ROOT" && docker compose --env-file "$ENV_FILE" up --build -d)
+
+printf 'production_canary: waiting for %s/api/v1/system/status\n' "$BASE_URL"
+DEADLINE=$((SECONDS + 180))
+STATUS_JSON=""
+while (( SECONDS < DEADLINE )); do
+    if STATUS_JSON="$(curl -fsS -m 5 "$BASE_URL/api/v1/system/status" 2>/dev/null)"; then
+        break
+    fi
+    STATUS_JSON=""
+    sleep 2
+done
+
+if [[ -z "$STATUS_JSON" ]]; then
+    printf 'production_canary: %s/api/v1/system/status never answered within 180s\n' "$BASE_URL" >&2
+    exit 1
+fi
+
+if ! python3 - "$STATUS_JSON" <<'PYEOF'
+import json
+import sys
+
+# Passed as an argument, not piped: a heredoc already occupies this process's
+# stdin with the script above, so a pipe feeding the same stdin would race it
+# and lose — this is what silently produced an empty read here before.
+data = json.loads(sys.argv[1])
+ready = bool(data.get("ready"))
+degraded = bool(data.get("degraded"))
+
+print(
+    f"production_canary: ready={json.dumps(ready)} degraded={json.dumps(degraded)} "
+    f"environment={data.get('environment')}"
+)
+print(f"production_canary: database: {json.dumps(data.get('database'))}")
+for item in data.get("storage", []):
+    print(f"production_canary: storage: {json.dumps(item)}")
+print(f"production_canary: redis: {json.dumps(data.get('redis'))}")
+for item in data.get("tools", []):
+    print(f"production_canary: tool: {json.dumps(item)}")
+for item in data.get("providers", []):
+    print(f"production_canary: provider: {json.dumps(item)}")
+
+if not (ready or degraded):
+    print(
+        "production_canary: neither ready nor degraded — the composition did "
+        "not reach a legitimate state",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+PYEOF
+then
+    printf 'production_canary: FAILED — the real composition did not reach ready or degraded\n' >&2
+    exit 1
+fi
+
+printf 'production_canary: probing live reachability at %s\n' "$LIVE_URL"
+LIVE_OK=1
+if HTTP_CODE="$(curl -sS -m 8 -o /dev/null -w '%{http_code}' "$LIVE_URL" 2>/dev/null)"; then
+    if [[ "$HTTP_CODE" =~ ^[23] ]]; then
+        printf 'production_canary: live reachability ok (%s -> HTTP %s)\n' "$LIVE_URL" "$HTTP_CODE"
+        LIVE_OK=0
+    else
+        printf 'production_canary: live reachability failed (%s -> HTTP %s)\n' "$LIVE_URL" "$HTTP_CODE" >&2
+        LIVE_OK=1
+    fi
+else
+    printf 'production_canary: live reachability failed (%s unreachable)\n' "$LIVE_URL" >&2
+    LIVE_OK=1
+fi
+
+if [[ "$LIVE_OK" -ne 0 ]]; then
+    if [[ "$NO_LIVE_SUCCESS" -eq 1 ]]; then
+        printf 'production_canary: live reachability not required (--no-live-success); continuing\n'
+    else
+        printf 'production_canary: FAILED — live reachability is required and was not satisfied; pass --no-live-success to skip this requirement\n' >&2
+        exit 1
+    fi
+fi
+
+printf 'production_canary: PASS\n'
