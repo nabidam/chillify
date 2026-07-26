@@ -1,0 +1,257 @@
+Task 18a — scoped fix: Slider thumb accessible name (serious axe finding)
+Evidence captured live at HEAD e5eb2e8 (fix commit not yet made when captured;
+committed immediately after this file, SHA recorded in TASKS.md).
+
+======================================================================
+Defect (recorded in ARCHITECTURE's 2026-07-26 "Task 18 findings" entry and
+specs/001-core/evidence/task-18.txt lines ~130-149): Radix places
+role="slider" on SliderPrimitive.Thumb, not on SliderPrimitive.Root. The
+Shadcn wrapper (frontend/src/components/ui/slider.tsx) forwarded a call
+site's aria-label only onto Root via {...props}, so the Thumb — the element
+axe inspects for role=slider — never received an accessible name. Reported
+by axe as aria-input-field-name (serious) on every screen, since
+PersistentPlayer (frontend/src/features/player/PersistentPlayer.tsx) is
+always mounted.
+======================================================================
+
+======================================================================
+1. Fix applied
+======================================================================
+
+- frontend/src/components/ui/slider.tsx: added an optional
+  `thumbLabels?: readonly string[]` prop; each rendered
+  `SliderPrimitive.Thumb` now gets `aria-label={thumbLabels?.[index]}`
+  (typed `string | undefined` under noUncheckedIndexedAccess — the correct
+  type for an optional aria-label).
+- frontend/src/features/player/PersistentPlayer.tsx: the Seek slider now
+  passes `thumbLabels={["Seek"]}` and the Volume slider
+  `thumbLabels={["Volume"]}`, alongside the pre-existing `aria-label` on
+  each call site (left in place — it still lands on Root, which
+  firefox-smoke.spec.ts locates by: `getByLabel("Seek").getByRole("slider")`).
+- frontend/tests/component/slider-accessibility.test.tsx: new Vitest
+  component test pinning the fix directly against the Slider wrapper
+  (3/3 passing, shown below).
+- ARCHITECTURE.md: new 2026-07-26 decision-log entry recording the
+  hand-edit of a generated Shadcn primitive and the user's approval.
+
+======================================================================
+2. Vitest component test (pins the fix at the unit layer)
+======================================================================
+
+Command: npx vitest run tests/component/slider-accessibility.test.tsx
+
+ RUN  v4.1.10 /home/dev/projects/chillify/frontend
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  21:16:46
+   Duration  1.23s (transform 56ms, setup 222ms, import 105ms, tests 171ms, environment 601ms)
+
+======================================================================
+3. Axe/accessibility e2e spec — BEFORE the fix (unmodified checkout)
+======================================================================
+
+Confirmed by temporarily writing back the pre-fix contents of
+frontend/src/components/ui/slider.tsx and
+frontend/src/features/player/PersistentPlayer.tsx from `git show HEAD:...`
+(the new component test file moved aside so the build wouldn't fail on the
+now-missing `thumbLabels` prop), then running against a fresh disposable
+gate stack:
+
+Command:
+  cd frontend && GATE_NAME=gate-18a GATE_SCENARIO=listening \
+    npx playwright test accessibility --project=chromium
+
+Result: 4 failed, 2 passed.
+
+  Running 6 tests using 1 worker
+    ✓  1 › Gate 3 — the profile chooser is keyboard operable and clean (962ms)
+    ✘  2 › Gate 3 — the skip link jumps the chrome to the content (15.5s)
+    ✓  3 › Gate 3 — primary navigation traverses by keyboard without a trap (832ms)
+    ✘  4 › Gate 3 — axe is clean across the reachable screen states (1.5s)
+    ✘  5 › Gate 3 — an empty playlist context is clean and keyboard escapable (631ms)
+    ✘  6 › Gate 3 — reduced motion is honored on settings recovery (1.7s)
+
+  4 failed
+  2 passed (1.3m)
+
+Representative failure (test 4, S2 library — the exact target defect):
+
+  2) [chromium] › tests/e2e/accessibility.spec.ts:79:1 › Gate 3 — axe is clean across the reachable screen states
+
+    Error: aria-input-field-name (serious) on S2 library
+
+    + Object {
+    +   "id": "aria-input-field-name",
+    +   "impact": "serious",
+    +   "help": "ARIA input fields must have an accessible name",
+    +   "nodes": Array [
+    +     Object {
+    +       "html": "<span role=\"slider\" aria-valuemin=\"0\" aria-valuemax=\"1\" ... data-slot=\"slider-thumb\" ...>",
+    +       "target": [ "span[aria-label=\"Seek\"] > span:nth-child(2) > .block.border-primary.bg-white" ],
+    +       "failureSummary": "Fix any of the following:\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist ...\n  Element has no title attribute",
+    +     },
+    +     Object {
+    +       "html": "<span role=\"slider\" ... data-slot=\"slider-thumb\" ...>",
+    +       "target": [ ".w-24 > span:nth-child(2) > .block.border-primary.bg-white" ],
+    +     },
+    +   ],
+    + ]
+
+Test 6 (S12 settings, reduced motion) shows the identical
+`aria-input-field-name` finding via the same two Slider thumbs. Tests 2 and
+5 fail for unrelated, pre-existing reasons (a skip-link focus race and a
+Playwright strict-mode locator match on two "Create Playlist" buttons on the
+empty playlists screen) — both reproduce identically after the fix too (see
+below) and are out of this scoped task's file list.
+
+======================================================================
+4. Axe/accessibility e2e spec — AFTER the fix
+======================================================================
+
+Fix files restored from the working tree; command rerun twice against fresh
+disposable gate stacks (gate-18a, then gate-18b) for stability:
+
+Command:
+  cd frontend && GATE_NAME=gate-18a GATE_SCENARIO=listening \
+    npx playwright test accessibility --project=chromium
+
+  Running 6 tests using 1 worker
+    ✓  1 › Gate 3 — the profile chooser is keyboard operable and clean (942ms)
+    ✓  2 › Gate 3 — the skip link jumps the chrome to the content (465ms)
+    ✓  3 › Gate 3 — primary navigation traverses by keyboard without a trap (765ms)
+    ✓  4 › Gate 3 — axe is clean across the reachable screen states (4.1s)
+    ✘  5 › Gate 3 — an empty playlist context is clean and keyboard escapable (534ms)
+    ✓  6 › Gate 3 — reduced motion is honored on settings recovery (1.5s)
+
+  1 failed
+  5 passed (47.6s)
+
+Second run (GATE_NAME=gate-18b), same result: 5 passed, only test 5 fails,
+for the same pre-existing "Create Playlist" strict-mode locator reason —
+NOT an axe finding, and not `aria-input-field-name`:
+
+  Error: locator.press: Error: strict mode violation: getByRole('button', { name: 'Create Playlist' })
+  resolved to 2 elements:
+      1) <button ...>...</button> aka locator('header').filter({ hasText: 'Playlists0 playlistsCreate' }).getByRole('button')
+      2) <button ...>...</button> aka getByRole('button', { name: 'Create Playlist' }).nth(1)
+      123 |   const create = page.getByRole("button", { name: "Create Playlist" });
+      124 |   await create.focus();
+    > 125 |   await create.press("Enter");
+
+zero occurrences of `aria-input-field-name` in either post-fix run, across
+every axe assertion that executed (S2 library, S3 search, S9 playlists, S11
+downloads, S12 settings, and both reduced-motion/skip-link/nav states).
+Test 79 ("axe is clean across the reachable screen states"), which is the
+test that walks S2/S3/S9/S11/S12 and is where the defect reproduced before
+the fix, now passes clean.
+
+Test 117 (empty-playlist) fails before its own axe assertion ever runs,
+on a Playwright locator ambiguity ("Create Playlist" resolves to two
+buttons: the header action and the empty-state CTA), reproducing
+identically on the unmodified pre-fix checkout above — a separate,
+pre-existing, out-of-scope defect on the playlists screen, not touched by
+this fix. Also newly observed while verifying (both before and after,
+same as this locator issue): a `color-contrast` (serious) finding on the
+destructive Badge variant (#ffffff on #ff6b73, ratio 2.76 against 4.5:1)
+on the S12 settings reduced-motion state in the BEFORE run — also
+pre-existing and unrelated to the Slider. Both are recorded in
+ARCHITECTURE's 2026-07-26 decision-log entry as findings, not fixed here.
+
+======================================================================
+5. ./scripts/verify.sh (full, not --fast)
+======================================================================
+
+Command: ./scripts/verify.sh
+
+Result: FAILED (3) — backend lint, backend format, backend tests — all
+three failures are entirely inside backend/tests/integration/
+test_production_composition.py, which is Task 19's in-progress file, being
+edited concurrently by another agent in this same working tree at capture
+time; it is explicitly out of this task's scope (README.md,
+backend/src/chillify/composition.py, and this test file were named as
+"another agent is working on Task 19 ... do not touch"). Nothing in this
+fix's own files is implicated:
+
+  === frontend types
+  --- frontend types: ok
+
+  === frontend tests
+
+   RUN  v4.1.10 /home/dev/projects/chillify/frontend
+
+   Test Files  11 passed (11)
+        Tests  97 passed (97)
+     Start at  21:46:27
+     Duration  8.80s (...)
+
+  --- frontend tests: ok
+
+  === raw color literals
+  --- raw color literals: ok
+
+  === primitive boundary
+  --- primitive boundary: ok
+
+  === domain boundary
+  --- domain boundary: ok
+
+  === secret scan
+  --- secret scan: ok
+
+  === frontend build
+  ...
+  --- frontend build: ok
+
+  === backend dependency audit
+  No known vulnerabilities found
+  --- backend dependency audit: ok
+
+  === frontend dependency audit
+  found 0 vulnerabilities
+  --- frontend dependency audit: ok
+
+  verify: FAILED (3)
+    - backend lint
+    - backend format
+    - backend tests
+
+Backend lint/format failure detail (both point at the same in-progress
+Task 19 test file only):
+
+  === backend lint
+  E501 Line too long (103 > 100)
+    --> tests/integration/test_production_composition.py:94:101
+  Found 1 error.
+  !!! backend lint: FAILED
+
+  === backend format
+  Would reformat: tests/integration/test_production_composition.py
+  1 file would be reformatted, 134 files already formatted
+  !!! backend format: FAILED
+
+Backend test failures (all 8 errors + 6 failures are inside the same file):
+
+  ERROR tests/integration/test_production_composition.py::TestRealAdapterResolution::test_discovery_is_the_real_deezer_adapter
+  ERROR tests/integration/test_production_composition.py::TestRealAdapterResolution::test_acquisition_adapters_are_the_real_ytdlp_and_spotdl_classes
+  ERROR tests/integration/test_production_composition.py::TestRealAdapterResolution::test_link_inspectors_are_the_real_ytdlp_and_spotdl_classes
+  ERROR tests/integration/test_production_composition.py::TestRealAdapterResolution::test_artwork_fetcher_is_the_real_http_adapter
+  ERROR tests/integration/test_production_composition.py::TestRealAdapterResolution::test_no_fixture_module_is_importable_from_the_production_registry
+  ERROR tests/integration/test_production_composition.py::TestReadyAndDegradedStates::test_a_migrated_disposable_root_is_ready
+  ERROR tests/integration/test_production_composition.py::TestReadyAndDegradedStates::test_unreachable_redis_degrades_acquisition_without_failing_readiness
+  ERROR tests/integration/test_production_composition.py::TestReadyAndDegradedStates::test_every_named_tool_and_provider_is_reported
+  FAILED tests/integration/test_production_composition.py::TestCanaryFailsClosedBeforeAnyContainerStarts::test_the_script_is_executable
+  FAILED tests/integration/test_production_composition.py::TestCanaryFailsClosedBeforeAnyContainerStarts::test_a_missing_env_file_flag_is_a_usage_error
+  FAILED tests/integration/test_production_composition.py::TestCanaryFailsClosedBeforeAnyContainerStarts::test_a_nonexistent_env_file_is_refused
+  FAILED tests/integration/test_production_composition.py::TestCanaryFailsClosedBeforeAnyContainerStarts::test_an_env_file_outside_gate_is_refused
+  FAILED tests/integration/test_production_composition.py::TestCanaryFailsClosedBeforeAnyContainerStarts::test_a_household_data_root_is_refused_even_inside_a_disposable_env_file
+  FAILED tests/integration/test_production_composition.py::TestCanaryFailsClosedBeforeAnyContainerStarts::test_an_unrecognized_flag_is_a_usage_error
+  !!! backend tests: FAILED
+
+Every check in this list that touches frontend, or backend code/tests
+outside test_production_composition.py, passed. This scoped fix's own
+files (frontend/src/components/ui/slider.tsx,
+frontend/src/features/player/PersistentPlayer.tsx,
+frontend/tests/component/slider-accessibility.test.tsx) are covered by the
+green "frontend types" and "frontend tests" (97/97) sections above, and by
+the live axe run in section 4.

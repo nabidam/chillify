@@ -11,8 +11,17 @@ function Slider({
   value,
   min = 0,
   max = 100,
+  thumbLabels,
   ...props
-}: React.ComponentProps<typeof SliderPrimitive.Root>) {
+}: React.ComponentProps<typeof SliderPrimitive.Root> & {
+  /**
+   * Accessible name for each thumb, by index. Radix places `role="slider"`
+   * on `SliderPrimitive.Thumb`, not on `SliderPrimitive.Root`, so an
+   * `aria-label` spread onto the wrapper's own props never reaches the
+   * element that needs it. Pass a label per rendered thumb here instead.
+   */
+  thumbLabels?: readonly string[];
+}) {
   const _values = React.useMemo(
     () =>
       Array.isArray(value) ? value : Array.isArray(defaultValue) ? defaultValue : [min, max],
@@ -47,6 +56,7 @@ function Slider({
       </SliderPrimitive.Track>
       {Array.from({ length: _values.length }, (_, index) => (
         <SliderPrimitive.Thumb
+          aria-label={thumbLabels?.[index]}
           data-slot="slider-thumb"
           key={index}
           className="block size-4 shrink-0 rounded-full border border-primary bg-white shadow-sm ring-ring/50 transition-[color,box-shadow] hover:ring-4 focus-visible:ring-4 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50"

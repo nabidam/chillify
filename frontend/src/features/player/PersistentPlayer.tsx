@@ -110,6 +110,7 @@ export function PersistentPlayer() {
           </span>
           <Slider
             aria-label="Seek"
+            thumbLabels={["Seek"]}
             className="flex-1"
             min={0}
             max={reportedDuration > 0 ? reportedDuration : 1}
@@ -137,6 +138,7 @@ export function PersistentPlayer() {
           <span className="type-micro text-foreground-subtle">Volume</span>
           <Slider
             aria-label="Volume"
+            thumbLabels={["Volume"]}
             className="w-24"
             min={0}
             max={1}
