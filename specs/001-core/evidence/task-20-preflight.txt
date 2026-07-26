@@ -34,3 +34,35 @@ production_canary: PASS
 
 === ./scripts/verify.sh (full) ===
 verify: all checks passed
+
+======================================================================
+GATE 4 PREFLIGHT — re-run from clean .gate/release at 2e87f54
+Date: 2026-07-26T23:09:52Z
+======================================================================
+
+$ ./scripts/gate/prepare.sh release release
+REDIS_URL=redis://host.docker.internal:6379/0
+CHILLIFY_REDIS_PREFIX=chillify:gate:release:
+CHILLIFY_ENV=release
+CHILLIFY_FIXTURE_ROOT=
+CHILLIFY_GATE_ROOT=/home/dev/projects/chillify/.gate/release
+
+$ ./scripts/production_canary.sh --env-file .gate/release/.env --no-live-success
+production_canary: ready=true degraded=false environment=release
+production_canary: PASS   (real adapters: deezer/spotdl/yt_dlp + ffmpeg/ffprobe/deno; redis reachable)
+
+$ docker compose --env-file .gate/release/.env up --build -d   -> api Healthy, web Started
+$ ./scripts/gate/seed.sh release kernel-500
+binding production provider adapters
+seeded /home/dev/projects/chillify/.gate/release
+
+=== journey entry point reachable (live curl) ===
+GET /api/v1/system/health -> {"status":"ready"}
+GET /api/v1/system/status -> ready=True degraded=False environment=release
+GET /api/v1/profiles -> ['Household']
+GET /api/v1/library/tracks -> 2 tracks
+   - Digital Love / Daft Punk playable=True
+   - Harder Better Faster Stronger / Daft Punk playable=True
+GET / -> web HTTP 200
+
+PREFLIGHT: PASS — awaiting human walkthrough
