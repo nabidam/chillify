@@ -253,3 +253,19 @@ class ProxyTimeoutError(ChillifyError):
     code = "proxy_timeout"
     status_code = 504
     retryable = True
+
+
+class OutboundTargetRejectedError(ChillifyError):
+    """An outbound request or one of its redirects resolved to a network
+    location the SSRF policy in `infrastructure.security.outbound` refuses.
+
+    ARCHITECTURE section 13 names the rule: loopback, link-local, private, and
+    multicast targets are never fetched, on the first hop or any redirect. This
+    is treated as ordinary malformed input rather than a server failure — the
+    submitted URL is what is wrong — so it is not retryable and names no
+    resolved address.
+    """
+
+    code = "outbound_target_rejected"
+    status_code = 400
+    retryable = False

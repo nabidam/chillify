@@ -7,9 +7,10 @@ HTTP client that could reach the network directly.
 
 What comes back is decoded and re-encoded by `normalize_cover`, the same
 validator every uploaded cover passes through, so this adapter can never place
-anything but one bounded baseline JPEG into the workspace. Redirects are bounded
-and the initial scheme is checked, but the full host/IP SSRF policy belongs to
-`security/outbound` and is hardened in a later task.
+anything but one bounded baseline JPEG into the workspace. The initial scheme is
+checked here; `security.outbound` validates the initial target and every
+redirect hop against the SSRF host/IP policy, since it is the one place that
+walks the redirect chain.
 """
 
 from __future__ import annotations

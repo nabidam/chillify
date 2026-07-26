@@ -15,8 +15,10 @@ what it wants to fetch and never how the transport behaves under failure.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
+import ipaddress
+import socket
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Final
 from urllib.parse import urlsplit
@@ -32,6 +34,7 @@ from tenacity import (
 )
 
 from chillify.domain.errors import (
+    OutboundTargetRejectedError,
     ProxyAuthenticationError,
     ProxyConfigurationError,
     ProxyConnectionError,
@@ -65,6 +68,68 @@ _RETRYABLE_EXCEPTIONS: Final = (
 _RETRYABLE_STATUSES: Final = frozenset({408, 429, 500, 502, 503, 504})
 
 _PROXY_AUTH_STATUS: Final = 407
+
+# ARCHITECTURE section 13: the SSRF containment boundary. `follow_redirects`
+# is only ever true for the one adapter that fetches an arbitrary provider or
+# user-submitted URL (artwork), so the scheme and every resolved address —
+# the initial target and every redirect hop — are checked exactly there.
+# Fixed provider hostnames never redirect and pay no DNS-lookup cost for it.
+_HOP_SCHEMES: Final = frozenset({"http", "https"})
+_REDIRECT_STATUSES: Final = frozenset({301, 302, 303, 307, 308})
+_REJECTED_TARGET_MESSAGE: Final = "That URL points to a network location Chillify will not fetch."
+
+
+def _is_disallowed_address(raw: str) -> bool:
+    """True for loopback, link-local, private, multicast, reserved, or unspecified."""
+    try:
+        address = ipaddress.ip_address(raw)
+    except ValueError:
+        return False
+    return (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+        or address.is_unspecified
+    )
+
+
+def default_resolver(host: str) -> Sequence[str]:
+    """The production DNS resolver: every address a hostname currently resolves to.
+
+    A lookup failure is not itself a policy violation — refusing loopback is
+    about what an address *is*, not about naming a host at all — so it returns
+    no addresses rather than raising, and the real connection attempt reports
+    its own failure.
+    """
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return ()
+    return tuple({str(info[4][0]) for info in infos})
+
+
+def _validate_target(url: str, *, enforce: bool, resolver: Callable[[str], Sequence[str]]) -> None:
+    """Refuse a target this policy will not fetch.
+
+    A literal IP in the URL is checked unconditionally, everywhere, since it
+    costs no network round trip. The scheme and DNS-resolved addresses are
+    checked only when `enforce` is set — the artwork/user-URL flow that follows
+    redirects to a target this process does not otherwise control.
+    """
+    parts = urlsplit(url)
+    if enforce and parts.scheme.lower() not in _HOP_SCHEMES:
+        raise OutboundTargetRejectedError("That URL must use HTTP or HTTPS.")
+    host = parts.hostname
+    if not host:
+        raise OutboundTargetRejectedError(_REJECTED_TARGET_MESSAGE)
+    if _is_disallowed_address(host.strip("[]")):
+        raise OutboundTargetRejectedError(_REJECTED_TARGET_MESSAGE)
+    if enforce:
+        for address in resolver(host):
+            if _is_disallowed_address(address):
+                raise OutboundTargetRejectedError(_REJECTED_TARGET_MESSAGE)
 
 
 class ProxyDiagnosisCode(StrEnum):
@@ -155,6 +220,9 @@ class OutboundHttp:
     proxy: str | None = None
     follow_redirects: bool = False
     max_redirects: int = 3
+    # Overridable only so a test can replace real DNS with a fixed table; the
+    # default is the one resolver production ever uses.
+    resolver: Callable[[str], Sequence[str]] = field(default=default_resolver)
 
     def _endpoint(self) -> ProxyEndpoint | None:
         if self.proxy is None:
@@ -167,12 +235,17 @@ class OutboundHttp:
         return endpoint
 
     def open(self) -> httpx.Client:
-        """Build the one client this policy allows, always through the proxy."""
+        """Build the one client this policy allows, always through the proxy.
+
+        Redirects are never left to httpx: `request` walks them itself so the
+        SSRF policy can validate every hop before it is fetched, not only the
+        first. The client therefore never follows one on its own.
+        """
         endpoint = self._endpoint()
         return build_httpx_client(
             proxy=endpoint.raw if endpoint is not None else None,
             timeout=_TIMEOUT,
-            follow_redirects=self.follow_redirects,
+            follow_redirects=False,
             max_redirects=self.max_redirects,
         )
 
@@ -184,19 +257,19 @@ class OutboundHttp:
         params: dict[str, str] | None = None,
         headers: dict[str, str] | None = None,
     ) -> httpx.Response:
-        """Perform one request under the retry and proxy policy.
+        """Perform one request under the retry, redirect, and proxy policy.
 
         A transport failure while a proxy is configured is translated into a
         typed proxy error and never retried directly against the destination.
         Retryable statuses are exhausted and the final response is returned for
-        the adapter to interpret; a `4xx` input error is returned unretried.
+        the adapter to interpret; a `4xx` input error is returned unretried. The
+        initial target and every redirect hop are validated against the SSRF
+        policy before they are fetched.
         """
         proxy_configured = self.proxy is not None
         with self.open() as client:
             try:
-                return _with_retries(
-                    lambda: client.request(method, url, params=params, headers=headers)
-                )
+                return self._follow(client, method, url, params, headers)
             except httpx.ProxyError as exc:
                 raise _proxy_error_for(exc, proxy_configured) from exc
             except (
@@ -216,6 +289,49 @@ class OutboundHttp:
                         "Could not reach the internet through the configured proxy.",
                     ) from exc
                 raise
+
+    def _follow(
+        self,
+        client: httpx.Client,
+        method: str,
+        url: str,
+        params: dict[str, str] | None,
+        headers: dict[str, str] | None,
+    ) -> httpx.Response:
+        """Fetch `url`, validating and following redirects up to `max_redirects`.
+
+        Every hop is validated with the same `enforce` flag as the first: only
+        the adapter that opted into `follow_redirects` pays for scheme and DNS
+        checks, and it pays them on every hop a server hands it, not only the
+        one it named.
+        """
+        target = url
+        query = params
+        hops = 0
+        while True:
+            _validate_target(target, enforce=self.follow_redirects, resolver=self.resolver)
+
+            def send(hop: str = target, hop_query: dict[str, str] | None = query) -> httpx.Response:
+                # Bound as defaults, evaluated fresh each pass through the loop,
+                # so a retry of this hop never accidentally sends a later one.
+                return client.request(method, hop, params=hop_query, headers=headers)
+
+            response = _with_retries(send)
+            if not self.follow_redirects or response.status_code not in _REDIRECT_STATUSES:
+                return response
+            location = response.headers.get("location")
+            if not location:
+                return response
+            if hops >= self.max_redirects:
+                response.close()
+                raise OutboundTargetRejectedError(
+                    "That URL required more redirects than are allowed."
+                )
+            hops += 1
+            target = str(httpx.URL(target).join(location))
+            # The original query belongs to the first hop only; a redirect names
+            # its own complete target.
+            query = None
 
     def probe(self, override: str | None = None) -> ProxyDiagnosis:
         """Test the saved proxy, or an operator-supplied one, without leaking it.

@@ -1,0 +1,96 @@
+Task 17 — Security, recovery, and storage hardening
+====================================================
+
+Command exercised (drives the real code paths — real respx-intercepted
+redirects through the new SSRF host/IP policy, real threads racing a real
+filelock and a real on-disk SQLite unique constraint, real subprocess
+invocations of the new verify scripts):
+
+  cd backend && uv run pytest -v tests/integration/test_ssrf.py \
+      tests/integration/test_idempotency.py \
+      tests/integration/test_concurrency.py \
+      tests/contract/test_verify_scripts.py
+
+Last ~35 lines of live output:
+
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_reserved_system_path_is_refused[/proc/1-script1] PASSED [ 61%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_reserved_system_path_is_refused[/proc/1-script2] PASSED [ 62%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_reserved_system_path_is_refused[/sys-script0] PASSED [ 64%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_reserved_system_path_is_refused[/sys-script1] PASSED [ 66%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_reserved_system_path_is_refused[/sys-script2] PASSED [ 68%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_reserved_system_path_is_refused[/dev-script0] PASSED [ 70%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_reserved_system_path_is_refused[/dev-script1] PASSED [ 72%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_reserved_system_path_is_refused[/dev-script2] PASSED [ 74%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_reserved_system_path_is_refused[/run-script0] PASSED [ 75%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_reserved_system_path_is_refused[/run-script1] PASSED [ 77%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_reserved_system_path_is_refused[/run-script2] PASSED [ 79%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_reserved_system_path_is_refused[/var/lib/docker-script0] PASSED [ 81%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_reserved_system_path_is_refused[/var/lib/docker-script1] PASSED [ 83%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_reserved_system_path_is_refused[/var/lib/docker-script2] PASSED [ 85%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_nonexistent_target_is_refused[script0] PASSED [ 87%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_nonexistent_target_is_refused[script1] PASSED [ 88%]
+tests/contract/test_verify_scripts.py::TestContainerLayerTargetsAreRefused::test_a_nonexistent_target_is_refused[script2] PASSED [ 90%]
+tests/contract/test_verify_scripts.py::TestADisposableTargetPasses::test_security_accepts_a_clean_disposable_target PASSED [ 92%]
+tests/contract/test_verify_scripts.py::TestADisposableTargetPasses::test_storage_accepts_a_disposable_target_with_no_escaping_symlink PASSED [ 94%]
+tests/contract/test_verify_scripts.py::TestADisposableTargetPasses::test_storage_refuses_a_symlink_that_escapes_the_target PASSED [ 96%]
+tests/contract/test_verify_scripts.py::TestADisposableTargetPasses::test_persistence_reports_nothing_to_verify_without_a_database PASSED [ 98%]
+tests/contract/test_verify_scripts.py::TestADisposableTargetPasses::test_security_finds_a_leaked_secret_shaped_value PASSED [100%]
+
+============================== 54 passed in 2.14s ==============================
+
+Full backend suite (regression check, includes the 54 tests above):
+
+  cd backend && uv run pytest -q
+
+........................................................................ [ 13%]
+........................................................................ [ 27%]
+........................................................................ [ 41%]
+........................................................................ [ 55%]
+........................................................................ [ 69%]
+........................................................................ [ 83%]
+........................................................................ [ 96%]
+................                                                         [100%]
+520 passed in 73.82s (0:01:13)
+
+./scripts/verify.sh (full, non --fast) run:
+
+All steps passed — lockfile drift (backend/frontend), backend lint/format/
+types/tests, frontend lint/types/tests, raw-color/primitive/domain-boundary/
+secret-scan checks, frontend build, backend dependency audit — except
+"frontend dependency audit" (npm audit --audit-level=high), which fails on
+pre-existing transitive devDependency advisories (@modelcontextprotocol/sdk →
+@hono/node-server, @redocly/openapi-core → brace-expansion, react-router).
+Confirmed via `git stash` that this exact failure (exit 1, same 8 advisories)
+is already present on branch 001-core at commit 05dad9e, before any Task 17
+change — Task 17 touches no frontend file. Fixing it means bumping unrelated
+frontend tooling dependencies, which is out of this task's scope (backend
+security/recovery/storage hardening) and CONVENTIONS forbids unrelated churn
+in one task's commit.
+
+Scope notes:
+- outbound.py: added the SSRF host/IP policy (loopback/link-local/private/
+  multicast/reserved rejection) for the initial target and every redirect hop,
+  scheme-restricted the redirect-following flow to HTTP(S), and added
+  OutboundTargetRejectedError to the closed error set. Provider calls
+  (Deezer/Last.fm, fixed hostnames, no redirects) are unaffected — confirmed by
+  the unchanged, still-passing contract/test_outbound_policy.py suite.
+- api/middleware.py: new MutationGuardMiddleware enforcing the two threat-table
+  controls that had no code yet — Origin validation and "reject non-JSON
+  mutation content except artwork multipart" — wired in main.py as the
+  innermost of three middleware layers so the request-ID assignment (moved to
+  register last/outermost) always covers its own rejections.
+- deploy/nginx.conf: added X-Content-Type-Options, X-Frame-Options, and
+  Referrer-Policy response headers at the one ingress point.
+- scripts/verify/{security,storage,persistence}.sh: new fail-closed scripts,
+  each refusing a non-disposable or container-layer target before touching it,
+  then performing a real check (secret-shaped-content/`.env` permission scan;
+  symlink-escape scan; SQLite integrity + stuck-recovery scan).
+- recovery.py: unchanged — its crash-consistency behavior (all mutation crash
+  points) was already covered by the existing edit/deletion recovery suites;
+  Task 17 adds tests/integration/test_concurrency.py to prove the advisory
+  filelock and the database's own unique constraint hold under genuine
+  concurrent threads, not just sequential requests.
+- Added backend/tests/contract/test_verify_scripts.py (not in the task's
+  literal file list) because acceptance criterion 3 is explicitly layer =
+  "contract" and needs a script-level fail-closed test; none of the three
+  integration files the task named fits that layer.

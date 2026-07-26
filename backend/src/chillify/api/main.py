@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from chillify.api.errors import ErrorResponse, error_payload
+from chillify.api.middleware import MutationGuardMiddleware
 from chillify.api.routes import (
     artwork,
     downloads,
@@ -108,15 +109,6 @@ def create_app() -> FastAPI:
         openapi_url=f"{API_PREFIX}/openapi.json",
         responses={"default": {"model": ErrorResponse, "description": "Error envelope"}},
     )
-
-    @app.middleware("http")
-    async def assign_request_id(request: Request, call_next):  # type: ignore[no-untyped-def]
-        request_id = uuid.uuid4().hex
-        request.state.request_id = request_id
-        with request_context(request_id):
-            response: Response = await call_next(request)
-        response.headers[REQUEST_ID_HEADER] = request_id
-        return response
 
     @app.exception_handler(StarletteHTTPException)
     async def handle_http_exception(request: Request, exc: StarletteHTTPException) -> JSONResponse:
@@ -211,23 +203,47 @@ def create_app() -> FastAPI:
     # Managed media bytes sit outside the versioned API on the path nginx
     # passes through unbuffered, alongside the audio stream.
     app.include_router(artwork.media_router)
-    _configure_origins(app)
+
+    origins = _resolve_allowed_origins(app)
+    # Registration order matters: Starlette applies the most recently added
+    # middleware outermost, so this order is deliberately the reverse of how a
+    # request should be handled. The mutation guard is added first (innermost,
+    # right outside routing) so it sees exactly what a route would; CORS next;
+    # and the request-ID assignment last, so it is the very first thing that
+    # runs and every response this app ever sends — including a guard's own
+    # rejection — already carries a request ID.
+    app.add_middleware(MutationGuardMiddleware, allowed_origins=origins)
+    _configure_origins(app, origins)
+
+    @app.middleware("http")
+    async def assign_request_id(request: Request, call_next):  # type: ignore[no-untyped-def]
+        request_id = uuid.uuid4().hex
+        request.state.request_id = request_id
+        with request_context(request_id):
+            response: Response = await call_next(request)
+        response.headers[REQUEST_ID_HEADER] = request_id
+        return response
+
     return app
 
 
-def _configure_origins(app: FastAPI) -> None:
+def _resolve_allowed_origins(app: FastAPI) -> tuple[str, ...]:
+    origins = getattr(app.state, "allowed_origins", None)
+    if origins is not None:
+        return tuple(origins)
+    try:
+        return load_settings().allowed_origins
+    except ConfigurationError:
+        # Startup will fail with the named error; do not mask it here.
+        return ()
+
+
+def _configure_origins(app: FastAPI, origins: tuple[str, ...]) -> None:
     """Add CORS only when the operator explicitly enabled direct API access.
 
     The default deployment is same-origin behind nginx and adds no CORS policy
     at all, so a cross-origin mutation has nothing to negotiate with.
     """
-    origins = getattr(app.state, "allowed_origins", None)
-    if origins is None:
-        try:
-            origins = load_settings().allowed_origins
-        except ConfigurationError:
-            # Startup will fail with the named error; do not mask it here.
-            return
     if origins:
         app.add_middleware(
             CORSMiddleware,
