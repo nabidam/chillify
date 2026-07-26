@@ -25,6 +25,19 @@ x-backend-environment: &backend-environment
   CHILLIFY_ALLOWED_ORIGINS: "${CHILLIFY_ALLOWED_ORIGINS:-}"
   CHILLIFY_ENV: "${CHILLIFY_ENV:-production}"
   CHILLIFY_FIXTURE_ROOT: "${CHILLIFY_FIXTURE_ROOT:-}"
+  # Task 20's release gate runs CHILLIFY_ENV=release through this same,
+  # unchanged entry point (no gate overlay) and needs config.py's containment
+  # check to see a declared containment root. `.env`'s own CHILLIFY_GATE_ROOT
+  # is a host path (meaningful to the host-side scripts that read the file
+  # directly); the container's own data/music roots above are always the
+  # fixed container paths regardless of what host directory backs them, so
+  # the value that belongs here is the matching fixed container path, not
+  # whatever host string `.env` happens to hold. `:+` substitutes it only
+  # when `.env` declares CHILLIFY_GATE_ROOT at all (gate and release); a
+  # plain production `.env` never sets it, so this stays unset there, exactly
+  # preserving today's household behavior — production may still never
+  # declare a containment root.
+  CHILLIFY_GATE_ROOT: "${CHILLIFY_GATE_ROOT:+/var/lib/chillify}"
   PYTHONUNBUFFERED: "1"
 
 # API and worker reach a proxy the operator runs on the Docker host by name.

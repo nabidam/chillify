@@ -51,6 +51,7 @@ class ConfigurationError(Exception):
 class RuntimeEnvironment(StrEnum):
     PRODUCTION = "production"
     GATE = "gate"
+    RELEASE = "release"
 
 
 class Settings(BaseSettings):
@@ -160,7 +161,26 @@ class Settings(BaseSettings):
 
     @property
     def is_gate(self) -> bool:
+        """Whether fixture provider adapters may bind.
+
+        Exactly `CHILLIFY_ENV=gate`. `release` deliberately does not count:
+        Task 20's release gate needs the unchanged production composition —
+        the real Deezer/SpotDL/yt-dlp/HTTP-artwork adapters — seeded with
+        fixture data, not fixture adapters standing in for those classes.
+        """
         return self.environment is RuntimeEnvironment.GATE
+
+    @property
+    def is_disposable(self) -> bool:
+        """Whether this environment may be seeded with invented data.
+
+        True for `gate` (fixture adapters and fixture data together) and
+        `release` (real adapters, but a provably disposable tree — every
+        root beneath one declared `CHILLIFY_GATE_ROOT`). Production is never
+        disposable: seeding it could invent rows in a household deployment,
+        which is exactly what must never happen.
+        """
+        return self.environment in (RuntimeEnvironment.GATE, RuntimeEnvironment.RELEASE)
 
 
 def load_settings(environ: dict[str, str] | None = None) -> Settings:
@@ -211,11 +231,14 @@ def _format(exc: ValidationError) -> str:
 
 
 def _assert_gate_safety(settings: Settings) -> None:
-    """Fail closed unless every gate-mode condition holds.
+    """Fail closed unless every disposable-environment condition holds.
 
-    Fixture adapters may bind only when the environment is `gate`, every
-    gate-visible root resolves beneath one declared containment root, and the
-    Redis prefix is gate-namespaced. Any mismatch is refused here, before
+    Fixture adapters may bind only when the environment is exactly `gate`.
+    Seeding (`gate` or `release`, i.e. `is_disposable`) may only run when
+    every gate-visible root resolves beneath one declared containment root
+    and the Redis prefix is gate-namespaced. `release` additionally forbids a
+    declared fixture root: it proves the real production composition, not
+    fixture adapters standing in for it. Any mismatch is refused here, before
     migration or Redis contact.
 
     The containment root is declared (`CHILLIFY_GATE_ROOT`) rather than derived
@@ -232,7 +255,7 @@ def _assert_gate_safety(settings: Settings) -> None:
     declared boundary, and that fixture adapters and the gate Redis namespace
     stay strictly inside gate mode.
     """
-    if not settings.is_gate:
+    if not settings.is_disposable:
         for name, value in (
             ("CHILLIFY_FIXTURE_ROOT", settings.fixture_root),
             ("CHILLIFY_GATE_ROOT", settings.gate_root),
@@ -240,52 +263,71 @@ def _assert_gate_safety(settings: Settings) -> None:
             if value is not None:
                 raise ConfigurationError(
                     "fixture_root_outside_gate",
-                    f"{name} is only permitted when CHILLIFY_ENV=gate.",
+                    f"{name} is only permitted when CHILLIFY_ENV=gate or CHILLIFY_ENV=release.",
                 )
         if settings.redis_prefix.startswith(_GATE_PREFIX):
             raise ConfigurationError(
                 "gate_prefix_outside_gate",
                 "CHILLIFY_REDIS_PREFIX may only use the "
-                f"'{_GATE_PREFIX}' namespace when CHILLIFY_ENV=gate.",
+                f"'{_GATE_PREFIX}' namespace when CHILLIFY_ENV=gate or CHILLIFY_ENV=release.",
             )
         return
 
-    if settings.fixture_root is None:
-        raise ConfigurationError(
-            "fixture_root_missing",
-            "CHILLIFY_ENV=gate requires CHILLIFY_FIXTURE_ROOT beneath CHILLIFY_GATE_ROOT.",
-        )
     if settings.gate_root is None:
         raise ConfigurationError(
             "gate_root_missing",
-            "CHILLIFY_ENV=gate requires CHILLIFY_GATE_ROOT declaring the "
-            "disposable tree every other gate root lives beneath.",
+            "CHILLIFY_ENV=gate/release requires CHILLIFY_GATE_ROOT declaring the "
+            "disposable tree every other root lives beneath.",
         )
     gate_root = settings.gate_root
-    for name, value in (
-        ("CHILLIFY_FIXTURE_ROOT", settings.fixture_root),
+
+    roots: list[tuple[str, Path]] = [
         ("CHILLIFY_DATA_ROOT", settings.data_root),
         ("CHILLIFY_MUSIC_ROOT", settings.music_root),
-    ):
-        if not _is_beneath(value, gate_root):
+    ]
+    if settings.is_gate:
+        if settings.fixture_root is None:
+            raise ConfigurationError(
+                "fixture_root_missing",
+                "CHILLIFY_ENV=gate requires CHILLIFY_FIXTURE_ROOT beneath CHILLIFY_GATE_ROOT.",
+            )
+        roots.append(("CHILLIFY_FIXTURE_ROOT", settings.fixture_root))
+    elif settings.fixture_root is not None:
+        raise ConfigurationError(
+            "fixture_root_outside_gate",
+            "CHILLIFY_FIXTURE_ROOT is only permitted when CHILLIFY_ENV=gate.",
+        )
+
+    for name, value in roots:
+        if not is_beneath(value, gate_root):
             raise ConfigurationError(
                 "gate_root_escape",
-                f"{name} must resolve beneath {gate_root} when CHILLIFY_ENV=gate.",
+                f"{name} must resolve beneath {gate_root} "
+                f"when CHILLIFY_ENV={settings.environment}.",
             )
     if settings.data_root.parent != settings.music_root.parent:
         raise ConfigurationError(
             "gate_roots_split",
             "CHILLIFY_DATA_ROOT and CHILLIFY_MUSIC_ROOT must share one gate "
-            "directory when CHILLIFY_ENV=gate.",
+            "directory when CHILLIFY_ENV=gate or CHILLIFY_ENV=release.",
         )
     if not settings.redis_prefix.startswith(_GATE_PREFIX):
         raise ConfigurationError(
             "gate_prefix_invalid",
-            f"CHILLIFY_REDIS_PREFIX must begin with '{_GATE_PREFIX}' when CHILLIFY_ENV=gate.",
+            f"CHILLIFY_REDIS_PREFIX must begin with '{_GATE_PREFIX}' "
+            "when CHILLIFY_ENV=gate or CHILLIFY_ENV=release.",
         )
 
 
-def _is_beneath(candidate: Path, root: Path) -> bool:
+def is_beneath(candidate: Path, root: Path) -> bool:
+    """Whether `candidate` resolves strictly beneath `root` (never equal to it).
+
+    Public rather than a config-private helper: `gate_seed.py` reuses it to
+    re-check gate-root containment itself before writing invented rows,
+    rather than trusting the invariant transitively through `Settings` alone
+    — the same two-point enforcement this module's containment already
+    applies at the host/process boundary.
+    """
     return candidate != root and root in candidate.parents
 
 

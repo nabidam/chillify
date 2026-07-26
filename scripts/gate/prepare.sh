@@ -8,8 +8,18 @@
 # path outside that tree, so a gate run can never reach household data.
 #
 # `mode` selects the runtime environment:
-#   production (default)  real adapters, ordinary Redis prefix
-#   gate                  fixture adapters, chillify:gate:<name>: prefix
+#   production (default)  real adapters, ordinary Redis prefix, no containment
+#                          root declared (a real household deployment never
+#                          looks disposable)
+#   gate                   fixture adapters, chillify:gate:<name>: prefix,
+#                          declared containment root
+#   release                real adapters (the unchanged production
+#                          composition, never fixtures), but a provably
+#                          disposable tree: chillify:gate:<name>: prefix and a
+#                          declared containment root, exactly like gate mode,
+#                          so it can be seeded and torn down the same way.
+#                          This is what Task 20's release gate needs: the
+#                          real composition, seeded.
 
 set -Eeuo pipefail
 
@@ -18,7 +28,7 @@ NAME="${1:-}"
 MODE="${2:-production}"
 
 if [[ -z "$NAME" ]]; then
-    printf 'usage: %s <name> [production|gate]\n' "$0" >&2
+    printf 'usage: %s <name> [production|gate|release]\n' "$0" >&2
     exit 2
 fi
 
@@ -28,9 +38,9 @@ if [[ ! "$NAME" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
 fi
 
 case "$MODE" in
-    production | gate) ;;
+    production | gate | release) ;;
     *)
-        printf 'prepare: mode must be production or gate\n' >&2
+        printf 'prepare: mode must be production, gate, or release\n' >&2
         exit 2
         ;;
 esac
@@ -63,6 +73,22 @@ if [[ "$MODE" == "gate" ]]; then
     # Seed the fixture adapters' recorded payloads. They are copied rather
     # than referenced so a gate run reads only from its own disposable tree.
     cp -R "$REPO_ROOT/backend/tests/fixtures/." "$GATE_ROOT/fixtures/"
+elif [[ "$MODE" == "release" ]]; then
+    # Real adapters (CHILLIFY_ENV=release never binds fixtures — `is_gate`
+    # stays false), but still a provably disposable environment: no
+    # CHILLIFY_FIXTURE_ROOT (fixture adapters must never bind), and a
+    # declared CHILLIFY_GATE_ROOT so config.py's containment check and
+    # scripts/gate/seed.sh's own re-check have a boundary to verify against.
+    # Task 20's own preflight paragraph names the Redis prefix
+    # `chillify:gate:release:`, so this reuses gate's isolated Redis
+    # namespace even though this is the real production composition.
+    REDIS_PREFIX="chillify:gate:${NAME}:"
+    FIXTURE_ROOT=""
+    CONTAINMENT_ROOT="$GATE_ROOT"
+    # Release launches through the unchanged compose.yaml, which has no redis
+    # service of its own (same as production) — see the production branch's
+    # comment below for why host.docker.internal is required here.
+    DEFAULT_REDIS_URL="redis://host.docker.internal:6379/0"
 else
     REDIS_PREFIX="chillify:"
     FIXTURE_ROOT=""

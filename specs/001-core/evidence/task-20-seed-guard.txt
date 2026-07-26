@@ -1,0 +1,271 @@
+Task 20 gate-blocking contradiction — the seed guard, and the deeper `release`
+environment fix the coordinator approved after the initial scoped bash fix
+turned out to be necessary-but-insufficient (gate_seed.py's own `is_gate`
+check independently refused every non-gate environment, including a
+containment-relaxed production one).
+
+Scope actually touched: scripts/lib/containment.sh (new, shared),
+scripts/gate/seed.sh, scripts/gate/prepare.sh, scripts/production_canary.sh,
+compose.yaml, backend/src/chillify/config.py, backend/src/chillify/gate_seed.py,
+backend/src/chillify/api/routes/system.py (a pre-existing environment-string
+bug surfaced live while verifying — see below), ARCHITECTURE.md section 12 and
+decision log, and the four backend test files listed in the commit.
+
+=====================================================================
+$ uv run pytest tests/unit/test_config.py tests/unit/test_gate_seed.py \
+    tests/contract/test_gate_scripts.py tests/contract/test_verify_scripts.py \
+    tests/contract/test_openapi_contract.py \
+    tests/integration/test_production_composition.py -q
+=====================================================================
+........................................................................ [ 50%]
+........................................................................ [100%]
+144 passed in 34.06s
+
+Covers, as real subprocess/real temp-tree tests (no mocks):
+  - release env + roots under .gate/<name>/           -> seeds successfully
+    (test_release_environment_with_contained_roots_seeds_successfully)
+  - release env + root outside .gate/                 -> refused, nonzero
+    (test_release_environment_with_a_household_root_is_refused_before_any_write)
+  - release env + symlink-escaping root                -> refused, nonzero
+    (test_release_environment_with_a_symlink_escaping_root_is_refused_before_any_write)
+  - production env                                     -> still refused
+    (test_seeding_a_production_environment_is_refused)
+  - gate env                                           -> still seeds (no regression)
+    (test_gate_environment_still_seeds_successfully)
+  - release resolves REAL adapters, not fixtures        -> asserted directly
+    (TestReleaseResolvesRealAdaptersNotFixtures, test_production_composition.py)
+  - refusal before any row/dir is written               -> asserted in each
+    refusal test above via `not (gate_root / "data").exists()`
+  - production_canary.sh accepts release, still refuses household roots and
+    a declared-but-missing containment root
+    (TestCanaryFailsClosedBeforeAnyContainerStarts, the two new
+    test_a_release_mode_* tests)
+
+=====================================================================
+Full backend suite (regression check, unrelated to this fix's own tests)
+=====================================================================
+$ uv run pytest -q
+........................................................................ [ 12%]
+........................................................................ [ 25%]
+........................................................................ [ 38%]
+........................................................................ [ 51%]
+........................................................................ [ 64%]
+........................................................................ [ 77%]
+........................................................................ [ 90%]
+........................................................                 [100%]
+560 passed in 448.42s (0:07:28)
+
+=====================================================================
+$ ./scripts/verify.sh   (full, not --fast)
+=====================================================================
+=== lockfile drift (backend): ok
+=== lockfile drift (frontend): ok
+=== backend lint: ok
+=== backend format: ok
+=== backend types: ok
+=== backend tests: ok (560 passed)
+=== frontend lint: ok
+=== frontend types: ok
+=== frontend tests: ok
+=== raw color literals: ok
+=== primitive boundary: ok
+=== domain boundary: ok
+=== secret scan: ok
+=== frontend build: ok
+=== backend dependency audit: ok
+=== frontend dependency audit: ok
+
+verify: all checks passed
+
+=====================================================================
+Live verification step 1 — prepare + launch + seed
+=====================================================================
+$ ./scripts/gate/prepare.sh release release
+prepared /home/dev/projects/chillify/.gate/release (release)
+launch: docker compose --env-file .gate/release/.env up --build -d
+
+$ docker compose --env-file .gate/release/.env up --build -d   (tail)
+ Image chillify-migrate Built
+ Image chillify-api Built
+ Image chillify-web Built
+ Image chillify-worker Built
+ Container chillify-migrate-1 Recreate
+ Container chillify-migrate-1 Recreated
+ Container chillify-worker-1 Recreate
+ Container chillify-api-1 Recreate
+ Container chillify-api-1 Recreated
+ Container chillify-web-1 Running
+ Container chillify-worker-1 Recreated
+ Container chillify-migrate-1 Starting
+ Container chillify-migrate-1 Started
+ Container chillify-migrate-1 Exited
+ Container chillify-api-1 Starting
+ Container chillify-worker-1 Starting
+ Container chillify-api-1 Started
+ Container chillify-worker-1 Started
+ Container chillify-api-1 Healthy
+
+$ ./scripts/gate/seed.sh release kernel-500
+Uninstalled 1 package in 3ms
+Installed 1 package in 11ms
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+mounted root ready
+mounted root ready
+binding production provider adapters
+gate environment seeded
+seed complete
+seeded /home/dev/projects/chillify/.gate/release
+exit=0
+
+kernel-500 is a chunk label, not a registered scenario, so it falls back to
+the base track set (tracks_for_scenario's documented default fallback) — this
+is expected, per Task 20's own gate block and confirmed at the unit level by
+test_unknown_scenario_falls_back_to_the_base_tracks.
+
+=====================================================================
+Live verification step 2 — real composition, seeded, reports release
+=====================================================================
+$ curl -s http://localhost:8788/api/v1/system/status | python3 -m json.tool
+{
+    "ready": true,
+    "degraded": false,
+    "environment": "release",
+    "checked_at": "2026-07-26T22:47:13.329Z",
+    "database": {
+        "name": "database",
+        "health": "ok",
+        "detail": "migrated to 0001_core"
+    },
+    "storage": [
+        {"name": "data_root", "health": "ok", "detail": "15590 MiB free"},
+        {"name": "music_root", "health": "ok", "detail": "15590 MiB free"}
+    ],
+    "redis": {"name": "redis", "health": "ok", "detail": "queue transport reachable"},
+    "tools": [
+        {"name": "ffmpeg", "health": "ok", "detail": "ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers"},
+        {"name": "ffprobe", "health": "ok", "detail": "ffprobe version 8.1.2 Copyright (c) 2007-2026 the FFmpeg developers"},
+        {"name": "yt_dlp", "health": "ok", "detail": "2026.07.04"},
+        {"name": "spotdl", "health": "ok", "detail": "4.5.2"},
+        {"name": "deno", "health": "ok", "detail": "deno 2.9.3 (stable, release, x86_64-unknown-linux-gnu)"}
+    ],
+    "providers": [
+        {"name": "deezer", "enabled": true, "configured": true},
+        {"name": "spotdl", "enabled": true, "configured": true},
+        {"name": "yt_dlp", "enabled": true, "configured": true},
+        {"name": "lastfm", "enabled": false, "configured": false}
+    ]
+}
+
+Note: before the api/routes/system.py fix recorded in ARCHITECTURE's decision
+log, this same live check reported "environment": "production" under
+CHILLIFY_ENV=release — a pre-existing collapsing bug (predating `release`)
+surfaced by this exact live check, fixed alongside this task, and reproduced
+before/after with no other change.
+
+=====================================================================
+Live verification step 3 — production_canary.sh PASSes under release
+=====================================================================
+$ ./scripts/production_canary.sh --env-file .gate/release/.env --no-live-success   (tail)
+production_canary: waiting for http://localhost:8788/api/v1/system/status
+production_canary: ready=true degraded=false environment=release
+production_canary: database: {"name": "database", "health": "ok", "detail": "migrated to 0001_core"}
+production_canary: storage: {"name": "data_root", "health": "ok", "detail": "15590 MiB free"}
+production_canary: storage: {"name": "music_root", "health": "ok", "detail": "15590 MiB free"}
+production_canary: redis: {"name": "redis", "health": "ok", "detail": "queue transport reachable"}
+production_canary: tool: {"name": "ffmpeg", "health": "ok", "detail": "ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers"}
+production_canary: tool: {"name": "ffprobe", "health": "ok", "detail": "ffprobe version 8.1.2 Copyright (c) 2007-2026 the FFmpeg developers"}
+production_canary: tool: {"name": "yt_dlp", "health": "ok", "detail": "2026.07.04"}
+production_canary: tool: {"name": "spotdl", "health": "ok", "detail": "4.5.2"}
+production_canary: tool: {"name": "deno", "health": "ok", "detail": "deno 2.9.3 (stable, release, x86_64-unknown-linux-gnu)"}
+production_canary: provider: {"name": "deezer", "enabled": true, "configured": true}
+production_canary: provider: {"name": "spotdl", "enabled": true, "configured": true}
+production_canary: provider: {"name": "yt_dlp", "enabled": true, "configured": true}
+production_canary: provider: {"name": "lastfm", "enabled": false, "configured": false}
+production_canary: probing live reachability at https://api.deezer.com/
+production_canary: live reachability ok (https://api.deezer.com/ -> HTTP 200)
+production_canary: PASS
+production_canary: tearing down /home/dev/projects/chillify/.gate/release/.env
+exit=0
+
+(The canary tears the stack down on exit by design; it was brought back up
+with the identical `docker compose --env-file .gate/release/.env up --build -d`
+launch command immediately afterward, restoring the running release stack.)
+
+=====================================================================
+Live verification step 4 — household-shaped roots still refused
+=====================================================================
+$ cat .gate/household-demo/.env
+CHILLIFY_ENV=release
+CHILLIFY_DATA_ROOT=/home/dev/projects/chillify/.gate/household-demo/data
+CHILLIFY_MUSIC_ROOT=/srv/chillify/music
+CHILLIFY_GATE_ROOT=/home/dev/projects/chillify/.gate/household-demo
+
+$ ./scripts/gate/seed.sh household-demo kernel-500
+seed: refusing a household CHILLIFY_MUSIC_ROOT (/srv/chillify/music is not beneath /home/dev/projects/chillify/.gate/household-demo)
+exit=1
+data dir created? no
+
+$ cat .gate/canary-household-demo/.env
+CHILLIFY_ENV=release
+CHILLIFY_DATA_ROOT=/home/dev/projects/chillify/.gate/canary-household-demo/data
+CHILLIFY_MUSIC_ROOT=/srv/chillify/music
+CHILLIFY_GATE_ROOT=/home/dev/projects/chillify/.gate/canary-household-demo
+
+$ ./scripts/production_canary.sh --env-file .gate/canary-household-demo/.env --no-live-success
+production_canary: refusing a household CHILLIFY_MUSIC_ROOT (/srv/chillify/music is not beneath /home/dev/projects/chillify/.gate)
+exit=1
+
+Both refusals happen before any container starts or any row/directory is
+written (confirmed above: `.gate/household-demo/data` was never created).
+
+=====================================================================
+Redis-prefix decision
+=====================================================================
+`chillify:gate:release:` — Task 20's own preflight paragraph in
+specs/001-core/TASKS.md already names this exact prefix ("the Redis prefix is
+chillify:gate:release:"), so scripts/gate/prepare.sh's release branch and
+config.py's is_disposable containment rule (which requires the gate Redis
+namespace for `gate` or `release` alike) both use it, matching what Task 20
+documents rather than plain `chillify:`.
+
+=====================================================================
+Invariants confirmed
+=====================================================================
+1. is_gate keeps its EXACT current meaning (CHILLIFY_ENV=gate only) —
+   confirmed by TestReleaseResolvesRealAdaptersNotFixtures (release resolves
+   the real Deezer/SpotDL/yt-dlp/HTTP-artwork classes, not fixtures) and by
+   the live canary run above (spotdl 4.5.2, ffmpeg, yt_dlp, deno all real
+   tool probes; no fixture adapters).
+2. gate_seed.py gates on is_disposable AND gate-root containment, both:
+   `seed()` now checks `settings.is_disposable` and independently re-derives
+   containment via `config.is_beneath(data_root, gate_root)` /
+   `is_beneath(music_root, gate_root)` rather than trusting `Settings` alone
+   — confirmed live by the household refusal in step 4 (containment fails
+   even though CHILLIFY_ENV=release, i.e. is_disposable is true).
+
+=====================================================================
+Recorded, not fixed: cleanup.sh shares the "chillify" project name
+=====================================================================
+While the full backend suite ran in the background, the real, running
+`.gate/release` stack was unexpectedly torn down. Cause: this task's own new
+tests (test_gate_environment_still_seeds_successfully,
+test_release_environment_with_contained_roots_seeds_successfully) originally
+called the real scripts/gate/cleanup.sh for teardown, which runs
+`docker compose --env-file <that-test's-own-.env> down --volumes
+--remove-orphans`. `compose.yaml` declares `name: chillify` unconditionally,
+so every `docker compose` invocation in this repository resolves to the
+identical project name regardless of which `.env` is passed — cleanup.sh's
+down therefore targeted the live release stack's containers, not just the
+test's own (never-launched) environment. Fixed within this task's own new
+tests by removing the prepared directory tree directly (`_remove_tree`, no
+`docker compose` call) instead of going through cleanup.sh, since these tests
+never launch containers and have none to stop. cleanup.sh itself is
+unmodified (out of this task's file list) and carries the same latent
+behavior for any other caller that seeds a real `.env` and then calls it —
+recorded here rather than silently fixed, matching this repository's existing
+convention for out-of-scope findings. The release stack was rebuilt and
+confirmed ready=true/environment=release immediately after.
+
+Final state: the .gate/release docker stack was left running (CHILLIFY_ENV=release,
+seeded), matching how it was found at the start of this task.

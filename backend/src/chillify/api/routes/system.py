@@ -7,7 +7,7 @@ surface that distinguishes readiness from degradation.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Response, status
 from pydantic import BaseModel, Field
@@ -42,7 +42,7 @@ class SystemStatusModel(BaseModel):
     degraded: bool = Field(
         description="Acquisition is impaired by Redis or tool state. Local use is unaffected."
     )
-    environment: Literal["production", "gate"]
+    environment: Literal["production", "gate", "release"]
     checked_at: str = Field(description="RFC 3339 UTC timestamp of this evaluation.")
     database: ComponentStatusModel
     storage: list[ComponentStatusModel]
@@ -59,7 +59,16 @@ def _to_model(source: SystemStatus) -> SystemStatusModel:
     return SystemStatusModel(
         ready=source.ready,
         degraded=source.degraded,
-        environment="gate" if source.environment == "gate" else "production",
+        # `source.environment` is already exactly one of the three valid
+        # values (`Composition.system_status` sets it from
+        # `str(settings.environment)`, and `RuntimeEnvironment` has no
+        # fourth member), so it is passed through and cast rather than
+        # collapsed to two — the collapsing ternary this replaced predated
+        # `release` and silently reported every non-gate environment as
+        # "production", including `release` itself. Pydantic still validates
+        # the literal at construction; the cast only satisfies mypy, which
+        # cannot see that invariant from `str` alone.
+        environment=cast(Literal["production", "gate", "release"], source.environment),
         checked_at=source.checked_at,
         database=ComponentStatusModel(
             name=source.database.name,

@@ -317,6 +317,97 @@ class TestGateSafety:
         assert settings.gate_root == mount
 
 
+class TestReleaseSafety:
+    """`release` is disposable (seedable) but never binds fixture adapters.
+
+    Task 20's release gate needs the real production composition — the
+    unchanged Compose entry point, real adapters — seeded with fixture data.
+    `release` is the environment that makes both true at once: `is_gate` is
+    false (so `build_registry` never imports the fixtures module), while
+    `is_disposable` is true (so seeding and the containment rules that guard
+    it both apply, identically to gate mode).
+    """
+
+    def _release_environment(self, repo_root: Path, secret_key: str) -> dict[str, str]:
+        release = repo_root / ".gate" / "release"
+        (release / "data").mkdir(parents=True)
+        (release / "music").mkdir(parents=True)
+        return {
+            "CHILLIFY_ENV": "release",
+            "CHILLIFY_DATA_ROOT": str(release / "data"),
+            "CHILLIFY_MUSIC_ROOT": str(release / "music"),
+            "CHILLIFY_GATE_ROOT": str(release),
+            "CHILLIFY_REDIS_PREFIX": "chillify:gate:release:",
+            "REDIS_URL": "redis://127.0.0.1:6379/9",
+            "CHILLIFY_SECRET_KEY": secret_key,
+        }
+
+    def test_fully_conforming_release_configuration_is_accepted(
+        self, repo_root: Path, secret_key: str
+    ) -> None:
+        settings = load_settings(self._release_environment(repo_root, secret_key))
+
+        assert settings.is_disposable
+        assert not settings.is_gate
+
+    def test_storage_root_outside_the_release_tree_is_refused(
+        self, repo_root: Path, secret_key: str, tmp_path: Path
+    ) -> None:
+        household = tmp_path / "household-music"
+        household.mkdir()
+        environment = {
+            **self._release_environment(repo_root, secret_key),
+            "CHILLIFY_MUSIC_ROOT": str(household),
+        }
+
+        with pytest.raises(ConfigurationError) as caught:
+            load_settings(environment)
+
+        assert caught.value.code == "gate_root_escape"
+
+    def test_release_without_a_declared_containment_root_is_refused(
+        self, repo_root: Path, secret_key: str
+    ) -> None:
+        environment = self._release_environment(repo_root, secret_key)
+        del environment["CHILLIFY_GATE_ROOT"]
+
+        with pytest.raises(ConfigurationError) as caught:
+            load_settings(environment)
+
+        assert caught.value.code == "gate_root_missing"
+
+    def test_release_may_not_declare_a_fixture_root(self, repo_root: Path, secret_key: str) -> None:
+        """Release proves the real composition, never fixture adapters."""
+        environment = {
+            **self._release_environment(repo_root, secret_key),
+            "CHILLIFY_FIXTURE_ROOT": str(repo_root / ".gate" / "release"),
+        }
+
+        with pytest.raises(ConfigurationError) as caught:
+            load_settings(environment)
+
+        assert caught.value.code == "fixture_root_outside_gate"
+
+    def test_release_requires_the_gate_redis_namespace(
+        self, repo_root: Path, secret_key: str
+    ) -> None:
+        environment = {
+            **self._release_environment(repo_root, secret_key),
+            "CHILLIFY_REDIS_PREFIX": "chillify:",
+        }
+
+        with pytest.raises(ConfigurationError) as caught:
+            load_settings(environment)
+
+        assert caught.value.code == "gate_prefix_invalid"
+
+    def test_production_is_not_disposable(self, valid_environment: dict[str, str]) -> None:
+        settings = load_settings(valid_environment)
+
+        assert not settings.is_disposable
+        assert not settings.is_gate
+
+
 class TestMountedRootPreflight:
     def test_writable_roots_are_reported_with_the_expected_identity(
         self, valid_environment: dict[str, str]

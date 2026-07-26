@@ -85,6 +85,38 @@ def production_composition(
         composition.dispose()
 
 
+@pytest.fixture
+def release_composition(
+    disposable_root: Path, storage_roots: tuple[Path, Path], secret_key: str
+) -> Iterator[Composition]:
+    """A migrated, release-mode composition — Task 20's release gate shape.
+
+    `release` is disposable (seedable, like gate) but must resolve the same
+    real adapters `production_composition` does above: only `CHILLIFY_ENV=gate`
+    ever binds fixtures. `storage_roots` already nests both roots under
+    `disposable_root`, which is exactly the boundary `CHILLIFY_GATE_ROOT`
+    declares here, so containment is satisfied the same way
+    `scripts/gate/prepare.sh release <name>` satisfies it for a real gate.
+    """
+    data_root, music_root = storage_roots
+    environment = {
+        "CHILLIFY_DATA_ROOT": str(data_root),
+        "CHILLIFY_MUSIC_ROOT": str(music_root),
+        "CHILLIFY_GATE_ROOT": str(disposable_root),
+        "REDIS_URL": "redis://127.0.0.1:1/0",
+        "CHILLIFY_REDIS_PREFIX": "chillify:gate:release:",
+        "CHILLIFY_SECRET_KEY": secret_key,
+        "CHILLIFY_ENV": "release",
+    }
+    _migrate(data_root / "db" / "chillify.sqlite3")
+    settings = load_settings(environment)
+    composition = build_composition(settings)
+    try:
+        yield composition
+    finally:
+        composition.dispose()
+
+
 class TestRealAdapterResolution:
     """Criterion 3 (also exercised live at gate 4): real classes, not fixtures."""
 
@@ -131,6 +163,51 @@ class TestRealAdapterResolution:
             *production_composition.registry.artwork.values(),
         ):
             assert "fixtures" not in type(adapter).__module__
+
+
+class TestReleaseResolvesRealAdaptersNotFixtures:
+    """Task 20 invariant 1: `release` must never become a fixture gate.
+
+    `is_gate` keeps its exact current meaning (`CHILLIFY_ENV=gate` only), so a
+    release run resolves the identical real adapter classes
+    `TestRealAdapterResolution` above proves for `production` — asserted
+    directly here, not inferred from `is_gate` being false, so a future change
+    to `build_registry`'s branch condition would be caught by this test even
+    if it somehow left `is_gate` itself unchanged.
+    """
+
+    def test_discovery_is_the_real_deezer_adapter(self, release_composition: Composition) -> None:
+        assert isinstance(release_composition.registry.discovery["deezer"], DeezerDiscoveryProvider)
+
+    def test_acquisition_adapters_are_the_real_ytdlp_and_spotdl_classes(
+        self, release_composition: Composition
+    ) -> None:
+        registry = release_composition.registry
+        assert isinstance(registry.acquisition[JobProvider.YT_DLP], YtDlpAcquisitionProvider)
+        assert isinstance(registry.acquisition[JobProvider.SPOTDL], SpotdlAcquisitionProvider)
+
+    def test_artwork_fetcher_is_the_real_http_adapter(
+        self, release_composition: Composition
+    ) -> None:
+        assert isinstance(release_composition.registry.artwork["url"], HttpArtworkFetcher)
+
+    def test_no_fixture_module_is_importable_from_the_release_registry(
+        self, release_composition: Composition
+    ) -> None:
+        for adapter in (
+            *release_composition.registry.discovery.values(),
+            *release_composition.registry.acquisition.values(),
+            *release_composition.registry.link_inspectors.values(),
+            *release_composition.registry.artwork.values(),
+        ):
+            assert "fixtures" not in type(adapter).__module__
+
+    def test_release_reaches_ready_with_its_own_environment_name(
+        self, release_composition: Composition
+    ) -> None:
+        status = release_composition.system_status()
+        assert status.ready is True
+        assert status.environment == "release"
 
 
 class TestReadyAndDegradedStates:
@@ -258,3 +335,50 @@ class TestCanaryFailsClosedBeforeAnyContainerStarts:
 
         assert result.returncode == 2
         assert "usage" in result.stderr.lower()
+
+    def test_a_release_mode_env_file_without_a_containment_root_is_refused(self) -> None:
+        """Release must declare `CHILLIFY_GATE_ROOT`: unlike plain production,
+        it is disposable and seedable, and containment needs a boundary."""
+        gate_root = REPO_ROOT / ".gate" / "canary-contract-release-no-root"
+        env_file = gate_root / ".env"
+        gate_root.mkdir(parents=True, exist_ok=True)
+        env_file.write_text(
+            "CHILLIFY_ENV=release\n"
+            f"CHILLIFY_DATA_ROOT={gate_root}/data\n"
+            f"CHILLIFY_MUSIC_ROOT={gate_root}/music\n",
+            encoding="utf-8",
+        )
+        try:
+            result = _run("--env-file", str(env_file))
+
+            assert result.returncode == 1
+            assert "CHILLIFY_GATE_ROOT" in result.stderr
+        finally:
+            env_file.unlink(missing_ok=True)
+            gate_root.rmdir()
+
+    def test_a_release_mode_household_root_is_refused_even_with_a_declared_gate_root(
+        self,
+    ) -> None:
+        """A release `.env` that declares `CHILLIFY_GATE_ROOT` correctly but
+        still names a real household storage root must be refused — declaring
+        the boundary is not enough; the roots must actually resolve beneath
+        it, exactly as production_canary already required for production."""
+        gate_root = REPO_ROOT / ".gate" / "canary-contract-release-household"
+        env_file = gate_root / ".env"
+        gate_root.mkdir(parents=True, exist_ok=True)
+        env_file.write_text(
+            "CHILLIFY_ENV=release\n"
+            f"CHILLIFY_DATA_ROOT={gate_root}/data\n"
+            "CHILLIFY_MUSIC_ROOT=/srv/chillify/music\n"
+            f"CHILLIFY_GATE_ROOT={gate_root}\n",
+            encoding="utf-8",
+        )
+        try:
+            result = _run("--env-file", str(env_file))
+
+            assert result.returncode == 1
+            assert "household" in result.stderr.lower()
+        finally:
+            env_file.unlink(missing_ok=True)
+            gate_root.rmdir()

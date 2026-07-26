@@ -11,6 +11,13 @@
 # not a gate: it never applies `deploy/compose.gate.yaml`, never accepts
 # `CHILLIFY_ENV=gate`, and refuses an env file that declares one.
 #
+# Accepts `CHILLIFY_ENV=production` (a real household, or a disposable stand-in
+# for one — either way, no declared containment root) and `CHILLIFY_ENV=release`
+# (Task 20's release gate: the identical unchanged composition, but a provably
+# disposable tree the release gate is also allowed to seed — a declared
+# `CHILLIFY_GATE_ROOT` is required in that mode). Both modes resolve the real
+# adapters; only `CHILLIFY_ENV=gate` binds fixtures, and this script refuses it.
+#
 # Containment-first, like every other canary/gate script in this repository: a
 # household `.env`, or a gate-shaped one that was hand-edited to point at real
 # household storage, is refused before a single container starts.
@@ -87,60 +94,53 @@ case "$ENV_FILE" in
         ;;
 esac
 
+# The disposable-root containment check (resolve_no_create/assert_roots_under)
+# is shared with scripts/gate/seed.sh, which needs the identical property:
+# refuse a production-mode environment whose roots are not provably
+# disposable, before anything is written.
+# shellcheck disable=SC1091
+source "$REPO_ROOT/scripts/lib/containment.sh"
+
 # Read specific values out of the file rather than sourcing it, so a canary run
 # never executes arbitrary content from an `.env`.
 read_var() {
-    local key="$1"
-    grep -E "^${key}=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true
-}
-
-# Resolve a path for containment comparison without ever creating it: the
-# whole point of the household-root check below is to refuse before anything
-# is touched, including `mkdir`.
-resolve_no_create() {
-    if command -v realpath >/dev/null 2>&1; then
-        realpath -m "$1"
-    else
-        printf '%s\n' "$1"
-    fi
+    read_env_var "$1" "$ENV_FILE"
 }
 
 ENV_MODE="$(read_var CHILLIFY_ENV)"
-DATA_ROOT="$(read_var CHILLIFY_DATA_ROOT)"
-MUSIC_ROOT="$(read_var CHILLIFY_MUSIC_ROOT)"
 GATE_ROOT_VALUE="$(read_var CHILLIFY_GATE_ROOT)"
 FIXTURE_ROOT_VALUE="$(read_var CHILLIFY_FIXTURE_ROOT)"
 BIND_PORT="$(read_var CHILLIFY_BIND_PORT)"
 BIND_PORT="${BIND_PORT:-8787}"
 
-if [[ "$ENV_MODE" != "production" ]]; then
-    printf 'production_canary: refuses CHILLIFY_ENV=%s; this canary proves the unchanged production composition, not a gate\n' \
-        "${ENV_MODE:-<unset>}" >&2
-    exit 1
-fi
-
-if [[ -n "$GATE_ROOT_VALUE" || -n "$FIXTURE_ROOT_VALUE" ]]; then
-    printf 'production_canary: refuses a gate-declaring env file (CHILLIFY_GATE_ROOT/CHILLIFY_FIXTURE_ROOT must be unset in production mode)\n' >&2
-    exit 1
-fi
-
-for entry in "CHILLIFY_DATA_ROOT=$DATA_ROOT" "CHILLIFY_MUSIC_ROOT=$MUSIC_ROOT"; do
-    name="${entry%%=*}"
-    value="${entry#*=}"
-    if [[ -z "$value" ]]; then
-        printf 'production_canary: %s is not set in %s\n' "$name" "$ENV_FILE" >&2
+case "$ENV_MODE" in
+    production | release) ;;
+    *)
+        printf 'production_canary: refuses CHILLIFY_ENV=%s; this canary proves the unchanged production composition, not a gate\n' \
+            "${ENV_MODE:-<unset>}" >&2
         exit 1
-    fi
-    resolved="$(resolve_no_create "$value")"
-    case "$resolved" in
-        "$DISPOSABLE_ROOT"/*) ;;
-        *)
-            printf 'production_canary: refusing a household %s (%s is not beneath %s)\n' \
-                "$name" "$resolved" "$DISPOSABLE_ROOT" >&2
-            exit 1
-            ;;
-    esac
-done
+        ;;
+esac
+
+# Fixture adapters must never bind in either accepted mode: refused
+# regardless of which one this env file declares.
+if [[ -n "$FIXTURE_ROOT_VALUE" ]]; then
+    printf 'production_canary: refuses a gate-declaring env file (CHILLIFY_FIXTURE_ROOT must be unset — fixture adapters never bind here)\n' >&2
+    exit 1
+fi
+
+if [[ "$ENV_MODE" == "production" && -n "$GATE_ROOT_VALUE" ]]; then
+    printf 'production_canary: refuses a gate-declaring env file (CHILLIFY_GATE_ROOT must be unset in production mode)\n' >&2
+    exit 1
+fi
+
+if [[ "$ENV_MODE" == "release" && -z "$GATE_ROOT_VALUE" ]]; then
+    printf 'production_canary: release mode requires CHILLIFY_GATE_ROOT declaring the disposable tree its roots must resolve beneath\n' >&2
+    exit 1
+fi
+
+CONTAINMENT_LABEL="production_canary" assert_roots_under \
+    "$DISPOSABLE_ROOT" "$ENV_FILE" CHILLIFY_DATA_ROOT CHILLIFY_MUSIC_ROOT
 
 BASE_URL="${CHILLIFY_CANARY_BASE_URL:-http://localhost:${BIND_PORT}}"
 LIVE_URL="${CHILLIFY_CANARY_LIVE_URL:-https://api.deezer.com/}"

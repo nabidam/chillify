@@ -1,13 +1,20 @@
-"""Fixture data for a disposable gate environment.
+"""Fixture data for a disposable gate or release environment.
 
-A demo gate walks a journey, and a journey needs something to walk over. This
-module puts one profile and a couple of playable tracks into a gate database so
-the walkthrough starts on a screen with content rather than on an empty state
-that proves nothing.
+A demo gate — and Task 20's release gate — walks a journey, and a journey
+needs something to walk over. This module puts one profile and a couple of
+playable tracks into a database so the walkthrough starts on a screen with
+content rather than on an empty state that proves nothing.
 
-It refuses to run anywhere but a gate environment. That refusal is the point:
-seeding is the one operation that writes invented data, and household data is
-exactly what it must never reach.
+It refuses to run anywhere but a disposable environment (`CHILLIFY_ENV=gate`
+or `CHILLIFY_ENV=release`). That refusal is the point: seeding is the one
+operation that writes invented data, and household data is exactly what it
+must never reach. Two conditions gate it, not one: the environment being
+`gate`/`release` is not, by itself, trusted — this re-checks that
+`CHILLIFY_DATA_ROOT`/`CHILLIFY_MUSIC_ROOT` actually resolve beneath the
+declared `CHILLIFY_GATE_ROOT` itself, rather than relying transitively on
+`Settings` having already enforced it. This is the same two-point enforcement
+ARCHITECTURE section 12 already applies at the host/process boundary for gate
+mode, now applied a second time inside the one operation that writes data.
 """
 
 from __future__ import annotations
@@ -24,7 +31,7 @@ from pathlib import Path
 from sqlalchemy import text
 
 from chillify.composition import Composition, build_composition
-from chillify.config import ConfigurationError, load_settings
+from chillify.config import ConfigurationError, is_beneath, load_settings
 from chillify.domain.models import ProfileId, normalize_metadata, to_rfc3339
 from chillify.infrastructure.db.repositories import ProfileRepository, new_id
 from chillify.infrastructure.media.storage import organized_relpath, resolve_managed_path
@@ -130,10 +137,26 @@ def seed(*, fixture_audio: Path, scenario: str = DEFAULT_SCENARIO) -> int:
     environment is safe.
     """
     settings = load_settings()
-    if not settings.is_gate:
+    if not settings.is_disposable:
         raise ConfigurationError(
             "gate_seed_outside_gate",
-            "Seeding is only possible in a gate environment.",
+            "Seeding is only possible in a gate or release environment.",
+        )
+    # Belt and suspenders: `load_settings` above already refuses to construct
+    # a gate/release `Settings` whose roots escape the declared
+    # `CHILLIFY_GATE_ROOT` (`config._assert_gate_safety`), but seeding is the
+    # one operation that writes invented data, so this does not trust that
+    # invariant transitively — it re-derives containment itself, the same way
+    # `scripts/gate/seed.sh` and `scripts/production_canary.sh` each
+    # independently refuse a non-disposable root before ever reaching here.
+    gate_root = settings.gate_root
+    if gate_root is None or not (
+        is_beneath(settings.data_root, gate_root) and is_beneath(settings.music_root, gate_root)
+    ):
+        raise ConfigurationError(
+            "gate_seed_root_escape",
+            "CHILLIFY_DATA_ROOT and CHILLIFY_MUSIC_ROOT must resolve beneath "
+            "CHILLIFY_GATE_ROOT before seeding.",
         )
     if not fixture_audio.is_file():
         raise ConfigurationError(
