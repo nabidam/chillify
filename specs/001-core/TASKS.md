@@ -1076,6 +1076,8 @@ layer = "e2e"
 gate = 4
 ```
 
+- **Done:** `b4111db` — evidence `specs/001-core/evidence/task-19.txt`
+
 ## Task 20 — RELEASE GATE 4: v1 exit bar
 
 ```toml
