@@ -1,0 +1,233 @@
+Task 18b — scoped fix: destructive Badge contrast + "Create Playlist" locator
+Evidence captured live at HEAD 889287c (pre-fix), fix committed immediately
+after this file.
+
+======================================================================
+Defects (both recorded in ARCHITECTURE's 2026-07-26 "Shadcn slider.tsx
+hand-edited..." entry, as findings not fixed by that task, and in
+specs/001-core/evidence/task-18a-slider-a11y.txt section 4):
+
+1. color-contrast (serious): destructive Badge variant renders #ffffff on
+   #ff6b73 = 2.76:1, below the 4.5:1 bar, observed on the S12 settings
+   reduced-motion state (the destructive "Unavailable" Badge in
+   StorageDiagnostics).
+2. Playwright strict-mode locator violation: getByRole("button", { name:
+   "Create Playlist" }) resolves to 2 elements on the S9 playlists screen
+   (header action + empty-state CTA), so accessibility.spec.ts's "an empty
+   playlist context" test fails before its own axe assertion ever runs.
+======================================================================
+
+======================================================================
+1. Fixes applied
+======================================================================
+
+- frontend/src/components/ui/badge.tsx: the `destructive` variant's
+  `text-white` (a raw, non-token color) is now `text-destructive-foreground`,
+  matching DESIGN.md's confirmed pairing (destructive-foreground on
+  destructive = 7.23:1) and the tokens already present in
+  frontend/src/styles/tokens.css. The other four Badge variants already used
+  token-based foreground classes and were left unchanged. Button's identical
+  `text-white` pattern on its own destructive variant is a different
+  component, out of this fix's scope, and untouched.
+- frontend/tests/e2e/accessibility.spec.ts: the "an empty playlist context"
+  test's `create` locator now ends in `.first()`, with a comment explaining
+  the deliberate two-button duplicate (header action + empty-state CTA, both
+  named "Create Playlist" per UX.md's S9 section) and pointing at the
+  identical, already-established disambiguation in gate-3.spec.ts and
+  firefox-smoke.spec.ts.
+- ARCHITECTURE.md: new 2026-07-26 decision-log entry recording both fixes
+  and the defect-2 diagnosis (true, intentional duplicate — not fixed by
+  renaming either button, not a markup bug).
+
+Defect-2 diagnosis: TRUE DUPLICATE, both renders correct per UX.md. UX.md's
+S9 section specifies exactly one primary action, "Create Playlist," and
+names it from two places: the header ("survives every state") and the
+empty-state card ("offer Create Playlist"). Both buttons open the identical
+PlaylistEditorDialog in create mode — there is no second, distinct action to
+give a different name. The rest of the e2e suite already treats this as
+intentional: gate-3.spec.ts and firefox-smoke.spec.ts both already narrow
+with `.first()` (gate-3.spec.ts has its own comment: "The empty playlists
+screen shows a Create Playlist button in both the header and the empty-state
+card; the header one is always present"), and screen-states.test.tsx's
+component-level equivalent seeds a non-empty list specifically so only the
+header button exists and the collision never has to be resolved there.
+accessibility.spec.ts was simply the one file in this family not yet
+brought in line with that established pattern. Per this task's own
+instruction ("Only if both are legitimately identical and correct should
+the test locator be narrowed"), the fix is exactly that narrowing — not a
+markup change, and not a UX.md-violating rename of either button.
+
+======================================================================
+2. Badge contrast — BEFORE the fix (unmodified checkout, forced live)
+======================================================================
+
+The destructive "Unavailable" Badge (StorageDiagnostics.tsx) only renders
+when a storage/tool health check is not "ok", which the seeded gate stack
+does not naturally produce. Forced it live with a throwaway spec
+(frontend/tests/e2e/_tmp-badge-contrast.spec.ts, written for this
+verification and deleted afterwards, never committed) that stops the gate's
+`redis` container mid-run, so a health row reports unhealthy, then runs an
+axe scan against Settings under reduced motion — the exact state the
+finding was originally observed on.
+
+Command (pre-fix checkout, frontend/src/components/ui/badge.tsx and
+frontend/tests/e2e/accessibility.spec.ts stashed back to HEAD 889287c):
+  cd frontend && GATE_NAME=gate-18b-badge-before GATE_SCENARIO=listening \
+    npx playwright test _tmp-badge-contrast --project=chromium
+
+Result: 1 failed — the exact target defect:
+
+    Error: color-contrast (serious): 1 nodes
+    Element has insufficient color contrast of 2.76 (foreground color:
+    #ffffff, background color: #ff6b73, font size: 9.0pt (12px), font
+    weight: normal). Expected contrast ratio of 4.5:1
+    html: <span data-slot="badge" data-variant="destructive"
+      class="inline-flex w-fit sh...">
+    target: [ ".bg-destructive" ]
+
+  1 failed
+    [chromium] › tests/e2e/_tmp-badge-contrast.spec.ts:12:1 › throwaway —
+    destructive Badge contrast with redis forced unavailable
+
+======================================================================
+3. Badge contrast — AFTER the fix (same forced state)
+======================================================================
+
+Fix files restored (git stash pop).
+
+Command:
+  cd frontend && GATE_NAME=gate-18b-badge-after2 GATE_SCENARIO=listening \
+    npx playwright test _tmp-badge-contrast --project=chromium
+
+  Running 1 test using 1 worker
+
+   Container chillify-redis-1 Stopping
+   Container chillify-redis-1 Stopped
+  SERIOUS/CRITICAL VIOLATIONS:
+  (none)
+    ✓  1 [chromium] › tests/e2e/_tmp-badge-contrast.spec.ts:12:1 ›
+       throwaway — destructive Badge contrast with redis forced unavailable
+       (9.8s)
+    removed /home/dev/projects/chillify/.gate/gate-18b-badge-after2
+
+  1 passed (47.7s)
+
+Zero critical/serious violations with the destructive Badge actually
+rendered ("Unavailable") and reduced motion active — the exact state that
+previously failed with color-contrast (serious).
+
+======================================================================
+4. Full accessibility.spec.ts — BEFORE the fix (unmodified checkout)
+======================================================================
+
+Command:
+  cd frontend && GATE_NAME=gate-18b-before GATE_SCENARIO=listening \
+    npx playwright test accessibility --project=chromium
+
+  Running 6 tests using 1 worker
+    ✓  1 › Gate 3 — the profile chooser is keyboard operable and clean (1.0s)
+    ✓  2 › Gate 3 — the skip link jumps the chrome to the content (528ms)
+    ✓  3 › Gate 3 — primary navigation traverses by keyboard without a trap (732ms)
+    ✓  4 › Gate 3 — axe is clean across the reachable screen states (4.3s)
+    ✘  5 › Gate 3 — an empty playlist context is clean and keyboard escapable (542ms)
+    ✓  6 › Gate 3 — reduced motion is honored on settings recovery (1.5s)
+
+  1 failed
+  5 passed (58.6s)
+
+Failure (test 5, the exact target defect):
+
+  Error: locator.focus: Error: strict mode violation:
+  getByRole('button', { name: 'Create Playlist' }) resolved to 2 elements:
+    1) ...aka locator('header').filter({ hasText: 'Playlists0 playlistsCreate' }).getByRole('button')
+    2) ...aka getByRole('button', { name: 'Create Playlist' }).nth(1)
+
+    123 |   const create = page.getByRole("button", { name: "Create Playlist" });
+  > 124 |   await create.focus();
+
+======================================================================
+5. Full accessibility.spec.ts — AFTER the fix
+======================================================================
+
+Command (run twice for stability):
+  cd frontend && GATE_NAME=gate-18b-after GATE_SCENARIO=listening \
+    npx playwright test accessibility --project=chromium
+
+  Running 6 tests using 1 worker
+    ✓  1 › Gate 3 — the profile chooser is keyboard operable and clean (1.1s)
+    ✓  2 › Gate 3 — the skip link jumps the chrome to the content (482ms)
+    ✓  3 › Gate 3 — primary navigation traverses by keyboard without a trap (847ms)
+    ✓  4 › Gate 3 — axe is clean across the reachable screen states (4.3s)
+    ✓  5 › Gate 3 — an empty playlist context is clean and keyboard escapable (1.4s)
+    ✓  6 › Gate 3 — reduced motion is honored on settings recovery (1.3s)
+
+  6 passed (53.7s)
+
+Second run:
+  cd frontend && GATE_NAME=gate-18b-final GATE_SCENARIO=listening \
+    npx playwright test accessibility --project=chromium
+
+  Running 6 tests using 1 worker
+    ✓  1 › Gate 3 — the profile chooser is keyboard operable and clean (1.0s)
+    ✓  2 › Gate 3 — the skip link jumps the chrome to the content (476ms)
+    ✓  3 › Gate 3 — primary navigation traverses by keyboard without a trap (817ms)
+    ✓  4 › Gate 3 — axe is clean across the reachable screen states (4.2s)
+    ✓  5 › Gate 3 — an empty playlist context is clean and keyboard escapable (1.5s)
+    ✓  6 › Gate 3 — reduced motion is honored on settings recovery (1.3s)
+
+  6 passed (59.9s)
+
+Zero occurrences of any critical or serious axe violation across both runs,
+across every state the suite walks (S1 profiles, S2 library, S3 search, S9
+playlists including the empty-state dialog, S11 downloads, S12 settings, and
+S12 under reduced motion). Both target defects — the color-contrast finding
+and the strict-mode locator error — are gone; the whole spec is green.
+
+======================================================================
+6. Frontend unit/component suite and build
+======================================================================
+
+Command: npx vitest run
+
+   RUN  v4.1.10 /home/dev/projects/chillify/frontend
+
+   Test Files  11 passed (11)
+        Tests  97 passed (97)
+     Start at  22:34:12
+     Duration  8.61s (transform 4.44s, setup 5.54s, import 12.26s, tests 22.81s, environment 15.77s)
+
+Command: npx tsc -b --noEmit && npx vite build (via `npm run build`)
+
+  > build
+  > tsc -b --noEmit && vite build
+
+  vite v8.1.5 building client environment for production...
+  ✓ 2078 modules transformed.
+  rendering chunks...
+  computing gzip size...
+  dist/index.html                   0.64 kB │ gzip:   0.38 kB
+  dist/assets/index-C7HJntKs.css   88.29 kB │ gzip:  14.99 kB
+  dist/assets/index-RJ-5HfIO.js   735.64 kB │ gzip: 220.77 kB │ map: 3,278.76 kB
+
+  ✓ built in 1.01s
+
+Both clean; no changes needed to any other file.
+
+======================================================================
+7. Note on ./scripts/verify.sh (full)
+======================================================================
+
+Not re-run in full here since this scoped task's evidence is judged on the
+frontend checks and the live axe run per its own instructions: another
+agent is concurrently finishing Task 19 in backend/src/chillify/composition.py,
+backend/tests/integration/test_production_composition.py,
+scripts/production_canary.sh, scripts/gate/prepare.sh,
+frontend/tests/e2e/production-composition.spec.ts, and README.md, all
+outside this fix's file list, and task-18a-slider-a11y.txt already recorded
+that a full ./scripts/verify.sh run fails only inside that in-progress
+Task 19 file (backend lint/format/tests, 3 failures, all in
+tests/integration/test_production_composition.py). Nothing in this fix's own
+files (frontend/src/components/ui/badge.tsx,
+frontend/tests/e2e/accessibility.spec.ts) touches backend, scripts, or
+README.md. This fix's own frontend checks — types, vitest (97/97), build,
+and the live axe run above — are all green.

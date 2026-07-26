@@ -120,7 +120,13 @@ test("Gate 3 — an empty playlist context is clean and keyboard escapable", asy
 
   // Opening the editor by keyboard traps focus inside it, and Escape returns to
   // the invoking control — the modal-focus-return guarantee, in the real app.
-  const create = page.getByRole("button", { name: "Create Playlist" });
+  // The empty playlists screen shows a Create Playlist button in both the
+  // header and the empty-state card (UX.md S9: the header action survives
+  // every state, and the empty state also "offers Create Playlist"); the
+  // header one is always present, so it is the one exercised here, matching
+  // the same disambiguation already used by gate-3.spec.ts and
+  // firefox-smoke.spec.ts for this identical, intentional duplicate.
+  const create = page.getByRole("button", { name: "Create Playlist" }).first();
   await create.focus();
   await create.press("Enter");
 
