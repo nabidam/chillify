@@ -118,7 +118,10 @@ class TestFailClosedAggregation:
         self, disposable_worktree: Path
     ) -> None:
         offender = disposable_worktree / "frontend" / "src" / "__contract_injected_fault.ts"
-        offender.write_text("export const injected = '#abc123';\n", encoding="utf-8")
+        # Double-quoted: this repository's biome config requires double quotes,
+        # and the point of this fault is to trip exactly one check ("raw color
+        # literals"), not also "frontend lint" on an unrelated formatting nit.
+        offender.write_text('export const injected = "#abc123";\n', encoding="utf-8")
         try:
             result = _run_verify(disposable_worktree, "--fast")
 
