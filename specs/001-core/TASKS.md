@@ -1029,8 +1029,8 @@ gate = 4
   - `./scripts/verify.sh` (full, not `--fast`) green end to end.
   - **Follow-up (2026-07-26, scoped fix, not part of the Done mark above):**
     the recorded Slider `aria-input-field-name` (serious) finding is
-    resolved — `frontend/src/components/ui/slider.tsx` gained an optional
-    `thumbLabels` prop forwarded per-thumb, and
+    resolved in `1ddb6af` — `frontend/src/components/ui/slider.tsx` gained
+    an optional `thumbLabels` prop forwarded per-thumb, and
     `frontend/src/features/player/PersistentPlayer.tsx` passes
     `thumbLabels={["Seek"]}`/`["Volume"]` at its two Slider call sites. Live
     axe reruns against a disposable gate stack confirm the finding

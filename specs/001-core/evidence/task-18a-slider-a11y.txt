@@ -1,6 +1,6 @@
 Task 18a — scoped fix: Slider thumb accessible name (serious axe finding)
-Evidence captured live at HEAD e5eb2e8 (fix commit not yet made when captured;
-committed immediately after this file, SHA recorded in TASKS.md).
+Evidence captured live at HEAD e5eb2e8, prior to the fix commit; the fix
+that follows was committed immediately after this file as 1ddb6af.
 
 ======================================================================
 Defect (recorded in ARCHITECTURE's 2026-07-26 "Task 18 findings" entry and
