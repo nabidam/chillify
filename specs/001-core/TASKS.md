@@ -970,6 +970,8 @@ text = "Security/storage scripts reject non-disposable and container-layer targe
 layer = "contract"
 ```
 
+- **Done:** `190aa3d` — evidence `specs/001-core/evidence/task-17.txt`
+
 ## Task 18 — NFR and cross-browser verification
 
 ```toml
