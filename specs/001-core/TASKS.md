@@ -993,6 +993,41 @@ layer = "e2e"
 gate = 4
 ```
 
+- **Done:** `4aa3210` — evidence `specs/001-core/evidence/task-18.txt`
+  - Resolved the pre-existing frontend audit red: `react-router` 8.2.0 →
+    8.3.0 (in-range minor, the only advisory reaching the shipped tree) plus
+    narrow `overrides` for `brace-expansion`/`@hono/node-server`, lockfile
+    regenerated with the web image's own npm. `npm audit --audit-level=high`
+    now 0 vulnerabilities. Recorded in ARCHITECTURE's decision log.
+  - `scripts/verify/nfr.sh` + `frontend/tests/e2e/{nfr,firefox-smoke,
+    degraded,fixtures}.spec.ts` (`.spec.ts`, not bare `.ts`, so Playwright's
+    default `testMatch` actually discovers them; `fixtures.ts` is the one
+    shared, non-spec helper module) provide named NFR-1/2/3/5/9/10 evidence
+    against a disposable "gate-4" stack — 7/7 green, Chromium and Firefox
+    both exercised live.
+  - `[contract]` `backend/tests/contract/test_verify_aggregate.py` pins
+    `./scripts/verify.sh`'s fail-closed aggregate behavior via a disposable
+    git worktree (clean passes; one injected failure fails closed and keeps
+    running every later step; clean again once removed) — 4/4 passing.
+  - Running the suite against the *real* gate composition surfaced two
+    regressions invisible to unit/integration tests: nginx forwarded `Host`
+    via `$host` (drops a non-default port), breaking Task 17's
+    `MutationGuardMiddleware` same-origin check on every gate; and
+    `RedactingFilter` never redacted `record.exc_info`, so a secret folded
+    into a raw exception message could reach real stdout through a Rich
+    traceback. Both fixed (`deploy/nginx.conf`, `infrastructure/logging/
+    redaction.py`); the latter covered by `backend/tests/integration/
+    test_secret_redaction.py` (4/4 passing).
+  - **Not fixed, recorded as a finding:** the seek/volume `Slider`'s
+    accessible name never reaches the Radix thumb carrying `role="slider"`
+    (axe: `aria-input-field-name`, serious, on every screen — reproduces on
+    a clean checkout with zero Task 18 changes). A correct fix touches
+    either a generated primitive CONVENTIONS reserves for the Shadcn CLI or
+    an earlier chunk's component, neither in this task's file list. `nfr.sh`
+    does not bundle `accessibility.spec.ts` so this task's own result does
+    not depend on it; see ARCHITECTURE's decision log for the full writeup.
+  - `./scripts/verify.sh` (full, not `--fast`) green end to end.
+
 ## Task 19 — Production-composition proof
 
 ```toml

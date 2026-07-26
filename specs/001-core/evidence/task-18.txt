@@ -1,0 +1,174 @@
+Task 18 — NFR and cross-browser verification
+Evidence captured live at HEAD 4aa3210 (on top of 3f58820).
+
+======================================================================
+1. `./scripts/verify.sh` (full, not --fast) — clean checkout, gate
+   prerequisites (docker for the lockfile check), fully green.
+======================================================================
+
+Command: ./scripts/verify.sh
+Last ~30 lines of live output:
+
+=== secret scan
+--- secret scan: ok
+
+=== frontend build
+vite v8.1.5 building client environment for production...
+[2Ktransforming...✓ 2078 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.64 kB │ gzip:   0.38 kB
+dist/assets/index-CIic7BYk.css   88.22 kB │ gzip:  14.98 kB
+dist/assets/index-DPkyEooN.js   735.55 kB │ gzip: 220.73 kB │ map: 3,278.19 kB
+
+✓ built in 1.03s
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+--- frontend build: ok
+
+=== backend dependency audit
+Uninstalled 1 package in 0.67ms
+Installed 1 package in 2ms
+No known vulnerabilities found
+Name     Skip Reason
+-------- -------------------------------
+chillify distribution marked as editable
+--- backend dependency audit: ok
+
+=== frontend dependency audit
+found 0 vulnerabilities
+--- frontend dependency audit: ok
+
+verify: all checks passed
+
+(Every step was ok: lockfile drift backend/frontend, backend lint/format/
+types/tests, frontend lint/types/tests, raw color literals, primitive
+boundary, domain boundary, secret scan, frontend build, backend + frontend
+dependency audit — 0 vulnerabilities on both, confirming the react-router
+bump and dev-tree overrides resolved the pre-existing red.)
+
+The verify-aggregate contract test (backend/tests/contract/
+test_verify_aggregate.py, part of `backend tests` above) independently pins
+this: it runs ./scripts/verify.sh --fast in a disposable git worktree, once
+clean (asserts "verify: all checks passed"), once with an injected raw-color
+fault (asserts exit 1, "raw color literals" in the failure list, and that
+steps declared after it — primitive boundary, domain boundary, secret scan —
+still ran, i.e. the aggregate did not abort on the first failure), and once
+more after the fault is removed (clean again). Run directly:
+
+$ uv run pytest -q tests/contract/test_verify_aggregate.py -v
+tests/contract/test_verify_aggregate.py ....                    [100%]
+4 passed in 291.66s (0:04:51)
+
+======================================================================
+2. Named NFR evidence + Chromium/Firefox smoke — scripts/verify/nfr.sh
+   against a fresh, disposable "gate-4" stack (listening scenario).
+======================================================================
+
+Command: ./scripts/verify/nfr.sh gate-4
+Live output (provisioning trimmed; full test run + evidence kept):
+
+Running 7 tests using 1 worker
+
+ Container chillify-redis-1 Stopping
+ Container chillify-redis-1 Stopped
+ Container chillify-redis-1 Starting
+ Container chillify-redis-1 Started
+  ✓  1 [chromium] › tests/e2e/degraded.spec.ts:16:1 › NFR-10 — local browse, search, playback, and playlists survive Redis loss (9.7s)
+NFR-1: rendered p95=52ms (limit 300ms) over 20 searches
+  ✓  2 [chromium] › tests/e2e/nfr.spec.ts:29:1 › NFR-1 — 20 local searches render within budget (1.9s)
+NFR-2: transition p95=91ms (limit 500ms) over 20 transitions
+  ✓  3 [chromium] › tests/e2e/nfr.spec.ts:54:1 › NFR-2 — 20 cached route transitions render within budget (1.8s)
+NFR-3 (Chromium): playback-start p95=147ms (limit 1000ms) over 10 starts
+  ✓  4 [chromium] › tests/e2e/nfr.spec.ts:83:1 › NFR-3 (Chromium) — 10 representative MP3 starts within budget (1.5s)
+NFR-5: 20 route transitions while playing, 0 disruptive audio events
+  ✓  5 [chromium] › tests/e2e/nfr.spec.ts:119:1 › NFR-5 — 20 route transitions while playing never interrupt playback (2.1s)
+  ✓  6 [firefox] › tests/e2e/firefox-smoke.spec.ts:19:1 › Firefox smoke — playback, navigation, seek, and a modal all work (3.2s)
+NFR-3 (Firefox): playback-start p95=242ms (limit 1000ms) over 10 starts
+NFR-9: Firefox playback/navigation/seek/modal smoke — PASS
+  ✓  7 [firefox] › tests/e2e/firefox-smoke.spec.ts:87:1 › NFR-3 (Firefox) — 10 representative MP3 starts within budget (2.7s)
+removed /home/dev/projects/chillify/.gate/gate-4
+
+  7 passed (1.3m)
+
+--- named NFR evidence ---
+NFR-1: rendered p95=52ms (limit 300ms) over 20 searches
+NFR-2: transition p95=91ms (limit 500ms) over 20 transitions
+NFR-5: 20 route transitions while playing, 0 disruptive audio events
+NFR-9: Firefox playback/navigation/seek/modal smoke — PASS
+
+(NFR-3 is printed per-browser inline above, not re-echoed by the grep
+line, since its label carries "(Chromium)"/"(Firefox)" rather than the
+bare "NFR-3:" prefix the grep matches — both values are visible in the
+full run: 147ms Chromium, 242ms Firefox, both well under the 1000ms budget.
+NFR-10 is degraded.spec.ts's own passing test, above.)
+
+======================================================================
+3. Axe zero-critical/serious verification — BLOCKED by a pre-existing,
+   unrelated defect. Not fixed (see explanation below and the
+   ARCHITECTURE decision log entry dated 2026-07-26).
+======================================================================
+
+Command (against the same gate-4 stack, listening scenario):
+  GATE_NAME=gate-4 GATE_SCENARIO=listening npx playwright test accessibility --project=chromium
+
+Result: 4 failed, 2 passed. Representative failure:
+
+  2) [chromium] › tests/e2e/accessibility.spec.ts:79:1 › Gate 3 — axe is clean across the reachable screen states
+
+    Error: aria-input-field-name (serious) on S2 library
+    ...
+    +   Object {
+    +     "id": "aria-input-field-name",
+    +     "impact": "serious",
+    +     "help": "ARIA input fields must have an accessible name",
+    +     "nodes": Array [ ... target: [".w-24 > span:nth-child(2) > ..."] ... ]
+    +   },
+    + ]
+
+Root cause: frontend/src/features/player/PersistentPlayer.tsx passes
+aria-label="Seek"/"Volume" to the Shadcn Slider wrapper (frontend/src/
+components/ui/slider.tsx), which forwards it only to SliderPrimitive.Root;
+Radix places role="slider" on SliderPrimitive.Thumb, which never receives a
+name. Since PersistentPlayer is mounted on every screen, this reproduces on
+every axe scan, on a clean checkout, with zero Task 18 changes applied —
+confirmed by running the identical command against the unmodified
+pre-existing accessibility.spec.ts (Task 14/15) before any Task 18 code
+existed. A correct fix needs either the generated slider.tsx primitive
+(CONVENTIONS reserves hand-edits of generated ui/ primitives for the Shadcn
+CLI) or PersistentPlayer.tsx (owned by Tasks 2/13), neither in Task 18's
+file list. Recorded as a finding in ARCHITECTURE's decision log rather than
+silently fixed or silently hidden. scripts/verify/nfr.sh does not bundle
+accessibility.spec.ts, so this task's own suite does not depend on it;
+frontend/tests/e2e/firefox-smoke.spec.ts locates the seek control via
+getByLabel("Seek").getByRole("slider") rather than by the thumb's own
+(currently absent) accessible name.
+
+======================================================================
+4. Two additional pre-existing regressions discovered and fixed
+   (both directly implicated by this task's own acceptance criteria;
+   see ARCHITECTURE's 2026-07-26 decision log entries for detail).
+======================================================================
+
+- deploy/nginx.conf forwarded Host via $host (drops a non-default port),
+  which broke MutationGuardMiddleware's same-origin check for every
+  mutation on a non-default-port deployment (every gate stack, since all
+  use CHILLIFY_BIND_PORT=8788). Fixed: $host -> $http_host. Confirmed by
+  degraded.spec.ts's playlist-creation step, which failed with "This
+  request's Origin is not permitted to change this deployment." before the
+  fix and passes after (see run #2 above, all green).
+- backend/src/chillify/infrastructure/logging/redaction.py's
+  RedactingFilter never touched record.exc_info, so a secret folded into a
+  raw exception message could reach real stdout through a Rich traceback.
+  Fixed with _redact_exc_info; covered by the four tests in
+  backend/tests/integration/test_secret_redaction.py (all passing, part of
+  `backend tests` in run #1 above).
+
+======================================================================
+Commits
+======================================================================
+3f58820 feat(verify): NFR evidence, Chromium/Firefox smoke, and a fail-closed verify.sh contract
+4aa3210 fix(tests): use double quotes in the verify-aggregate contract's injected fault
