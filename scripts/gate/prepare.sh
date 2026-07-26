@@ -67,7 +67,13 @@ else
     REDIS_PREFIX="chillify:"
     FIXTURE_ROOT=""
     CONTAINMENT_ROOT=""
-    DEFAULT_REDIS_URL="redis://127.0.0.1:6379/0"
+    # Production mode supplies no Redis of its own: compose.yaml has no redis
+    # service, so the operator's own Redis runs on the Docker host. Inside the
+    # api/worker containers 127.0.0.1 is the container itself, which is why the
+    # backend addresses the host through the host.docker.internal alias
+    # compose.yaml maps to host-gateway. A caller running the app as a host
+    # process instead of in containers overrides REDIS_URL with a loopback URL.
+    DEFAULT_REDIS_URL="redis://host.docker.internal:6379/0"
 fi
 
 SECRET_KEY="$(

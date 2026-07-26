@@ -1,0 +1,36 @@
+Gate 4 preflight — prepare.sh production-mode REDIS_URL fix
+Date: 2026-07-26T21:34:01Z
+
+=== BEFORE (default redis://127.0.0.1:6379/0) ===
+[TRANSCRIBED, not captured live: these two lines are quoted from the
+ preflight canary run made earlier in this session against the unfixed
+ default. Every other block in this file is live captured output.]
+production_canary: redis: {"name": "redis", "health": "unavailable", "detail": "queue transport is unreachable"}
+production_canary: PASS   (degraded: acquisition queue unreachable)
+
+Cause: compose.yaml defines no redis service; the operator's Redis runs on
+the Docker host. Inside api/worker, 127.0.0.1 is the container itself.
+compose.yaml already maps host.docker.internal:host-gateway for this.
+
+=== AFTER: rm -rf .gate/release && ./scripts/gate/prepare.sh release production ===
+8:REDIS_URL=redis://host.docker.internal:6379/0
+
+=== ./scripts/production_canary.sh --env-file .gate/release/.env --no-live-success ===
+production_canary: ready=true degraded=false environment=production
+production_canary: database: {"name": "database", "health": "ok", "detail": "migrated to 0001_core"}
+production_canary: storage: {"name": "data_root", "health": "ok", "detail": "15730 MiB free"}
+production_canary: storage: {"name": "music_root", "health": "ok", "detail": "15730 MiB free"}
+production_canary: redis: {"name": "redis", "health": "ok", "detail": "queue transport reachable"}
+production_canary: tool: {"name": "ffmpeg", "health": "ok", "detail": "ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers"}
+production_canary: tool: {"name": "ffprobe", "health": "ok", "detail": "ffprobe version 8.1.2 Copyright (c) 2007-2026 the FFmpeg developers"}
+production_canary: tool: {"name": "yt_dlp", "health": "ok", "detail": "2026.07.04"}
+production_canary: tool: {"name": "spotdl", "health": "ok", "detail": "4.5.2"}
+production_canary: tool: {"name": "deno", "health": "ok", "detail": "deno 2.9.3 (stable, release, x86_64-unknown-linux-gnu)"}
+production_canary: provider: {"name": "deezer", "enabled": true, "configured": true}
+production_canary: provider: {"name": "spotdl", "enabled": true, "configured": true}
+production_canary: provider: {"name": "yt_dlp", "enabled": true, "configured": true}
+production_canary: provider: {"name": "lastfm", "enabled": false, "configured": false}
+production_canary: PASS
+
+=== ./scripts/verify.sh (full) ===
+verify: all checks passed
