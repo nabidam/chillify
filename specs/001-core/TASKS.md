@@ -1037,6 +1037,23 @@ gate = 4
     reproduces on the unmodified checkout and is absent once the fix is
     applied. See ARCHITECTURE's 2026-07-26 decision-log entry and evidence
     `specs/001-core/evidence/task-18a-slider-a11y.txt`.
+  - **Follow-up (2026-07-26, scoped fix, not part of the Done mark above):**
+    the two remaining recorded findings — the destructive `Badge`'s
+    `color-contrast` (serious, `#ffffff` on `#ff6b73`, 2.76:1) and the
+    Playwright strict-mode "Create Playlist" locator collision on the S9
+    empty-playlist state — are both resolved in `43900c3`.
+    `frontend/src/components/ui/badge.tsx`'s `destructive` variant now uses
+    the `text-destructive-foreground` token (7.23:1) instead of raw
+    `text-white`; `frontend/tests/e2e/accessibility.spec.ts` narrows its
+    `create` locator with `.first()`, matching the intentional header +
+    empty-state duplicate UX.md's S9 section specifies and the identical
+    disambiguation already used by `gate-3.spec.ts`/`firefox-smoke.spec.ts`.
+    Live axe reruns (including a forced-redis-down run to actually render the
+    destructive Badge) confirm both findings reproduce on the unmodified
+    checkout and are absent, 6/6 passing with zero critical/serious
+    violations, once the fix is applied. See ARCHITECTURE's 2026-07-26
+    "Both remaining Task 18 findings resolved" decision-log entry and
+    evidence `specs/001-core/evidence/task-18b-badge-locator.txt`.
 
 ## Task 19 — Production-composition proof
 
