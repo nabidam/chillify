@@ -20,10 +20,13 @@
   },
   "comments": {
     "typescript": "typescript@5.9.3 rather than the 7 line: openapi-typescript@7.13.0 generates src/api/generated.ts with the TypeScript 5 compiler API (ts.factory), which the native typescript@7 port does not expose, and npm cannot nest a peer dependency to give the generator its own copy. Every other dev tool here (shadcn, msw, vitest) already peers against a 4.x/5.x range. Recorded in the ARCHITECTURE Decision log, 2026-07-21.",
-    "overrides": "@redocly/openapi-core pins js-yaml 4.2.0 exactly, which carries GHSA-52cp-r559-cp3m, so npm audit fix cannot resolve it in range. The override lifts that transitive copy to the patched 4.3.0 within the same major. It reaches only the build-time OpenAPI generator; no js-yaml ships to the browser."
+    "overrides": "@redocly/openapi-core pins js-yaml 4.2.0 exactly (GHSA-52cp-r559-cp3m); lifted to the patched 4.3.0 within the same major. minimatch@5.1.9 (under @redocly/openapi-core) and minimatch@10.2.5 (under shadcn's ts-morph) both pin a vulnerable brace-expansion (GHSA-mh99-v99m-4gvg); lifted to the patched 5.0.8. shadcn's @modelcontextprotocol/sdk pins a vulnerable @hono/node-server; 2.0.5 clears GHSA-frvp-7c67-39w9 but is still in range for GHSA-9mqv-5hh9-4cgg (2.0.0-2.0.9), so the override lands on the next patched release, 2.0.10. All three reach only build-time/dev tooling (the OpenAPI generator and the Shadcn CLI); none ship to the browser bundle. Recorded in the ARCHITECTURE Decision log, 2026-07-26.",
+    "react-router": "Bumped 8.2.0 -> 8.3.0 (in-range minor within the pinned major 8) to clear GHSA-qwww-vcr4-c8h2 (high), the only vulnerability npm audit --omit=dev finds in the shipped tree. Recorded in the ARCHITECTURE Decision log, 2026-07-26."
   },
   "overrides": {
-    "js-yaml": "4.3.0"
+    "js-yaml": "4.3.0",
+    "brace-expansion": "5.0.8",
+    "@hono/node-server": "2.0.10"
   },
   "dependencies": {
     "@dnd-kit/react": "0.5.0",
@@ -38,7 +41,7 @@
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-hook-form": "7.82.0",
-    "react-router": "8.2.0",
+    "react-router": "8.3.0",
     "sonner": "2.0.7",
     "tailwind-merge": "3.6.0",
     "zod": "4.4.3",

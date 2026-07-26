@@ -33,5 +33,21 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // ARCHITECTURE section 14: the F1 kernel and every numeric/accessibility
+  // check run in Chromium; only the playback/navigation/seek/modal smoke (and
+  // its share of NFR-3) runs in Firefox, in firefox-smoke.spec.ts. Every other
+  // spec file is excluded from the "firefox" project rather than the reverse,
+  // so a new gate/e2e spec defaults onto Chromium without an opt-in step.
+  projects: [
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+      testIgnore: /firefox-smoke\.spec\.ts$/,
+    },
+    {
+      name: "firefox",
+      use: { ...devices["Desktop Firefox"] },
+      testMatch: /firefox-smoke\.spec\.ts$/,
+    },
+  ],
 });

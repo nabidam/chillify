@@ -158,3 +158,34 @@ class RedactingFilter(logging.Filter):
         for name, value in list(record.__dict__.items()):
             if name not in _RESERVED_ATTRIBUTES:
                 record.__dict__[name] = self._redactor.redact_value(value)
+        if record.exc_info:
+            record.exc_info = self._redact_exc_info(record.exc_info)
+
+    def _redact_exc_info(
+        self, exc_info: tuple[type[BaseException], BaseException, Any] | tuple[None, None, None]
+    ) -> Any:
+        """Redact the exception's own message before Rich renders its traceback.
+
+        `exc_info` is excluded from the generic attribute pass above (it is
+        logging's own bookkeeping, not caller context), but a handler with
+        `rich_tracebacks=True` renders the exception's message straight out of
+        it. An exception built from a raw secret-bearing string — an httpx or
+        OS error embedding a proxied URL, for instance — would otherwise reach
+        stdout through the traceback even though the plain message pass above
+        catches the same text everywhere else it can appear.
+        """
+        exc_type, exc_value, exc_tb = exc_info
+        if exc_value is None or exc_type is None:
+            return exc_info
+        original = str(exc_value)
+        redacted = self._redactor.redact(original)
+        if redacted == original:
+            return exc_info
+        try:
+            replacement: BaseException = exc_type(redacted)
+        except Exception:
+            replacement = RuntimeError(redacted)
+        replacement.__traceback__ = exc_tb
+        replacement.__cause__ = exc_value.__cause__
+        replacement.__context__ = exc_value.__context__
+        return (type(replacement), replacement, exc_tb)
