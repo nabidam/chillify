@@ -7,129 +7,148 @@ status: draft
 Delta against the 001-core PRD. Requirements here add to, and where stated
 override, the existing document; nothing else in it changes.
 
+Revised after the 2026-07-27 architecture review, which found (a) Spotify's
+official Web API returns more than the embed payload the first draft proposed
+scraping, and (b) Last.fm gap enrichment is specified but never actually runs.
+
 ## Settled decisions
 
-SPEC.md flagged two consequences for Phase 2 to settle rather than assume.
+**D1 — Timeout defaults bound the fallback worst case.** Fast-first with automatic
+fallback pays both timeouts in sequence. Defaults: Spotify API **8s**, spotdl
+**150s**, yt-dlp **60s**. Worst case is therefore **158s**, below today's
+single-path 180s, so the failure path improves rather than regresses. The 8s fast
+timeout sits well above the measured ~1s p95: its job is to fail over quickly, not
+to keep trying.
 
-**D1 — Timeout defaults must bound the fallback worst case.** Fast-first with
-automatic fallback means a failure pays both timeouts in sequence. Defaults:
-fast **8s**, SpotDL **150s**, yt-dlp **60s**. Fast-then-fallback worst case is
-therefore **158s**, below today's single-path 180s, so the failure path improves
-rather than regresses. The fast timeout is deliberately near the measured p95
-(~1s) with wide margin: its job is to fail over quickly, not to keep trying.
+**D2 — An untouched empty field is a gap; an edited one is an answer.** A candidate
+field the person never edited is not a reviewed value and stays eligible for
+Last.fm enrichment. A field they edited, including one deliberately cleared, is
+their answer and is never overwritten. ARCHITECTURE §7's ordering rule is unchanged;
+what changes is what counts as *reviewed*. This requires a real touched/untouched
+signal from the review form through to the worker — it is not representable today.
 
-**D2 — An untouched empty field is a gap; an edited one is an answer.** A
-fast-path candidate carries album, disc, and track number as *not-yet-known*,
-distinct from *known to be empty*. ARCHITECTURE §721 keeps its rule that reviewed
-values are applied before Last.fm enrichment — this does not change it. A field
-the person never touched is not a reviewed value, so it stays eligible for
-enrichment. A field they edited, including one they deliberately cleared, is
-their answer and is never overwritten. This makes the fast path's thinner
-metadata self-healing instead of permanently lossy.
+**D3 — Credentials absent is a supported state, not an error.** On upgrade nobody
+has configured Spotify credentials, so the fast path is simply unavailable and
+inspection uses spotdl. Settings states this plainly; Add Music names the fallback.
 
 ## Functional requirements
 
-- **FR1** Spotify track links are inspected by a fast path reading Spotify's
-  embed payload over the existing proxied HTTP client, returning title, artist,
-  release year, duration, and cover art.
-- **FR2** When the fast path fails, times out, or yields a candidate missing
-  title or artist, the system falls back to SpotDL automatically and reports the
-  switch by name in S4. The fallback is never silent.
-- **FR3** Inspection mode is an operator setting: `fast` (default) or `thorough`.
-  `thorough` uses SpotDL first and does not fall back to the fast path.
-- **FR4** Inspect timeouts are configurable per path (fast, spotdl, ytdlp),
-  persisted with the existing settings machinery and applied without a restart.
-- **FR5** S4 reports a named phase and elapsed seconds throughout inspection, and
+- **FR1** Spotify track links are inspected via the official Web API
+  (`GET /v1/tracks/{id}`, Client Credentials) over the existing proxied HTTP
+  client, returning title, artist, album, disc number, track number, ISRC,
+  duration, release year, and cover art.
+- **FR2** Spotify client id and secret are operator settings, stored encrypted with
+  the existing Fernet machinery and never echoed back after persistence.
+- **FR3** When credentials are absent, the token request fails, or the track
+  request fails or times out, inspection falls back to spotdl automatically and
+  reports the switch by name in S4. The fallback is never silent.
+- **FR4** Inspection mode is an operator setting: `fast` (default) or `thorough`.
+  `thorough` uses spotdl first and does not fall back to the API.
+- **FR5** Inspect timeouts are configurable per path (spotify, spotdl, ytdlp),
+  persisted, and applied without a restart.
+- **FR6** S4 reports a named phase and elapsed seconds throughout inspection, and
   offers Cancel at every phase.
-- **FR6** Cancel terminates inspection and any provider subprocess by process
-  group, reusing the existing cancellation machinery.
-- **FR7** Album, disc, and track number absent from a fast-path candidate are
-  marked not-yet-known and remain eligible for Last.fm gap enrichment per D2.
-- **FR8** Album, playlist, and artist URLs keep the existing single-track
-  rejection, unchanged, on both paths.
+- **FR7** Cancel terminates inspection and any provider subprocess by process
+  group, and is distinguishable from failure in the error taxonomy.
+- **FR8** The download path calls Last.fm gap enrichment, so the `ENRICHING` phase
+  performs real work; only fields the person never touched are eligible.
+- **FR9** A candidate carries, end to end, which fields the person edited, so
+  enrichment can honor D2.
+- **FR10** Album, playlist, and artist URLs keep the existing single-track
+  rejection, unchanged, on every path.
 
 ## Non-functional requirements
 
 | NFR | Budget | Measurement |
 |---|---|---|
-| NFR-1 | Fast-path inspection p95 < 3s through a proxy | `scripts/verify/nfr.sh` records 20 sequential fast-path inspections against the fixture adapter and the live gate stack; asserts p95 |
-| NFR-2 | Fast-then-fallback worst case < 160s | contract test asserts the sum of configured fast + spotdl defaults; e2e forces a fast failure and measures wall clock |
+| NFR-1 | Spotify API inspection p95 < 3s through a proxy | `scripts/verify/nfr.sh` runs 20 sequential inspections against the fixture adapter and the live gate stack; asserts p95 |
+| NFR-2 | Fast-then-fallback worst case < 160s | contract test asserts configured defaults sum below 160; e2e forces an API failure and measures wall clock |
 | NFR-3 | Cancel leaves no surviving provider process | e2e cancels mid-inspection, then asserts no matching PID in the api container |
 | NFR-4 | Inspection never blocks the event loop | integration test issues a second request during an in-flight slow inspection and asserts it is served |
+| NFR-5 | The Spotify client secret appears in no API body, log line, or process argv | contract test greps a captured request/response/log/argv corpus for a sentinel secret |
 
 ## User stories
 
-- As the household operator, I paste a Spotify link and get a result in about a
-  second, so adding music does not feel broken.
-- As the operator, when the fast lookup stops working I still get my track,
-  because the system falls back and tells me it did.
-- As the operator, I can see what inspection is actually doing and stop it.
-- As the operator, I can choose thorough inspection when I care more about album
-  and track numbering than speed.
+- As the household operator, I paste a Spotify link and get complete metadata in
+  about a second, so adding music does not feel broken.
+- As the operator, if I have not set up credentials the app still works and tells
+  me why it is slower.
+- As the operator, I can see what inspection is doing and stop it.
+- As the operator, fields I never filled in get completed for me, and fields I
+  deliberately emptied stay empty.
 
 ## Acceptance criteria
 
-- **AC1** Paste a Spotify track link in S4 with mode `fast`; a candidate with
-  title, artist, year, duration, and cover appears in under 3 seconds.
-- **AC2** With the fast path forced to fail, paste the same link; S4 visibly
-  names the SpotDL fallback, the elapsed timer continues rather than resetting,
-  and a candidate still appears.
-- **AC3** Start an inspection and press Cancel; the dialog returns to the
-  editable URL with the input preserved, and no SpotDL process remains running in
-  the api container.
-- **AC4** Set mode to `thorough` in S12, save, and inspect a Spotify link; the
-  returned candidate includes album, disc, and track number.
-- **AC5** Restart the containers and reopen S12; the saved mode and all three
-  timeouts are unchanged.
-- **AC6** Inspect via the fast path, leave album untouched through S5, and
-  complete the download; the finished track shows an album filled by Last.fm
-  enrichment.
-- **AC7** Inspect via the fast path, clear the album field deliberately in S5,
-  and complete the download; the finished track's album remains empty.
-- **AC8** Enter a timeout outside its permitted range in S12; the field is
-  rejected with the permitted range stated and nothing is saved.
-- **AC9** Paste a Spotify album or playlist URL in either mode; the existing
+- **AC1** With credentials configured and mode `fast`, paste a Spotify track link
+  in S4; a candidate with title, artist, album, disc, track number, year, duration
+  and cover appears in under 3 seconds.
+- **AC2** Remove the credentials and paste the same link; S4 visibly names the
+  spotdl fallback, the elapsed timer continues rather than resetting, and a
+  candidate still appears.
+- **AC3** Start an inspection and press Cancel; the dialog returns to the editable
+  URL with the input preserved, and no spotdl process remains in the api container.
+- **AC4** Set mode to `thorough`, save, and inspect a Spotify link; the phase names
+  spotdl and no Spotify API call is made.
+- **AC5** Restart the containers and reopen S12; the saved mode, timeouts, and
+  credential-configured state are unchanged, and the secret is not echoed.
+- **AC6** Inspect a track whose album is unknown, leave album untouched through
+  S5, and complete the download; the finished track shows an album filled by
+  Last.fm, and the job's `ENRICHING` phase reports real work.
+- **AC7** Inspect the same track, deliberately clear the album field in S5, and
+  complete the download; the finished track's album remains empty.
+- **AC8** Enter a timeout outside its permitted range in S12; the field is rejected
+  with the permitted range stated and nothing is saved.
+- **AC9** Paste a Spotify album or playlist URL in any mode; the existing
   single-track rejection appears unchanged.
+- **AC10** Save a sentinel Spotify secret, exercise inspection, then read
+  `GET /settings`, the container logs, and the spotdl argv; the sentinel appears in
+  none of them.
 
 ## Validation rules
 
-- Timeouts are integers in seconds: fast 1–30, spotdl 30–600, ytdlp 10–300.
+- Timeouts are integers in seconds: spotify 1–30, spotdl 30–600, ytdlp 10–300.
 - Mode is exactly `fast` or `thorough`; any other value is rejected at the API.
-- A fast-path candidate missing title or artist is treated as a failed lookup and
+- A blank credential on PATCH means unchanged; explicit `clear_secret: true`
+  removes it — the existing settings convention, unchanged.
+- A Spotify response missing title or artist is treated as a failed lookup and
   triggers fallback rather than being returned partially.
 
 ## Error cases
 
-- Embed payload unreachable, non-2xx, or unparseable → fallback (mode `fast`) or
-  typed provider error (mode `thorough`).
-- Embed payload shape changed such that required fields are absent → fallback,
-  and the contract test covering the recorded shape fails loudly in CI.
+- Credentials absent → fast path unavailable; fallback; stated in S12, not an error.
+- Token request 400/401 → typed credential error naming Spotify, and fallback.
+- Track request 404 → the track does not exist; no fallback, since spotdl cannot
+  find it either. Distinct from a transport failure.
+- 429 rate limited → typed error honoring `Retry-After` without a retry storm;
+  fallback.
 - Both paths fail → typed provider error naming both attempts; input preserved.
-- Cancellation → distinct from failure in both the UI and the error taxonomy.
+- Cancellation → distinct from failure in both UI and taxonomy.
 
 ## Edge cases
 
-- Mode changed while an inspection is in flight: the in-flight request keeps the
-  mode it started with.
-- Timeout lowered below an in-flight inspection's elapsed time: the in-flight
-  request keeps its original timeout.
-- Fast path succeeds but returns a duplicate of an existing local track: the
-  existing duplicate handling applies, unchanged.
-- Proxy unconfigured: the fast path uses a direct connection exactly as other
-  adapters do; proxy-first fail-closed behavior is unchanged.
+- Mode or timeout changed while an inspection is in flight: the in-flight request
+  keeps the values it started with.
+- Credentials cleared while an inspection is in flight: the in-flight request
+  finishes with the token it already holds.
+- Enrichment finds nothing: the field stays empty and the phase still reports
+  honestly rather than claiming a fill.
+- Enrichment is unavailable (no Last.fm key): the phase reports that it was
+  skipped, not that it succeeded.
+- Proxy unconfigured: the Spotify API path uses a direct connection exactly as
+  other adapters do; proxy-first fail-closed behavior is unchanged.
 
 ## Constraints
 
-Existing stack only. ARCHITECTURE.md is patched, not regenerated. No new runtime
-dependency is anticipated; one would require the dependency rule. The embed
-payload is undocumented, so the verified-fake rule applies: sanitized fixtures for
-success, changed shape, missing fields, and timeout, and the fast adapter runs the
-same shared `LinkInspector` protocol suite as the SpotDL adapter.
+Existing stack only. ARCHITECTURE.md is patched, not regenerated. The Spotify Web
+API is documented and versioned, so its wire contract ships compact (≤1 page); the
+verified-fake rule still applies, and the Spotify adapter runs the same shared
+`LinkInspector` protocol suite as the spotdl adapter.
 
 ## Out of scope
 
-Bulk/album/playlist import, acquisition-path changes, per-request mode override,
-inspection result caching, fast paths for YouTube or Deezer, proxy performance.
+Bulk/album/playlist import, acquisition-path changes, user-account Spotify auth,
+per-request mode override, inspection result caching, fast paths for YouTube or
+Deezer, proxy performance.
 
 ## Future improvements
 

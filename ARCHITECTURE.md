@@ -827,133 +827,218 @@ The release script seeds 500 tracks and maps every PRD budget to a named check:
 - **M3 existing library:** reserve the `track_sources` provider vocabulary for an `import` source and keep media mutation/reconciliation behind protocols so unmanaged-file policies can be added without weakening current ownership rules.
 - **M4 playback/clients:** keep playback queue state behind a frontend store boundary and media endpoints stateless so persisted queues, mobile layouts, shuffle/repeat, and advanced playback can evolve without coupling them to acquisition.
 
-## 17. Cycle 002 — Spotify inspection paths
+## 17. Cycle 002 — Spotify inspection paths and gap enrichment
 
-Patch, not a rewrite. Sections 1–16 stand except where named here.
+Patch, not a rewrite. Sections 1–16 stand except where named here. Revised after
+the 2026-07-27 independent review; the superseded embed-scraping design is
+recorded in the Decision log rather than kept here.
 
 ### 17.1 Why inspection stops being a synchronous call
 
 `POST /links/inspect` returns only when inspection finishes. Named phases, a live
 elapsed timer, and a working Cancel cannot be served by a request that reports
 nothing until it is over — a client can only invent them, which CONVENTIONS.md
-forbids. Inspection therefore becomes a **tracked, cancellable operation** reusing
-the machinery section 8 already defines for jobs: an id, an event stream, and
-process-group cancellation.
+forbids.
 
-It is deliberately *not* a `download_jobs` row. Inspection is ephemeral, has no
-serial-queue semantics, and must not survive restart — a resumed inspection would
-resurrect a dialog nobody has open. It lives in memory, keyed by id, with a bounded
-TTL, and its absence after restart is correct behavior, not data loss.
+Inspection becomes a **tracked, cancellable operation** backed by an ephemeral
+SQLite row, reusing the `expires_at` pattern sections 4 and 5 already establish for
+`artwork_stages` and `api_idempotency`. It is deliberately *not* a `download_jobs`
+row: inspection has no serial-queue semantics and must not be resumed after a
+restart, because a resumed inspection would resurrect a dialog nobody has open. A
+row past `expires_at` is gone, and its absence is correct behavior.
+
+SQLite rather than an in-memory dict, because the API is the cross-process source
+of truth everywhere else in this design; an in-memory registry would be a fourth
+state-ownership category outside section 1's boundary list, and would break the
+moment uvicorn ran more than one worker — a constraint nothing in section 12
+enforces.
 
 - `POST /links/inspect` → `202` with `{inspection_id, phase, started_at}`.
-- `GET /links/inspect/{id}/events` → SSE, the same envelope shape as job events:
-  `{phase, elapsed_ms, provider, terminal, result?, error?}`.
-- `DELETE /links/inspect/{id}` → `204`, terminates any subprocess by process group
-  (section 8's cancellation rules apply unchanged) and emits a terminal
-  `cancelled` event distinct from failure.
-- Unknown or expired id → `404` with the standard envelope.
+- `GET /links/inspect/{id}/events` → SSE, the same envelope and the same
+  **15-second heartbeat** as job events (section 5). On TTL expiry or shutdown the
+  stream emits a terminal `expired` event and closes — it is never abandoned
+  silently, which would leave S4 showing a live timer over a dead operation.
+- `DELETE /links/inspect/{id}` → `204`, sets `cancel_requested_at` and emits a
+  terminal `cancelled` event distinct from failure.
+- Unknown or expired id → `404` with the standard envelope; S4 renders this as its
+  own state, not as a generic failure.
 
 Phase vocabulary is closed: `reading_spotify`, `matching_spotdl`,
-`inspecting_youtube`, `cancelled`, `failed`, `done`. Each names real work; there is
-no percentage field, deliberately.
+`inspecting_youtube`, `cancelled`, `expired`, `failed`, `done`. Each names real
+work; there is deliberately no percentage field.
 
-### 17.2 Module boundaries
+### 17.2 Cancellation — the trigger is new, only the kill primitive is reused
 
-- `infrastructure/providers/spotify_embed.py` — `SpotifyEmbedInspector`,
-  implementing the existing `LinkInspector` protocol unchanged. Reads the embed
-  payload over the shared `OutboundHttp` client, so proxy-first and fail-closed
-  behavior are inherited, not reimplemented. Its response types never escape it.
-- `application/inspection.py` — the policy that orders paths by mode and performs
-  fallback. Owns no HTTP and no subprocess; it composes protocols.
-- Existing `SpotdlInspector` and yt-dlp inspector are unchanged apart from
-  receiving their timeout from settings instead of a module constant.
+Section 7's cancel path reads `cancel_requested_at` from a `download_jobs` row
+under a Celery lease. An inspection has neither, so that trigger does **not**
+transfer and this design does not claim it does. What transfers is the kill
+primitive: `_terminate_group`/`os.killpg` in the spotdl adapter already accepts a
+generic `cancelled` predicate.
 
-The fast adapter runs the **same shared `LinkInspector` protocol suite** as the
-SpotDL adapter, per the verified-fake rule.
+The inspection row supplies that predicate: the adapter polls
+`cancel_requested_at` on the inspection row exactly as the job path polls it on the
+job row. Same shape, different table, explicitly wired rather than inherited.
+Inspection runs in a thread executor so the poll and the event loop both stay live.
 
-### 17.3 Wire contract — Spotify embed payload (undocumented)
+### 17.3 Wire contract — Spotify Web API (documented, versioned)
 
-`GET https://open.spotify.com/embed/track/{id}` returns HTML containing
-`<script id="__NEXT_DATA__" type="application/json">`. The consumed subset:
+Auth: Client Credentials, `POST https://accounts.spotify.com/api/token`
+(`grant_type=client_credentials`, HTTP Basic of client id/secret). Token cached in
+memory until 60s before expiry; a 401 on a track request invalidates and retries
+once, then falls back.
+
+`GET https://api.spotify.com/v1/tracks/{id}`:
 
 ```
-props.pageProps.state.data.entity:
-  name          string          -> title            (required)
-  artists[].name string[]       -> artist           (required, first element)
-  duration      int (ms)        -> duration_ms      (optional)
-  releaseDate.isoString  string -> release_year     (optional)
-  visualIdentity.image[].url    -> artwork_url      (optional, largest)
+name                    string   -> title         (required)
+artists[].name          string[] -> artist        (required, first)
+album.name              string   -> album
+album.release_date      string   -> release_year  (leading 4 digits)
+album.images[].url      string   -> artwork_url   (largest)
+disc_number             int      -> disc_number
+track_number            int      -> track_number
+duration_ms             int      -> duration_ms
+external_ids.isrc       string   -> isrc
 ```
 
-Auth: none. Errors: non-2xx, absent script tag, unparseable JSON, or either
-required field missing → treated as a failed lookup. **This contract is
-undocumented and unversioned upstream.** It is pinned by sanitized fixtures for
-success, changed shape, missing fields, and timeout; a shape change fails the
-contract test loudly rather than degrading silently in production. Anything beyond
-the fields above is ignored, so unrelated upstream additions do not break parsing.
+Errors: `400/401` credential error → fallback. `404` → track does not exist, no
+fallback (spotdl cannot find it either). `429` → honor `Retry-After`, no retry
+storm, then fallback. Transport failure/timeout → fallback.
+
+Response body is capped at **1 MiB** before parsing, matching the bounded-read
+discipline sections 6 and 11 apply to artwork (10 MiB) and spotdl stdout (64 KiB).
+`artwork_url` re-enters the existing validated `ArtworkFetcher` pipeline — host/IP
+policy, redirect limit, size cap, Pillow decode — and is never fetched directly.
+
+Fixtures per the verified-fake rule: success, missing optional fields, 401, 404,
+429, timeout. The Spotify adapter runs the same shared `LinkInspector` protocol
+suite as the spotdl adapter.
 
 ### 17.4 Data model
 
-The `settings` table's `key` CHECK constraint enumerates permitted keys, and SQLite
-cannot alter a CHECK in place. The migration therefore **rebuilds the table**
-(create new, copy, drop, rename) inside one transaction, adding `'inspection'` to
-the enumeration and seeding its row. The rollback reverses it and must be exercised
-against fixture data per the migration rule.
+Two migrations, each with an exercised rollback.
+
+**Settings keys.** The `settings` table's `key` CHECK enumerates permitted keys and
+SQLite cannot alter a CHECK in place, so the migration rebuilds the table (create,
+copy, drop, rename) in one transaction, adding `'inspection'` and
+`'provider.spotify_api'`, and seeding them. **The rollback must delete both rows
+before narrowing the enumeration**, or the copy step violates the old CHECK — the
+failure mode this codebase has no prior table-rebuild example to have avoided.
 
 ```
 ('inspection',
- '{"mode":"fast","timeout_fast_s":8,"timeout_spotdl_s":150,"timeout_ytdlp_s":60}',
+ '{"mode":"fast","timeout_spotify_s":8,"timeout_spotdl_s":150,"timeout_ytdlp_s":60}',
  NULL, 1, ...)
+('provider.spotify_api', '{"configured":false}', NULL, 1, ...)
 ```
 
-No secret component: `secret_ciphertext` stays NULL for this key.
+The Spotify client id and secret live in `secret_ciphertext` under Fernet, exactly
+as the proxy and Last.fm credentials do.
 
-### 17.5 API contract delta
+**Inspections.**
+
+```sql
+CREATE TABLE inspections (
+    id                  TEXT PRIMARY KEY,
+    url                 TEXT NOT NULL,
+    mode                TEXT NOT NULL CHECK (mode IN ('fast','thorough')),
+    phase               TEXT NOT NULL,
+    provider            TEXT,
+    started_at          TEXT NOT NULL,
+    expires_at          TEXT NOT NULL,
+    cancel_requested_at TEXT,
+    result_json         TEXT,
+    error_json          TEXT
+);
+CREATE INDEX ix_inspections_expiry ON inspections(expires_at);
+```
+
+Opportunistic cleanup on write, as `artwork_stages` does. No index on `url`: rows
+are addressed by id only, and the table is bounded by TTL.
+
+### 17.5 Touched fields — representable end to end, or D2 is fiction
+
+D2 requires distinguishing *never touched* from *deliberately cleared*. Today
+nothing carries that: `TrackCandidate` uses plain `str | None`, the download wire
+schema mirrors it, `request_json` serializes plain field/value, and the S5 form
+tracks only values. The distinction must therefore be added at four boundaries or
+it dies at the first one:
+
+1. **Review form (S5)** — track dirty fields; submit an explicit `edited_fields`
+   set alongside the values.
+2. **Wire schema** — `DownloadRequest` carries `edited_fields: list[str]`.
+3. **`request_json`** — persists `edited_fields` with the reviewed values, so the
+   worker sees it after a restart.
+4. **Worker** — enrichment is offered only fields absent from `edited_fields`.
+
+`TrackCandidate` itself stays `str | None`; the touched-ness is a property of the
+*review*, not of the candidate, so it belongs alongside the reviewed values rather
+than inside the domain value object.
+
+### 17.6 Gap enrichment — the call site that was missing
+
+`downloads.py` records `JobPhase.ENRICHING` and then does nothing;
+`LastfmEnricher.enrich()` is implemented and called from nowhere. A phase that
+names work it does not perform is precisely what CONVENTIONS.md forbids, so this
+cycle wires it:
+
+- The worker calls `MetadataEnricher.enrich(candidate, missing_fields, proxy)`
+  where `missing_fields` = fields that are empty **and** not in `edited_fields`.
+- Enrichment is best-effort: failure, no key, or no match leaves fields empty,
+  records the honest outcome on the phase, and never fails the job.
+- Results merge gap-fill only — an enricher can never overwrite a populated or
+  edited field. Section 7's ordering (reviewed values, then enrichment) is
+  unchanged.
+
+### 17.7 Timeout budget
+
+Spotify 8s + spotdl 150s = **158s** worst case for fast-then-fallback, below the
+current single-path 180s, so the fallback improves the failure path rather than
+compounding it. `8dcda66`'s 180s inspect and 200s nginx stopgaps revert to these
+configured defaults. Settings changes apply to the next inspection; an in-flight
+inspection keeps the values it started with.
+
+### 17.8 API contract delta
 
 | Endpoint | Change | Screen |
 |---|---|---|
 | `POST /links/inspect` | now `202` + `inspection_id` (was the candidate) | S4 |
-| `GET /links/inspect/{id}/events` | new, SSE phase/elapsed stream | S4 |
+| `GET /links/inspect/{id}/events` | new, SSE phase/elapsed stream with heartbeat | S4 |
 | `DELETE /links/inspect/{id}` | new, cancels and terminates subprocesses | S4 |
-| `GET /settings` | gains an `inspection` block, no secrets | S12 |
+| `GET /settings` | gains `inspection` and masked `spotify_api` blocks | S12 |
 | `PATCH /settings/inspection` | new, mode + three timeouts + revision | S12 |
+| `PATCH /settings/providers/spotify_api` | new, client id/secret, existing convention | S12 |
+| `POST /downloads` | request gains `edited_fields` | S5 |
 
-`PATCH /settings/inspection` uses the existing optimistic-revision rule; a stale
-revision is the existing `record_changed` error. Timeout bounds (fast 1–30, spotdl
-30–600, ytdlp 10–300) are validated at the boundary and again in the domain.
+Optimistic revision and the blank-means-unchanged/`clear_secret` conventions are
+the existing ones, unchanged. Timeout bounds (spotify 1–30, spotdl 30–600, ytdlp
+10–300) are validated at the boundary and again in the domain.
 
-### 17.6 Timeout budget
+### 17.9 Threat model delta (extends section 13)
 
-Fast 8s + SpotDL 150s = **158s** worst case for fast-then-fallback, below the
-current single-path 180s, so the fallback design improves the failure path rather
-than compounding it. Settings changes apply to the next inspection; an in-flight
-inspection keeps the mode and timeout it started with.
+| Boundary | Risk | Control |
+|---|---|---|
+| Spotify API response → candidate | hostile or malformed third-party strings become track metadata, filenames, tags | 1 MiB body cap; strict field extraction, unknown fields ignored; existing Pathvalidate on filename derivation; existing tag writer escaping |
+| Spotify `artwork_url` → fetch | SSRF via an attacker-influenced URL | re-enters the existing `ArtworkFetcher` host/IP policy, redirect limit, size cap, Pillow decode — never fetched directly |
+| Client secret | leak via body, log, or argv | Fernet at rest; masked in `GET /settings`; HTTP Basic header only; never passed to a subprocess; NFR-5 greps a sentinel |
+| `POST /links/inspect` | unbounded inspection rows | TTL + opportunistic cleanup; one in-flight inspection per browser session is the UI contract, not a server guarantee |
 
-### 17.7 Not-yet-known fields and enrichment
-
-Section 7's rule — reviewed values are applied before Last.fm gap enrichment —
-is unchanged. What changes is what counts as *reviewed*: a candidate field the
-person never edited is not a reviewed value. `TrackCandidate` therefore
-distinguishes a field that was never populated from one deliberately set empty, and
-only the former is offered to enrichment. Without this the fast path's thinner
-metadata would be permanently lossy.
-
-### 17.8 Traceability — F5
+### 17.10 Traceability — F5
 
 | F5 step | Served by |
 |---|---|
-| 1 paste + phase + elapsed | `POST /links/inspect` → `GET /links/inspect/{id}/events` |
-| 2 candidate in ~1s | fast path, §17.3 wire contract |
-| 3 not-yet-known fields in S5 | §17.7 |
-| 4 named fallback, timer continues | `matching_spotdl` phase on the same event stream |
-| 5 cancel, no surviving process | `DELETE /links/inspect/{id}`, §17.1 |
-| 6 switch to thorough | `PATCH /settings/inspection` |
-| 7 thorough returns album/disc/track | existing `SpotdlInspector` |
-| 8 settings survive restart | `GET /settings`, §17.4 row |
+| 1 save credentials | `PATCH /settings/providers/spotify_api`, §17.4 |
+| 2 paste + phase + elapsed | `POST /links/inspect` → `GET /links/inspect/{id}/events` |
+| 3 complete candidate in ~1s | §17.3 wire contract |
+| 4 review + download | existing `POST /downloads`, plus `edited_fields` §17.5 |
+| 5 named fallback, timer continues | `matching_spotdl` phase on the same stream |
+| 6 cancel, no surviving process | `DELETE /links/inspect/{id}`, §17.2 |
+| 7 untouched album filled by Last.fm | §17.5 + §17.6 |
+| 8 settings survive restart | `GET /settings`, §17.4 rows |
 
-### 17.9 Forward constraint
+### 17.11 Forward constraint
 
-Keep the inspection policy and its phase vocabulary provider-agnostic so M2's bulk
+Keep the inspection policy and phase vocabulary provider-agnostic so M2's bulk
 import can report per-item phases through the same stream without a second idiom.
 
 ## Decision log
@@ -1025,14 +1110,14 @@ One more, pre-existing bug surfaced while verifying live rather than by inspecti
 
 Verified live: full `./scripts/verify.sh` green; `./scripts/gate/prepare.sh release release` then `./scripts/gate/seed.sh release kernel-500` seeds successfully against the real `.gate/release/.env` (`kernel-500` is a chunk label, not a registered scenario, and correctly falls back to the base track set); `./scripts/production_canary.sh --env-file .gate/release/.env --no-live-success` PASSes with `ready=true`, `environment=release`, and the real adapter classes listed; and a hand-edited release `.env` naming a household-shaped root is refused before anything is written, both by `seed.sh` and by `production_canary.sh`. Evidence: `specs/001-core/evidence/task-20-seed-guard.txt`.
 
-### 2026-07-27 — Spotify link inspection split into a fast path and a fallback (cycle 002)
+### 2026-07-27 — Spotify link inspection: fast path, fallback, and the enrichment call site (cycle 002)
 
-Measured on the operator's proxied network: `spotdl save` takes 145–183s per Spotify link — per-request latency through the proxy, not any single spotdl feature; disabling its lyrics providers did not reliably help. That range straddles the 180s inspect timeout raised in `8dcda66`, so Add Music failed intermittently while YouTube (~4.5s) and Deezer stayed fast. Spotify's embed payload returns title, artist, duration, release year and cover art in ~817ms but carries no album, disc, or track number.
+Measured on the operator's proxied network: `spotdl save` takes 145–183s per Spotify link — per-request latency through the proxy, not any single spotdl feature; disabling its lyrics providers did not reliably help. That range straddles the 180s inspect timeout raised in `8dcda66`, so Add Music failed intermittently while YouTube (~4.5s) and Deezer stayed fast.
 
-Cycle 002 adds `SpotifyEmbedInspector` behind the existing `LinkInspector` protocol, reading that payload over the shared `OutboundHttp` client so proxy-first and fail-closed behavior are inherited rather than reimplemented. Mode `fast` (default) tries it first and falls back to SpotDL on failure, naming the switch in the UI; mode `thorough` uses SpotDL alone. The embed payload is undocumented and unversioned upstream, so it is pinned by sanitized fixtures (success, changed shape, missing fields, timeout) and the fast adapter runs the same shared protocol suite as the SpotDL one — a shape change fails a contract test loudly instead of degrading in production. This is why SPEC.md is stamped `profile: full`.
+The first draft of this cycle proposed scraping Spotify's undocumented `__NEXT_DATA__` embed payload (~817ms, but no album, disc, track number, or ISRC) and leaning on Last.fm enrichment to fill the gaps. The independent architecture review overturned both halves and the user arbitrated in favor of the review. **Spotify publishes an official, documented, versioned API for exactly this** — `GET /v1/tracks/{id}` under Client Credentials returns *more* than the scrape, including the very fields the scrape lacked — so the design would have built a self-admittedly fragile scraper, plus a contract-test suite specifically to catch it breaking, to obtain less data than a supported endpoint returns. The cost is operator-supplied credentials, stored with the same Fernet machinery the proxy and Last.fm key already use. **And Last.fm gap enrichment does not exist**: `downloads.py` records `JobPhase.ENRICHING` and then does nothing, while `LastfmEnricher.enrich()` is implemented and called from nowhere — so the mitigation the first draft depended on was fiction, and a phase name was reporting work that never happened. Wiring that call site is folded into this cycle rather than left lying, which is also why SPEC.md is stamped `profile: full`: the cycle spans two subsystems, not one.
 
-Two consequences were settled explicitly rather than assumed. **Timeouts:** fast 8s + spotdl 150s bounds the fast-then-fallback worst case at 158s, below the current single-path 180s, so the fallback improves the failure path instead of compounding it. **Enrichment:** section 7's rule that reviewed values precede Last.fm gap enrichment is unchanged; what changed is what counts as reviewed — a field the person never edited is not a reviewed value and stays eligible for enrichment, while a field they deliberately cleared is their answer. Without that distinction the fast path's thinner metadata would be permanently lossy.
+Three further review findings were accepted and are reflected in section 17. **Inspection state is an ephemeral SQLite row with `expires_at`**, reusing the pattern `artwork_stages` and `api_idempotency` already establish, rather than the in-memory TTL registry first proposed — the registry would have been a fourth state-ownership category outside section 1's boundaries and would have broken silently the moment uvicorn ran more than one worker, a constraint nothing in section 12 enforces. **The cancellation claim was wrong as written**: section 7's trigger reads `cancel_requested_at` from a `download_jobs` row under a Celery lease, which an inspection has neither of; only the `os.killpg` kill primitive transfers, and the trigger is now explicitly designed against the inspection row instead of asserted as reuse. **The migration rollback needs to delete the seeded settings rows before narrowing the `key` CHECK**, or the rebuild-copy step violates the old constraint — this repository has exactly one prior migration and no table-rebuild precedent to have copied.
 
-Inspection also stops being a synchronous call. Named phases, a live elapsed timer, and a working Cancel cannot be served by a request that reports nothing until it returns, and inventing them is forbidden by CONVENTIONS.md. `POST /links/inspect` now returns `202` with an id, phases stream over SSE in the same envelope shape as job events, and `DELETE` cancels by process group. Deliberately not a `download_jobs` row: inspection is ephemeral, has no serial-queue semantics, and must not survive restart — a resumed inspection would resurrect a dialog nobody has open.
+Also fixed from the review: a 1 MiB cap on the Spotify response body before parsing (every comparable boundary already states one), an explicit statement that `artwork_url` re-enters the existing validated `ArtworkFetcher` pipeline rather than being fetched directly, a section 13 threat-table delta for this new class of input, an SSE heartbeat and a terminal `expired` event so S4 can never show a live timer over a dead operation, and a corrected citation (cancellation is section 7 item 9, not section 8, which is filesystem crash consistency).
 
-The `settings` table's `key` CHECK constraint enumerates permitted keys and SQLite cannot alter a CHECK in place, so the migration rebuilds the table in one transaction to add `'inspection'`, with a reversing rollback exercised against fixture data.
+The touched-vs-cleared distinction D2 depends on is **not representable today** — `TrackCandidate`, the download wire schema, `request_json`, and the S5 form all collapse "never filled" and "deliberately emptied" into `None`. Section 17.5 adds `edited_fields` across those four boundaries; without it D2 is unimplementable and AC6/AC7 cannot both pass.
