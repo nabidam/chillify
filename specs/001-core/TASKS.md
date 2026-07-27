@@ -1123,3 +1123,33 @@ task = 19
 ```
 
 Preflight: run `./scripts/gate/prepare.sh release kernel-500`, then `./scripts/production_canary.sh --env-file .gate/release/.env --no-live-success`; both must fail closed unless paths are under `.gate/release/` and the Redis prefix is `chillify:gate:release:`. The human walkthrough result and named NFR evidence are the completion artifact.
+
+- **Preflight correction:** `kernel-500` is a seed *scenario*, not a prepare
+  mode. The runnable form is `./scripts/gate/prepare.sh release release`
+  followed by `./scripts/gate/seed.sh release kernel-500`. Recorded in
+  `specs/001-core/evidence/task-20-preflight.txt`.
+- **GATE BLOCKED → cleared for walkthrough.** The first preflight passed but
+  the walkthrough failed journey step 1: no download was possible. Three
+  defects found and fixed, each with live evidence:
+  - `580838e` — production-mode `REDIS_URL` pointed at `127.0.0.1`, which is
+    the container itself; `compose.yaml` has no redis service. Every
+    containerized launch came up with acquisition degraded.
+  - `2e87f54` — Task 20 required the production composition *and* seeded data,
+    which two containment layers made mutually exclusive. Added a disposable
+    `release` environment; `is_gate` semantics unchanged, so real adapters
+    still bind.
+  - `6552efd` — the configured proxy was never applied to any provider call;
+    `proxy_url` was never assigned anywhere. Only the Settings proxy *test*
+    used a real proxy, so it reported success while all traffic went direct.
+  - `8dcda66` — SpotDL passed the proxy on argv (leaking it to `ps`, and not
+    covering its internal `requests` traffic) instead of exporting it to the
+    child as ARCHITECTURE specifies.
+- **Deferred, agreed with the operator, not silently dropped:**
+  - `production_canary.sh` probes live reachability from the *host*, which
+    inherits the host's `http_proxy`. It reported `live reachability ok` while
+    the containers had no working provider path, so Task 19's "treats network
+    failure as a clear canary failure" criterion is not really satisfied. The
+    probe must run inside the api container.
+  - SpotDL inspection takes 122–140s through a real proxy; `8dcda66` raised the
+    inspect timeout to 180s and nginx `proxy_read_timeout` to 200s to make it
+    work. The latency itself is unexplained and deserves its own investigation.
