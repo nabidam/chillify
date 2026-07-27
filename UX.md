@@ -107,11 +107,19 @@ Browser back/forward restores the previous content view without remounting the p
 **Eye first:** URL field.
 
 - **Empty:** show two concise supported examples without suggesting albums or playlists.
-- **Loading:** show link inspection and disable repeated submission.
+- **Loading:** show link inspection and disable repeated submission. Inspection
+  reports its **named phase** and **elapsed seconds**, and offers **Cancel**
+  throughout. Phase names state real work ("Reading Spotify details", "Matching
+  with SpotDL"); no percentage is shown, because inspection has no honest one.
+- **Fallback:** when the fast Spotify lookup fails and SpotDL takes over, the
+  phase changes visibly and names the switch. The fallback is never silent, and
+  the elapsed timer keeps running across the handover rather than resetting.
+- **Cancel:** stops inspection at any phase and leaves no provider subprocess
+  running. The dialog returns to the editable URL field with the input preserved.
 - **Spotify success:** identify the track source and allow queueing; job progress continues in S11.
 - **YouTube success:** continue to S5 rather than queueing immediately.
-- **Error:** preserve input; distinguish malformed URL, unsupported host/entity, bulk link, duplicate local track, provider disabled, proxy failure, and extractor failure.
-- **Density/hierarchy:** only URL acquisition is here. Provider configuration is linked but not embedded.
+- **Error:** preserve input; distinguish malformed URL, unsupported host/entity, bulk link, duplicate local track, provider disabled, proxy failure, extractor failure, inspection timeout, and cancellation. A timeout names which inspection path timed out and links to S12.
+- **Density/hierarchy:** only URL acquisition is here. Provider configuration is linked but not embedded. The inspection mode lives in S12, not here — the dialog reports which path ran, but does not offer to change it.
 
 ### S5 — YouTube Metadata Review
 
@@ -120,6 +128,12 @@ Browser back/forward restores the previous content view without remounting the p
 **Eye first:** title and artist, followed by cover.
 
 - **Loading:** keep the modal open while metadata/artwork inspection completes.
+- **Partial metadata:** the fast Spotify path returns no album, disc, or track
+  number. Those fields arrive empty and are marked as not-yet-known rather than
+  silently blank, so the person can tell "nothing found" from "nothing there".
+  An untouched not-yet-known field stays eligible for Last.fm gap enrichment;
+  a field the person edits — including deliberately clearing it — is their
+  answer and is never overwritten.
 - **Validation:** mark exact invalid fields; preserve all edits. Title and artist cannot be blank.
 - **Artwork error:** metadata can still be submitted without artwork after a clear warning.
 - **Duplicate:** block queueing and link to the existing S13 record.
@@ -196,12 +210,19 @@ Browser back/forward restores the previous content view without remounting the p
 
 ### S12 — Settings
 
-**Regions:** global proxy at the top with Save and Test; provider list with enabled state, credential fields, Test, and health; storage/tool diagnostics showing mounted path, free space, and required binaries.  
+**Regions:** global proxy at the top with Save and Test; provider list with enabled state, credential fields, Test, and health; **link inspection** with mode and per-provider timeouts; storage/tool diagnostics showing mounted path, free space, and required binaries.  
 **Primary action:** save and test the proxy, then resolve provider health.  
 **Eye first:** proxy state and last test result.
 
+- **Link inspection:** a mode choice between **Fast** (default) and **Thorough**,
+  each stating its trade in one line — Fast returns in about a second but without
+  album, disc, or track number; Thorough asks SpotDL and returns everything, but
+  can take minutes on a slow connection. Below it, one timeout per inspection
+  path, each showing its unit and default. Fast mode always falls back to
+  Thorough on failure, and the mode copy says so, so the choice reads as "what to
+  try first", not "what is allowed".
 - **Loading:** settings fields remain stable while health checks resolve independently.
-- **Validation:** reject malformed proxy URLs before save; credentials are never echoed after persistence.
+- **Validation:** reject malformed proxy URLs before save; credentials are never echoed after persistence. Timeouts are bounded, and a value outside its range is rejected at the field with the permitted range stated.
 - **Proxy failure:** identify connection, authentication, timeout, or unsupported-scheme failure; never suggest direct fallback.
 - **Provider error:** isolate it to that provider and show the next action. Missing Last.fm key marks enrichment optional, not globally unhealthy.
 - **Diagnostics error:** distinguish unreadable mount, low disk space, unavailable Redis, missing FFmpeg, SpotDL, or yt-dlp.
@@ -291,6 +312,17 @@ Browser back/forward restores the previous content view without remounting the p
 3. **S11:** If Redis is unavailable, user sees acquisition disabled while existing tracks remain playable.
 4. **S11:** When Redis returns, system requeues unfinished database jobs; interrupted work visibly restarts from the beginning.
 5. **S11:** User retries a failed job or cancels it; system updates global status and advances the serial queue.
+
+### F5 — Cycle 002 kernel: inspect a Spotify link quickly, legibly, and cancellably
+
+1. **S4:** User pastes a Spotify track link and submits; system shows the phase "Reading Spotify details" with elapsed seconds and an active Cancel.
+2. **S4:** System returns a candidate in about a second and continues to review.
+3. **S5:** User sees title, artist, year, duration, and cover filled, with album, disc, and track number marked not-yet-known rather than blank; user queues the download.
+4. **S4:** On a later link whose fast lookup fails, user sees the phase change to "Matching with SpotDL" naming the fallback; the elapsed timer continues rather than resetting, and the inspection still succeeds.
+5. **S4:** User starts another inspection and presses Cancel mid-phase; system stops, leaves no provider subprocess running, and restores the editable URL with the input preserved.
+6. **S12:** User switches link inspection to Thorough; system saves it and states the trade.
+7. **S4:** User inspects a Spotify link again; system uses SpotDL first and returns album, disc, and track number.
+8. **S12:** User restarts the app and reopens Settings; system shows the saved mode and timeouts unchanged.
 
 ## Cross-screen interaction rules
 
