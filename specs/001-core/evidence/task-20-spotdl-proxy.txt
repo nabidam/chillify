@@ -1,0 +1,175 @@
+Task 20 — SpotDL proxy: argv flag -> child-environment export
+================================================================
+
+ROOT CAUSE (confirmed live, before the fix)
+--------------------------------------------
+SpotdlInspector.inspect and SpotdlAcquisitionProvider.acquire passed the saved
+proxy as `--proxy <url>` on argv. That flag does not cover the requests/
+urllib3 traffic spotdl uses internally (Spotify metadata, YouTube Music
+connectivity preflight), which is exactly the traffic that needs the proxy on
+a network with hijacked/broken DNS.
+
+$ docker exec chillify-api-1 sh -c \
+    '/opt/spotdl/bin/spotdl --proxy socks5://host.docker.internal:10808 url \
+     "https://open.spotify.com/track/4PTG3Z6ehGkBFwjybzWkR8"'
+...
+ConnectionError: HTTPSConnectionPool(host='music.youtube.com', port=443): Max
+retries exceeded with url: / (Caused by NameResolutionError(
+"HTTPSConnection(host='music.youtube.com', port=443): Failed to resolve
+'music.youtube.com' ([Errno -3] Temporary failure in name resolution)"))
+
+Same command, proxy exported to the environment instead of argv (also proves
+the socks5:// -> socks5h:// rewrite is required — DNS must resolve through the
+proxy, not locally):
+
+$ docker exec chillify-api-1 sh -c \
+    'HTTP_PROXY=socks5h://host.docker.internal:10808 \
+     HTTPS_PROXY=socks5h://host.docker.internal:10808 \
+     /opt/spotdl/bin/spotdl url "https://open.spotify.com/track/4PTG3Z6ehGkBFwjybzWkR8"'
+Processing query: https://open.spotify.com/track/4PTG3Z6ehGkBFwjybzWkR8
+https://music.youtube.com/watch?v=lYBUbBu4W08
+
+
+THE FIX
+-------
+backend/src/chillify/infrastructure/providers/spotdl.py:
+  - `_proxy_for_child_env`: rewrites socks5:// to socks5h:// (http(s):// and
+    already-socks5h:// pass through unchanged), using `parse_proxy` from
+    infrastructure/security/outbound.py for scheme validation instead of
+    writing a new URL parser.
+  - `_child_env`: builds the child's full environment (a copy of this
+    process's `os.environ` plus HTTP_PROXY/HTTPS_PROXY/http_proxy/
+    https_proxy), or returns None (inherit unchanged) when no proxy is
+    configured.
+  - `_default_spotdl_runner` gained an `env` parameter passed straight to
+    `subprocess.Popen(..., env=env)`.
+  - `SpotdlInspector.inspect` and `SpotdlAcquisitionProvider.acquire` no
+    longer append `--proxy` to argv; they pass `env=_child_env(proxy)` to the
+    runner instead. The proxy — and any credential it carries — now never
+    appears on the process argument vector, closing the `ps`-visible
+    credential leak CONVENTIONS.md and ARCHITECTURE.md (~738) forbid.
+
+Additional necessary change, discovered only during live verification:
+`_INSPECT_TIMEOUT_SECONDS` was 60s, sized for the old failure mode (an
+instant DNS-resolution error). With the proxy now actually carrying the
+traffic, a full `spotdl save` round trip (Spotify metadata fetch + YouTube
+Music connectivity preflight) took 122-140s over this operator's real proxy.
+Raised to 180s, with deploy/nginx.conf's `/api/` `proxy_read_timeout` raised
+from 60s to 200s to match (otherwise nginx cuts the response before the
+backend's own timeout gets a chance to answer). Both changes are commented
+in place with the measured timings that justify them.
+
+
+TESTS ADDED (backend/tests/contract/test_spotdl_contract.py)
+--------------------------------------------------------------
+New class TestSpotdlProxyEnvironmentContract, plus updates to
+TestSpotdlCliContract:
+  - proxy absent from argv, inspect and acquire
+  - proxy present in the child env, inspect and acquire
+  - socks5:// -> socks5h:// conversion; socks5h:// and http(s):// unchanged
+  - no proxy configured -> no env injected, no argv flag (env=None -> Popen
+    inherits unchanged)
+  - child still inherits PATH
+  - a credentialed proxy never appears in a raised error message/context
+
+$ cd backend && .venv/bin/python -m pytest tests/contract/test_spotdl_contract.py -q
+....................................                                     [100%]
+36 passed in 0.08s
+
+
+FULL VERIFY (not --fast)
+-------------------------
+$ ./scripts/verify.sh
+...
+=== backend tests
+........................................................................ [ 12%]
+........................................................................ [ 24%]
+........................................................................ [ 37%]
+........................................................................ [ 49%]
+........................................................................ [ 62%]
+........................................................................ [ 74%]
+........................................................................ [ 87%]
+........................................................................ [ 99%]
+..                                                                       [100%]
+578 passed in 459.79s (0:07:39)
+--- backend tests: ok
+=== frontend tests
+ Test Files  11 passed (11)
+      Tests  97 passed (97)
+--- frontend tests: ok
+=== raw color literals: ok
+=== primitive boundary: ok
+=== domain boundary: ok
+=== secret scan: ok
+=== frontend build: ok
+=== backend dependency audit: ok
+=== frontend dependency audit: ok
+verify: all checks passed
+
+
+LIVE VERIFICATION — release stack (docker compose --env-file .gate/release/.env)
+----------------------------------------------------------------------------------
+Rebuilt with the fix:
+
+$ docker compose --env-file .gate/release/.env up --build -d
+ Image chillify-api Built
+ Container chillify-api-1 Recreated ... Healthy
+ Container chillify-worker-1 Recreated ... Started
+ Container chillify-web-1 Recreated ... Started
+
+1) POST /api/v1/links/inspect — Spotify track, the operation that failed:
+
+$ curl -s -o out.json -w "HTTP_STATUS:%{http_code} TIME:%{time_total}\n" \
+    --max-time 220 -X POST "http://localhost:8788/api/v1/links/inspect" \
+    -H "Content-Type: application/json" -H "Origin: http://localhost:8788" \
+    -d '{"url":"https://open.spotify.com/track/4PTG3Z6ehGkBFwjybzWkR8"}'
+HTTP_STATUS:200 TIME:126.637592
+
+$ cat out.json
+{"source_type":"spotify_track","provider":"spotdl","review_required":false,
+ "candidate":{"provider":"spotify","source_id":"4PTG3Z6ehGkBFwjybzWkR8",
+ "source_url":"https://open.spotify.com/track/4PTG3Z6ehGkBFwjybzWkR8",
+ "title":"Never Gonna Give You Up","artist":"Rick Astley",
+ "album":"Whenever You Need Somebody","release_year":1987,
+ "disc_number":1,"track_number":1,"duration_ms":213000,"isrc":null,
+ "artwork_url":"https://i.scdn.co/image/ab67616d0000b27315ebbedaacef61af244262a8",
+ "acquisition_locator":"https://open.spotify.com/track/4PTG3Z6ehGkBFwjybzWkR8",
+ "raw_fingerprint":"8995a72eacf025907ca53cf8bf390201a225ffa20f891a0820c28dab6c4a9043"},
+ "is_playable":false,"existing_track_id":null}
+
+Real Spotify metadata returned — HTTP 200, not the "Spotify could not be
+inspected" failure this task was opened to fix.
+
+2) YouTube path — confirmed no regression:
+
+$ curl -s -o out.json -w "HTTP_STATUS:%{http_code} TIME:%{time_total}\n" \
+    --max-time 90 -X POST "http://localhost:8788/api/v1/links/inspect" \
+    -H "Content-Type: application/json" -H "Origin: http://localhost:8788" \
+    -d '{"url":"https://www.youtube.com/watch?v=n2KOUVdaRxw"}'
+HTTP_STATUS:200 TIME:4.506779
+
+$ cat out.json
+{"source_type":"youtube_video","provider":"yt_dlp","review_required":true,
+ "candidate":{"provider":"youtube","source_id":"n2KOUVdaRxw",
+ "title":"Kako Band – Grass (Official Audio)","artist":"KAKO BAND",
+ "duration_ms":235000, ...},"is_playable":false,"existing_track_id":null}
+
+3) Proxy absent from spotdl's live argv (captured while the request above
+   was in flight, by polling /proc/<pid>/cmdline inside the api container
+   every 300ms for the duration of a real inspect call):
+
+$ docker exec chillify-api-1 cat /tmp/argv_capture.txt
+/opt/spotdl/bin/python3 /opt/spotdl/bin/spotdl save \
+  https://open.spotify.com/track/4PTG3Z6ehGkBFwjybzWkR8 --save-file \
+  /tmp/chillify-spotdl-jtww7w04/metadata.spotdl
+
+No `--proxy` and no proxy URL anywhere in the captured argument vector, while
+the same request succeeded end to end (HTTP_STATUS:200 TIME:135.107506).
+
+Stack left running and healthy:
+
+$ docker compose --env-file .gate/release/.env ps
+NAME                IMAGE             SERVICE   STATUS
+chillify-api-1      chillify-api      api       Up (healthy)
+chillify-web-1      chillify-web      web       Up (healthy)
+chillify-worker-1   chillify-worker   worker    Up (healthy)

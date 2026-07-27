@@ -44,6 +44,7 @@ from chillify.domain.protocols import (
     TrackCandidate,
 )
 from chillify.infrastructure.providers.mp3 import single_valid_mp3
+from chillify.infrastructure.security.outbound import parse_proxy
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,18 @@ PROVIDER_NAME: Final = "spotify"
 
 # SpotDL is invoked as an argument vector, never a shell. These timeouts bound a
 # metadata inspection and a full download respectively.
-_INSPECT_TIMEOUT_SECONDS: Final = 60.0
+#
+# `save` performs a YouTube Music connectivity preflight (`get_visitor_id`)
+# ahead of the actual Spotify metadata fetch. Once the child's proxy env is
+# fixed to actually route that traffic through a SOCKS proxy instead of
+# failing DNS resolution instantly, the round trip's wall time is bounded by
+# the proxy's real latency rather than a fast local failure. Measured live
+# against the release gate's proxy: two full `save` invocations completed in
+# 122 s and 140 s. 60 s was sized for the pre-fix failure mode, not this one,
+# so it fails almost every real inspection on a proxied network; 180 s gives
+# headroom above the observed range without approaching the 600 s download
+# bound below.
+_INSPECT_TIMEOUT_SECONDS: Final = 180.0
 _DOWNLOAD_TIMEOUT_SECONDS: Final = 600.0
 # How often the download runner checks the cancellation flag while SpotDL runs.
 _CANCEL_POLL_SECONDS: Final = 0.2
@@ -202,6 +214,7 @@ def _default_spotdl_runner(
     *,
     timeout: float,
     cancelled: CancelledCallback | None = None,
+    env: dict[str, str] | None = None,
 ) -> SubprocessResult:
     """Launch SpotDL in its own process group and capture its output.
 
@@ -209,6 +222,13 @@ def _default_spotdl_runner(
     process group, not just the parent shell SpotDL would otherwise leave. When
     `cancelled` is supplied it is polled while the child runs and the group is
     killed the moment a cancel is seen.
+
+    `env` is either None — the child inherits this process's environment
+    unchanged, exactly Python's default when `Popen(env=None)` — or a full
+    environment mapping built by `_child_env`, which starts from this
+    process's environment and adds the proxy variables. Either way the child
+    always inherits `PATH`, `HOME`, temp-dir, and locale variables it needs;
+    only the proxy variables are ever added on top.
     """
     process = subprocess.Popen(
         list(argv),
@@ -216,6 +236,7 @@ def _default_spotdl_runner(
         stderr=subprocess.PIPE,
         text=True,
         start_new_session=True,
+        env=env,
     )
     deadline = time.monotonic() + timeout
     while True:
@@ -237,6 +258,48 @@ def _default_spotdl_runner(
 def _terminate_group(process: subprocess.Popen[str]) -> None:
     with suppress(ProcessLookupError, PermissionError):
         os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+
+
+def _proxy_for_child_env(proxy: str) -> str:
+    """Rewrite a saved proxy for the SpotDL child's environment.
+
+    `HTTP_PROXY`/`HTTPS_PROXY` are honoured by the `requests`/urllib3 stack
+    SpotDL uses internally (album art, YouTube Music lookups, and more) — the
+    traffic that a bare `--proxy` CLI flag never reaches. Plain `socks5://`
+    makes urllib3 resolve the target hostname *locally* before tunnelling
+    through the proxy; on a network whose DNS is hijacked or otherwise
+    unreachable (the exact case this fixes — `music.youtube.com` failing to
+    resolve) that local lookup fails before the proxy ever gets a chance.
+    `socks5h://` pushes DNS resolution through the proxy itself, which is what
+    actually works. `http://`/`https://` proxies already resolve remotely via
+    `CONNECT`, so they pass through unchanged; an already-`socks5h://` proxy is
+    left alone too. `parse_proxy` (the one URL parser this codebase uses for
+    proxy strings) supplies the validated scheme; only the scheme segment is
+    rewritten so any embedded credentials survive untouched.
+    """
+    endpoint = parse_proxy(proxy)
+    if endpoint.scheme == "socks5":
+        return "socks5h://" + endpoint.raw.split("://", 1)[1]
+    return endpoint.raw
+
+
+def _child_env(proxy: str | None) -> dict[str, str] | None:
+    """Build the SpotDL child's environment, or None to inherit unchanged.
+
+    ARCHITECTURE's SpotDL contract calls for "the saved proxy exported only to
+    the child": never on argv, where `ps` on the host would expose it —
+    including any embedded proxy credential — to every other user on the
+    machine. `None` here means `subprocess.Popen(env=None)`, which inherits
+    this process's environment verbatim, so `PATH`/`HOME`/temp-dir/locale are
+    always present; the proxy variables are the only addition ever made.
+    """
+    if proxy is None:
+        return None
+    env = dict(os.environ)
+    child_proxy = _proxy_for_child_env(proxy)
+    for key in ("HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"):
+        env[key] = child_proxy
+    return env
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,9 +336,7 @@ class SpotdlInspector:
                 "--save-file",
                 str(save_file),
             ]
-            if proxy is not None:
-                argv += ["--proxy", proxy]
-            result = self.runner(argv, timeout=_INSPECT_TIMEOUT_SECONDS)
+            result = self.runner(argv, timeout=_INSPECT_TIMEOUT_SECONDS, env=_child_env(proxy))
             if result.returncode != 0 or not save_file.is_file():
                 # The captured stderr can carry the URL and the proxy; it is
                 # logged under the provider, never returned to the browser.
@@ -328,11 +389,13 @@ class SpotdlAcquisitionProvider:
             "--format",
             "mp3",
         ]
-        if proxy is not None:
-            argv += ["--proxy", proxy]
-
         try:
-            result = self.runner(argv, timeout=_DOWNLOAD_TIMEOUT_SECONDS, cancelled=cancelled)
+            result = self.runner(
+                argv,
+                timeout=_DOWNLOAD_TIMEOUT_SECONDS,
+                cancelled=cancelled,
+                env=_child_env(proxy),
+            )
         except AcquisitionCancelledError:
             _clear(workspace_path)
             raise

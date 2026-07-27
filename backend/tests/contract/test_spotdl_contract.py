@@ -12,6 +12,7 @@ track must normalize cleanly with its ISRC and numbering intact.
 
 from __future__ import annotations
 
+import os
 import shutil
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -54,7 +55,11 @@ def _recorded_inspect_factory(root: Path) -> SpotdlInspector:
     payload = (root / "providers" / "spotdl_metadata.json").read_text(encoding="utf-8")
 
     def runner(
-        argv: Sequence[str], *, timeout: float, cancelled: object = None
+        argv: Sequence[str],
+        *,
+        timeout: float,
+        cancelled: object = None,
+        env: dict[str, str] | None = None,
     ) -> SubprocessResult:
         save_file = Path(argv[argv.index("--save-file") + 1])
         save_file.write_text(payload, encoding="utf-8")
@@ -183,15 +188,25 @@ def _track_candidate() -> TrackCandidate:
 
 
 def _download_runner(
-    *, returncode: int = 0, produce_mp3: bool = True, captured: list[list[str]] | None = None
+    *,
+    returncode: int = 0,
+    produce_mp3: bool = True,
+    captured: list[list[str]] | None = None,
+    captured_env: list[dict[str, str] | None] | None = None,
 ) -> Callable[..., SubprocessResult]:
     """A SpotDL download runner double that leaves one MP3 in the output dir."""
 
     def runner(
-        argv: Sequence[str], *, timeout: float, cancelled: object = None
+        argv: Sequence[str],
+        *,
+        timeout: float,
+        cancelled: object = None,
+        env: dict[str, str] | None = None,
     ) -> SubprocessResult:
         if captured is not None:
             captured.append(list(argv))
+        if captured_env is not None:
+            captured_env.append(env)
         if produce_mp3 and returncode == 0:
             out_template = argv[argv.index("--output") + 1]
             out_dir = Path(out_template).parent
@@ -235,6 +250,33 @@ class TestSpotdlAcquisitionContract:
             adapter.acquire(_track_candidate(), str(tmp_path), None, lambda _p: None, lambda: False)
 
 
+def _save_runner(
+    *,
+    captured: list[list[str]] | None = None,
+    captured_env: list[dict[str, str] | None] | None = None,
+) -> Callable[..., SubprocessResult]:
+    """A SpotDL `save` runner double that writes the recorded metadata document."""
+
+    def runner(
+        argv: Sequence[str],
+        *,
+        timeout: float,
+        cancelled: object = None,
+        env: dict[str, str] | None = None,
+    ) -> SubprocessResult:
+        if captured is not None:
+            captured.append(list(argv))
+        if captured_env is not None:
+            captured_env.append(env)
+        Path(argv[argv.index("--save-file") + 1]).write_text(
+            (FIXTURES / "providers" / "spotdl_metadata.json").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        return SubprocessResult(returncode=0, stdout="", stderr="")
+
+    return runner
+
+
 @pytest.mark.contract
 class TestSpotdlCliContract:
     """The exact SpotDL argument vector, pinned in one place as the plan requires."""
@@ -258,24 +300,148 @@ class TestSpotdlCliContract:
         assert argv[:3] == ["/opt/spotdl/bin/spotdl", "download", TRACK_URL]
         assert "--format" in argv and argv[argv.index("--format") + 1] == "mp3"
         assert argv[argv.index("--output") + 1].startswith(str(tmp_path))
-        # The saved proxy is passed to the child, never the parent environment.
-        assert argv[argv.index("--proxy") + 1] == "socks5://p.invalid:1080"
 
     def test_the_save_invocation_names_the_url_and_a_save_file(self, tmp_path: Path) -> None:
         captured: list[list[str]] = []
-
-        def runner(
-            argv: Sequence[str], *, timeout: float, cancelled: object = None
-        ) -> SubprocessResult:
-            captured.append(list(argv))
-            Path(argv[argv.index("--save-file") + 1]).write_text(
-                (FIXTURES / "providers" / "spotdl_metadata.json").read_text(encoding="utf-8"),
-                encoding="utf-8",
-            )
-            return SubprocessResult(returncode=0, stdout="", stderr="")
-
-        SpotdlInspector(executable="/opt/spotdl/bin/spotdl", runner=runner).inspect(TRACK_URL, None)
+        SpotdlInspector(
+            executable="/opt/spotdl/bin/spotdl", runner=_save_runner(captured=captured)
+        ).inspect(TRACK_URL, None)
 
         argv = captured[0]
         assert argv[:3] == ["/opt/spotdl/bin/spotdl", "save", TRACK_URL]
         assert "--save-file" in argv
+
+
+@pytest.mark.contract
+class TestSpotdlProxyEnvironmentContract:
+    """The proxy must reach SpotDL's child process environment, never argv.
+
+    A proxy on argv is visible in `ps` output to any user on the host — a
+    credential leak if the saved proxy carries one — and it does not cover the
+    `requests`/urllib3 traffic SpotDL uses internally, which is what actually
+    needs to go through the proxy. ARCHITECTURE's SpotDL contract calls for
+    "the saved proxy exported only to the child"; these cases pin that down.
+    """
+
+    PROXY = "socks5://user:hunter2@p.invalid:1080"
+
+    def test_the_proxy_never_appears_on_the_save_argv(self, tmp_path: Path) -> None:
+        captured: list[list[str]] = []
+        SpotdlInspector(
+            executable="/opt/spotdl/bin/spotdl", runner=_save_runner(captured=captured)
+        ).inspect(TRACK_URL, self.PROXY)
+
+        argv = captured[0]
+        assert "--proxy" not in argv
+        assert not any(self.PROXY in arg or "hunter2" in arg for arg in argv)
+
+    def test_the_proxy_never_appears_on_the_download_argv(self, tmp_path: Path) -> None:
+        captured: list[list[str]] = []
+        adapter = SpotdlAcquisitionProvider(
+            executable="/opt/spotdl/bin/spotdl", runner=_download_runner(captured=captured)
+        )
+        adapter.acquire(
+            _track_candidate(), str(tmp_path), self.PROXY, lambda _p: None, lambda: False
+        )
+
+        argv = captured[0]
+        assert "--proxy" not in argv
+        assert not any(self.PROXY in arg or "hunter2" in arg for arg in argv)
+
+    def test_the_proxy_reaches_the_save_child_environment(self, tmp_path: Path) -> None:
+        captured_env: list[dict[str, str] | None] = []
+        SpotdlInspector(
+            executable="/opt/spotdl/bin/spotdl", runner=_save_runner(captured_env=captured_env)
+        ).inspect(TRACK_URL, self.PROXY)
+
+        env = captured_env[0]
+        assert env is not None
+        # socks5:// is converted to socks5h:// so DNS resolves through the
+        # proxy rather than locally — see `_proxy_for_child_env`.
+        expected = "socks5h://user:hunter2@p.invalid:1080"
+        assert env["HTTP_PROXY"] == expected
+        assert env["HTTPS_PROXY"] == expected
+        assert env["http_proxy"] == expected
+        assert env["https_proxy"] == expected
+
+    def test_the_proxy_reaches_the_download_child_environment(self, tmp_path: Path) -> None:
+        captured_env: list[dict[str, str] | None] = []
+        adapter = SpotdlAcquisitionProvider(
+            executable="/opt/spotdl/bin/spotdl",
+            runner=_download_runner(captured_env=captured_env),
+        )
+        adapter.acquire(
+            _track_candidate(), str(tmp_path), self.PROXY, lambda _p: None, lambda: False
+        )
+
+        env = captured_env[0]
+        assert env is not None
+        expected = "socks5h://user:hunter2@p.invalid:1080"
+        assert env["HTTP_PROXY"] == expected
+        assert env["HTTPS_PROXY"] == expected
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("socks5://p.invalid:1080", "socks5h://p.invalid:1080"),
+            ("socks5h://p.invalid:1080", "socks5h://p.invalid:1080"),
+            ("http://p.invalid:8080", "http://p.invalid:8080"),
+            ("https://p.invalid:8443", "https://p.invalid:8443"),
+        ],
+    )
+    def test_the_scheme_conversion_is_exactly_socks5_to_socks5h(
+        self, tmp_path: Path, raw: str, expected: str
+    ) -> None:
+        captured_env: list[dict[str, str] | None] = []
+        SpotdlInspector(
+            executable="/opt/spotdl/bin/spotdl", runner=_save_runner(captured_env=captured_env)
+        ).inspect(TRACK_URL, raw)
+
+        env = captured_env[0]
+        assert env is not None
+        assert env["HTTP_PROXY"] == expected
+        assert env["HTTPS_PROXY"] == expected
+
+    def test_no_proxy_configured_means_no_proxy_argv_flag_and_no_env(self, tmp_path: Path) -> None:
+        captured: list[list[str]] = []
+        captured_env: list[dict[str, str] | None] = []
+        SpotdlInspector(
+            executable="/opt/spotdl/bin/spotdl",
+            runner=_save_runner(captured=captured, captured_env=captured_env),
+        ).inspect(TRACK_URL, None)
+
+        assert "--proxy" not in captured[0]
+        # None tells the runner to inherit this process's environment
+        # unchanged (`subprocess.Popen(env=None)`); no proxy env is injected.
+        assert captured_env[0] is None
+
+    def test_the_child_still_inherits_variables_it_needs(self, tmp_path: Path) -> None:
+        captured_env: list[dict[str, str] | None] = []
+        SpotdlInspector(
+            executable="/opt/spotdl/bin/spotdl", runner=_save_runner(captured_env=captured_env)
+        ).inspect(TRACK_URL, self.PROXY)
+
+        env = captured_env[0]
+        assert env is not None
+        assert env["PATH"] == os.environ["PATH"]
+
+    def test_a_credentialed_proxy_never_appears_in_a_raised_error_message(
+        self, tmp_path: Path
+    ) -> None:
+        def failing_runner(
+            argv: Sequence[str],
+            *,
+            timeout: float,
+            cancelled: object = None,
+            env: dict[str, str] | None = None,
+        ) -> SubprocessResult:
+            return SubprocessResult(returncode=1, stdout="", stderr="boom")
+
+        with pytest.raises(ProviderResponseError) as excinfo:
+            SpotdlInspector(executable="/opt/spotdl/bin/spotdl", runner=failing_runner).inspect(
+                TRACK_URL, self.PROXY
+            )
+
+        assert self.PROXY not in str(excinfo.value)
+        assert "hunter2" not in str(excinfo.value)
+        assert "hunter2" not in repr(excinfo.value.context)
