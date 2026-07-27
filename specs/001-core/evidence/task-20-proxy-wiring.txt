@@ -1,0 +1,38 @@
+Task 20 walkthrough defect — proxy never applied to provider calls
+Date: 2026-07-27T08:33:47Z
+Branch 001-core, fix on top of 37de1ad
+
+ROOT CAUSE
+  composition.py built SearchService/LinkInspectionService/DownloadService
+  without proxy_url; all three defaulted to None, so every provider call ran
+  with proxy=None. grep -rn 'proxy_url=' backend/src backend/tests -> 0 hits.
+  Only POST /settings/proxy/test used a real proxy, so the test button passed
+  while all real traffic bypassed the proxy.
+
+FIX: proxy supplied as a callable (SettingsService.current_proxy_url) so a
+  proxy saved in Settings applies on the next call with no restart.
+
+=== backend/tests/integration/test_proxy_wiring.py + test_proxy_fail_closed.py ===
+.............                                                            [100%]
+13 passed in 7.31s
+
+=== ./scripts/verify.sh (full) ===
+verify: all checks passed
+
+=== LIVE, release stack, proxy socks5://host.docker.internal:10808 ===
+
+BEFORE (recorded during walkthrough, api container log):
+  ERROR: [youtube] n2KOUVdaRxw: Unable to download API page: [Errno -3] Temporary failure in name resolution
+  -> {"error":{"code":...,"message":"YouTube could not be inspected."}}
+
+AFTER — POST /api/v1/links/inspect youtube.com/watch?v=n2KOUVdaRxw :
+{"source_type":"youtube_video","provider":"yt_dlp","review_required":true,"candidate":{"provider":"youtube","source_id":"n2KOUVdaRxw","source_url":"https://www.youtube.com/watch?v=n2KOUVdaRxw","title":"Kako Band – Grass (Official Audio)","artist":"KAKO BAND","album":null,"release_year":2026,"disc_number":null,"track_number":null,"duration_ms":235000,"isrc":null,"artwork_url":"https://i.ytimg.com/vi/n2KOUVdaRxw/maxresdefault.jpg","acquisition_locator":"https://www.youtube.com/watch?v=n2KOUVdaRxw","raw_fingerprint":"3e9031eebced2c14987490e787e15a0137ce5de9bb8a03b7281142532867b0f7"},"is_playable":false,"existing_track_id":null}
+
+AFTER — GET /api/v1/search/deezer?q=daft+punk (httpx path):
+{"items":[{"candidate":{"provider":"deezer","source_id":"136889400","source_url":"https://www.deezer.com/track/136889400","title":"Starboy","artist":"The Weeknd","album":"Starboy","release_year":null,"disc_number":null,"track_number":null,"duration_ms":230000,"isrc":"USUG11600976","artwork_url":"htt
+
+STILL BROKEN, tracked separately: SpotDL/Spotify. spotdl.py passes --proxy on
+argv, which does not cover its internal requests calls, and ARCHITECTURE line
+549 specifies the proxy is exported to the child instead. Proven live:
+  spotdl --proxy socks5://...      -> NameResolutionError music.youtube.com
+  HTTPS_PROXY=socks5h://... spotdl -> resolves, returns the track URL

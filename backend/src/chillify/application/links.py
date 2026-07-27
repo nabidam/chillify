@@ -14,7 +14,7 @@ host matches — and the local-duplicate resolution the browser cannot do.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -71,7 +71,10 @@ class LinkInspectionService:
 
     session_factory: sessionmaker[Session]
     inspectors: tuple[RegisteredInspector, ...]
-    proxy_url: str | None = None
+    # Read at call time, never snapshotted: an operator who changes the saved
+    # proxy must see it take effect on the very next inspection without a
+    # restart.
+    proxy_provider: Callable[[], str | None] = lambda: None
 
     @contextmanager
     def _transaction(self) -> Iterator[Session]:
@@ -110,7 +113,7 @@ class LinkInspectionService:
             # May raise UnsupportedEntityError for a bulk entity of a recognized
             # host — a playlist, album, or channel — which is the "no durable
             # job" guarantee expressed as a rejection before any download.
-            candidate = registered.inspector.inspect(url, self.proxy_url)
+            candidate = registered.inspector.inspect(url, self.proxy_provider())
             source_type, review_required = _PROVIDER_POLICY[registered.provider]
             existing = self._existing_track_id(candidate)
             logger.info(

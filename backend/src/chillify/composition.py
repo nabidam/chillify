@@ -163,8 +163,18 @@ class Composition:
         )
 
     def search_service(self) -> SearchService:
-        """Bind explicit online discovery to the adapters this environment allows."""
-        return SearchService(session_factory=self.session_factory, registry=self.registry)
+        """Bind explicit online discovery to the adapters this environment allows.
+
+        The proxy is supplied as a callable bound to a fresh `SettingsService`,
+        not a snapshotted value: `current_proxy_url` re-reads the database on
+        every call, so a proxy change an operator saves in Settings takes effect
+        on the very next search without restarting anything.
+        """
+        return SearchService(
+            session_factory=self.session_factory,
+            registry=self.registry,
+            proxy_provider=self.settings_service().current_proxy_url,
+        )
 
     def settings_service(self) -> SettingsService:
         """Bind the proxy and provider settings use cases.
@@ -184,7 +194,13 @@ class Composition:
             RegisteredInspector(provider=provider, inspector=inspector)
             for provider, inspector in self.registry.link_inspectors.items()
         )
-        return LinkInspectionService(session_factory=self.session_factory, inspectors=inspectors)
+        # Same runtime-freshness rationale as `search_service`: the callable
+        # re-reads the saved proxy from the database on every inspection.
+        return LinkInspectionService(
+            session_factory=self.session_factory,
+            inspectors=inspectors,
+            proxy_provider=self.settings_service().current_proxy_url,
+        )
 
     def download_service(self, *, worker_identity: str = "api") -> DownloadService:
         """Bind the acquisition use cases.
@@ -193,6 +209,10 @@ class Composition:
         database; only the lease owner differs, so a job's history records
         which process performed it.
         """
+        # Same runtime-freshness rationale as `search_service`: the callable
+        # re-reads the saved proxy from the database on every use, which matters
+        # most here — the worker builds one `DownloadService` per job and a job
+        # can run for minutes, so a mid-run proxy change must still apply.
         return DownloadService(
             session_factory=self.session_factory,
             registry=self.registry,
@@ -200,6 +220,7 @@ class Composition:
             dispatch=make_dispatcher(self.celery_app(), self.settings),
             queue_reachable=self.is_queue_reachable,
             worker_identity=worker_identity,
+            proxy_provider=self.settings_service().current_proxy_url,
         )
 
     def reconciliation_service(self) -> ReconciliationService:

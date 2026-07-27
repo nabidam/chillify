@@ -9,7 +9,7 @@ provider, and only the explicit Deezer action does.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 
@@ -52,7 +52,9 @@ class SearchService:
 
     session_factory: sessionmaker[Session]
     registry: ProviderRegistry
-    proxy_url: str | None = None
+    # Read at call time, never snapshotted: an operator who changes the saved
+    # proxy must see it take effect on the very next search without a restart.
+    proxy_provider: Callable[[], str | None] = lambda: None
 
     @contextmanager
     def _transaction(self) -> Iterator[Session]:
@@ -77,7 +79,7 @@ class SearchService:
         """
         bounded = max(1, min(limit, DISCOVERY_LIMIT_MAX))
         provider = self.registry.require_discovery(DEEZER_PROVIDER)
-        candidates = provider.search(query, bounded, self.proxy_url)
+        candidates = provider.search(query, bounded, self.proxy_provider())
         logger.info(
             "deezer search completed",
             extra={"result_count": len(candidates), "requested_limit": bounded},

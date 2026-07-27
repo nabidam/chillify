@@ -87,7 +87,11 @@ class DownloadService:
     dispatch: Dispatcher
     queue_reachable: QueueProbe
     worker_identity: str = "api"
-    proxy_url: str | None = None
+    # Read at call time, never snapshotted: the worker builds one DownloadService
+    # per job, but a job's `_acquire_and_publish` can run for minutes, and an
+    # operator who changes the saved proxy mid-run must not have the job keep
+    # using a stale value captured at construction.
+    proxy_provider: Callable[[], str | None] = lambda: None
     # The in-process channel a same-process cancel uses to stop a live run
     # before its next database poll. Defaults to the worker's shared registry.
     active: ActiveAcquisitions = active_acquisitions
@@ -310,7 +314,7 @@ class DownloadService:
             artifact = adapter.acquire(
                 candidate,
                 str(workspace),
-                self.proxy_url,
+                self.proxy_provider(),
                 report,
                 lambda: signal.requested or self._is_cancel_requested(job.id),
             )
