@@ -1153,3 +1153,29 @@ Preflight: run `./scripts/gate/prepare.sh release kernel-500`, then `./scripts/p
   - SpotDL inspection takes 122–140s through a real proxy; `8dcda66` raised the
     inspect timeout to 180s and nginx `proxy_read_timeout` to 200s to make it
     work. The latency itself is unexplained and deserves its own investigation.
+
+### GATE BLOCKED — walkthrough result, 2026-07-27
+
+The operator walked the journey. Everything was observed and correct **except
+step 1's Spotify path**: Add Music failed repeatedly with "That link could not be
+inspected." YouTube and Deezer worked.
+
+Root cause established live, not inferred: `spotdl save` takes **145–183s**
+through the operator's proxy — per-request latency, not any single spotdl feature
+(disabling its lyrics providers did not reliably help) — which straddles the 180s
+inspect timeout `8dcda66` had raised. The measured breakdown and the failing/passing
+runs are in `specs/001-core/evidence/task-20-proxy-wiring.txt` and
+`task-20-spotdl-proxy.txt`.
+
+Per the spawn route this is not wedged into this queue: it needs a fast inspection
+path, an operator-configurable mode and timeouts, honest inspection feedback, and
+the Last.fm enrichment call site that ARCHITECTURE specifies but which was never
+wired up. That is a new contract and a second subsystem, so it is a scoped child
+cycle: **`specs/002-spotify-inspection/`** (Phases 1–4 complete, TASKS.md stamped
+`ready`, tasks 21–30, gates 5 and 6).
+
+**This gate stays BLOCKED and is not Done.** Its preflight re-runs only after cycle
+002 completes. Both deferred items above are carried into that cycle's Task 29 —
+the canary fix because 002's own release gate cannot depend on a check that
+returned a false PASS, and the stopgap revert so the 180s/200s values do not
+quietly become permanent.
