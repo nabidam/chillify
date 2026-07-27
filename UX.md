@@ -128,12 +128,13 @@ Browser back/forward restores the previous content view without remounting the p
 **Eye first:** title and artist, followed by cover.
 
 - **Loading:** keep the modal open while metadata/artwork inspection completes.
-- **Partial metadata:** the fast Spotify path returns no album, disc, or track
-  number. Those fields arrive empty and are marked as not-yet-known rather than
-  silently blank, so the person can tell "nothing found" from "nothing there".
-  An untouched not-yet-known field stays eligible for Last.fm gap enrichment;
-  a field the person edits — including deliberately clearing it — is their
-  answer and is never overwritten.
+- **Partial metadata:** a source may not know every field — a YouTube video rarely
+  carries an album, and a SpotDL fallback can return less than the Spotify API
+  would. Fields the source never populated arrive marked as not-yet-known rather
+  than silently blank, so the person can tell "nothing found" from "nothing there".
+  An untouched not-yet-known field stays eligible for Last.fm gap enrichment; a
+  field the person edits — including deliberately clearing it — is their answer
+  and is never overwritten.
 - **Validation:** mark exact invalid fields; preserve all edits. Title and artist cannot be blank.
 - **Artwork error:** metadata can still be submitted without artwork after a clear warning.
 - **Duplicate:** block queueing and link to the existing S13 record.
@@ -214,13 +215,18 @@ Browser back/forward restores the previous content view without remounting the p
 **Primary action:** save and test the proxy, then resolve provider health.  
 **Eye first:** proxy state and last test result.
 
+- **Spotify credentials:** client id and secret, following the existing credential
+  conventions exactly — the secret is write-only, a blank value on save means
+  unchanged, and an explicit clear removes it. Unconfigured is a normal state, not
+  an error: the block says plainly that without credentials Spotify links are
+  inspected by SpotDL instead, which is slower, and links to where to obtain them.
 - **Link inspection:** a mode choice between **Fast** (default) and **Thorough**,
-  each stating its trade in one line — Fast returns in about a second but without
-  album, disc, or track number; Thorough asks SpotDL and returns everything, but
-  can take minutes on a slow connection. Below it, one timeout per inspection
-  path, each showing its unit and default. Fast mode always falls back to
-  Thorough on failure, and the mode copy says so, so the choice reads as "what to
-  try first", not "what is allowed".
+  each stating its trade in one line — Fast asks Spotify directly and returns in
+  about a second; Thorough asks SpotDL, which is thorough but can take minutes on
+  a slow connection. Below it, one timeout per inspection path, each showing its
+  unit, default, and permitted range. Fast always falls back to SpotDL on failure
+  or missing credentials, and the mode copy says so, so the choice reads as "what
+  to try first", not "what is allowed".
 - **Loading:** settings fields remain stable while health checks resolve independently.
 - **Validation:** reject malformed proxy URLs before save; credentials are never echoed after persistence. Timeouts are bounded, and a value outside its range is rejected at the field with the permitted range stated.
 - **Proxy failure:** identify connection, authentication, timeout, or unsupported-scheme failure; never suggest direct fallback.
@@ -315,14 +321,14 @@ Browser back/forward restores the previous content view without remounting the p
 
 ### F5 — Cycle 002 kernel: inspect a Spotify link quickly, legibly, and cancellably
 
-1. **S4:** User pastes a Spotify track link and submits; system shows the phase "Reading Spotify details" with elapsed seconds and an active Cancel.
-2. **S4:** System returns a candidate in about a second and continues to review.
-3. **S5:** User sees title, artist, year, duration, and cover filled, with album, disc, and track number marked not-yet-known rather than blank; user queues the download.
-4. **S4:** On a later link whose fast lookup fails, user sees the phase change to "Matching with SpotDL" naming the fallback; the elapsed timer continues rather than resetting, and the inspection still succeeds.
-5. **S4:** User starts another inspection and presses Cancel mid-phase; system stops, leaves no provider subprocess running, and restores the editable URL with the input preserved.
-6. **S12:** User switches link inspection to Thorough; system saves it and states the trade.
-7. **S4:** User inspects a Spotify link again; system uses SpotDL first and returns album, disc, and track number.
-8. **S12:** User restarts the app and reopens Settings; system shows the saved mode and timeouts unchanged.
+1. **S12:** User pastes Spotify client credentials and saves; system stores them encrypted and reports only that they are configured, never echoing the secret.
+2. **S4:** User pastes a Spotify track link and submits; system shows the phase "Reading Spotify details" with elapsed seconds and an active Cancel.
+3. **S4:** System returns a candidate in about a second, complete with album, disc, and track number.
+4. **S5:** User reviews and queues the download; system acquires it and it plays.
+5. **S12/S4:** User clears the credentials and pastes another link; system names the SpotDL fallback in the phase text and the elapsed timer continues rather than resetting.
+6. **S4:** User starts another inspection and presses Cancel mid-phase; system stops, leaves no provider subprocess running, and restores the editable URL with the input preserved.
+7. **S5:** User adds a track whose album is unknown, leaves the album untouched, and downloads it; system fills the album by Last.fm enrichment and the job's enriching phase reports real work.
+8. **S12:** User restarts the app and reopens Settings; system shows the saved credentials state, mode, and timeouts unchanged.
 
 ## Cross-screen interaction rules
 

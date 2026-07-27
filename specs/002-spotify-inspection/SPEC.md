@@ -1,5 +1,5 @@
 ---
-status: draft
+status: gate-passed
 profile: full
 profile-reason: spans two subsystems — Spotify link inspection and the Last.fm gap-enrichment path, which ARCHITECTURE specifies but which was never wired up and is folded into this cycle
 parent: specs/001-core

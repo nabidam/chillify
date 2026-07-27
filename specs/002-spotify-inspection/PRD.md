@@ -1,5 +1,5 @@
 ---
-status: draft
+status: gate-passed
 ---
 
 # PRD — 002 Fast, legible Spotify link inspection
