@@ -1,8 +1,18 @@
 ---
-status: ready
+status: cancelled
+cancelled: 2026-07-29
 ---
 
 # TASKS — 002 Fast, legible Spotify link inspection
+
+> **Cancelled 2026-07-29.** Do not start or resume tasks in this cycle. The
+> Spotify API dependency is not acceptable because Spotify requires Premium for
+> the development-mode app owner. See [CANCELLATION.md](CANCELLATION.md).
+
+Tasks 21–25 are retained as completed historical work. Task 26 was not
+completed. Tasks 27–30 are deferred and must be re-scoped under a future spec;
+the Last.fm work may be reusable, but it must not inherit this cycle's Spotify
+dependency or task numbering.
 
 Delta cycle off `specs/001-core`. **No Task 0**: the repo, verify script, CI,
 linters, migrations harness and test harnesses all exist from cycle 001 and are

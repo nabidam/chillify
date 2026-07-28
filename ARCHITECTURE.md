@@ -827,7 +827,16 @@ The release script seeds 500 tracks and maps every PRD budget to a named check:
 - **M3 existing library:** reserve the `track_sources` provider vocabulary for an `import` source and keep media mutation/reconciliation behind protocols so unmanaged-file policies can be added without weakening current ownership rules.
 - **M4 playback/clients:** keep playback queue state behind a frontend store boundary and media endpoints stateless so persisted queues, mobile layouts, shuffle/repeat, and advanced playback can evolve without coupling them to acquisition.
 
-## 17. Cycle 002 — Spotify inspection paths and gap enrichment
+## 17. Historical cycle 002 — Spotify inspection paths and gap enrichment (cancelled)
+
+**Status:** Cancelled 2026-07-29. This section records the implemented
+experiment and its contracts for historical reference; it is not an active
+release dependency or a requirement for subsequent cycles. A live Client
+Credentials probe received a token but Spotify rejected the track request with
+`403 Active premium subscription required for the owner of the app`. Chillify
+will not require Spotify Premium. The existing implementation remains isolated
+for possible reuse, while any replacement must be designed and approved in a
+new spec. See `specs/002-spotify-inspection/CANCELLATION.md`.
 
 Patch, not a rewrite. Sections 1–16 stand except where named here. Revised after
 the 2026-07-27 independent review; the superseded embed-scraping design is
@@ -880,7 +889,13 @@ The inspection row supplies that predicate: the adapter polls
 job row. Same shape, different table, explicitly wired rather than inherited.
 Inspection runs in a thread executor so the poll and the event loop both stay live.
 
-### 17.3 Wire contract — Spotify Web API (documented, versioned)
+### 17.3 Wire contract — Spotify Web API (documented, versioned; currently unsupported)
+
+The wire contract below is retained for the cancelled experiment only. Spotify
+development-mode apps currently require Premium for the app owner, so valid
+credentials do not make this a usable Chillify dependency. `Users and Access`
+is relevant to Spotify user-authorized OAuth flows; this experiment uses Client
+Credentials and does not rely on it.
 
 Auth: Client Credentials, `POST https://accounts.spotify.com/api/token`
 (`grant_type=client_credentials`, HTTP Basic of client id/secret). Token cached in
@@ -1038,10 +1053,20 @@ the existing ones, unchanged. Timeout bounds (spotify 1–30, spotdl 30–600, y
 
 ### 17.11 Forward constraint
 
-Keep the inspection policy and phase vocabulary provider-agnostic so M2's bulk
-import can report per-item phases through the same stream without a second idiom.
+If Spotify inspection is revisited, start a new feasibility/specification cycle
+and keep the inspection policy and phase vocabulary provider-agnostic so a
+replacement provider can report per-item phases through the same stream without
+a second idiom. Do not make later work depend on this cancelled API path.
 
 ## Decision log
+
+### 2026-07-29 — Cycle 002 cancelled: Spotify API is not an acceptable dependency
+
+The live Spotify Client Credentials flow returned a token but the catalog
+request returned `403 Active premium subscription required for the owner of the
+app`. The project will not pay for Premium, so cycle 002 is archived rather
+than released. Its implementation and evidence remain available for a future
+provider-feasibility review; cycle 003 is the next active roadmap item.
 
 ### 2026-07-20 — Independent review arbitration
 
@@ -1059,7 +1084,7 @@ Approved: browser-owned deletion impact; reusable artwork staging with one atomi
 
 ### 2026-07-21 — TypeScript pinned to the 5 line
 
-The pinned `typescript@7.0.2` made the pinned typed-API-client plan unbuildable: `openapi-typescript@7.13.0` — the latest release — generates `src/api/generated.ts` through the TypeScript 5 compiler API (`ts.factory`), which the native TypeScript 7 port does not expose, and npm refuses to nest a peer dependency to give the generator its own copy. Downgrading the generator was not possible (no release supports 7), and hand-writing the client was rejected as reimplementing what the dependency plan assigns to a package. The root pin therefore moves to `typescript@5.9.3`. Every other pinned dev tool — shadcn, msw, vitest — already peers against a 4.x/5.x range, so nothing else changes. Application code and `./scripts/verify.sh` typecheck unchanged.
+The pinned `typescript@7.0.2` made the pinned typed-API-client plan unbuildable: `openapi-typescript@7.13.0` — the latest release — generates `frontend/src/api/generated.ts` through the TypeScript 5 compiler API (`ts.factory`), which the native TypeScript 7 port does not expose, and npm refuses to nest a peer dependency to give the generator its own copy. Downgrading the generator was not possible (no release supports 7), and hand-writing the client was rejected as reimplementing what the dependency plan assigns to a package. The root pin therefore moves to `typescript@5.9.3`. Every other pinned dev tool — shadcn, msw, vitest — already peers against a 4.x/5.x range, so nothing else changes. Application code and `./scripts/verify.sh` typecheck unchanged.
 
 ### 2026-07-21 — Transitive js-yaml override
 

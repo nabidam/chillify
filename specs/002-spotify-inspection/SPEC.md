@@ -1,11 +1,22 @@
 ---
-status: gate-passed
+status: cancelled
+cancelled: 2026-07-29
+cancel-reason: Spotify Web API development mode requires Premium for the app owner, which is not an acceptable project dependency.
 profile: full
 profile-reason: spans two subsystems — Spotify link inspection and the Last.fm gap-enrichment path, which ARCHITECTURE specifies but which was never wired up and is folded into this cycle
 parent: specs/001-core
 ---
 
 # 002 — Fast, legible Spotify link inspection
+
+> **Cancelled 2026-07-29.** This cycle is archived and is not an active product
+> commitment. The official Spotify API path was rejected after a live request
+> returned `403 Active premium subscription required for the owner of the app`.
+> See [CANCELLATION.md](CANCELLATION.md). The implementation and evidence are
+> retained so a later cycle can evaluate other options without losing history.
+
+The scope below is the historical proposal that led to the cancellation; it is
+not a requirement for the next cycle.
 
 ## Core promise
 

@@ -1,8 +1,14 @@
 ---
-status: gate-passed
+status: cancelled
+cancelled: 2026-07-29
 ---
 
 # PLAN — 002 Fast, legible Spotify link inspection
+
+> **Cancelled 2026-07-29.** This plan is retained for history only. The
+> Spotify Web API requires a Premium subscription for the development-mode app
+> owner, which the project will not purchase. No remaining plan chunk should
+> be started; see [CANCELLATION.md](CANCELLATION.md).
 
 Delta cycle off `specs/001-core`. Root `CONVENTIONS.md`, `DESIGN.md` and
 `ARCHITECTURE.md` are living documents patched by this cycle, never regenerated.

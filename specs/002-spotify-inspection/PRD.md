@@ -1,8 +1,15 @@
 ---
-status: gate-passed
+status: cancelled
+cancelled: 2026-07-29
 ---
 
 # PRD — 002 Fast, legible Spotify link inspection
+
+> **Cancelled 2026-07-29.** The requirements below are preserved as historical
+> product reasoning, not active acceptance criteria. A live Spotify API probe
+> was rejected with `403 Active premium subscription required for the owner of
+> the app`; paying for Premium is explicitly out of scope. See
+> [CANCELLATION.md](CANCELLATION.md) before reusing any part of this PRD.
 
 Delta against the 001-core PRD. Requirements here add to, and where stated
 override, the existing document; nothing else in it changes.

@@ -2,6 +2,13 @@
 
 This living document defines the interactive desktop experience for milestone 001. It adapts Spotify Web Player patterns of navigation, disclosure, and information density to Chillify’s downloader-first local library; it does not copy Spotify layouts or assets.
 
+> **Cycle 002 status:** The fast Spotify API inspection experiment is cancelled
+> as of 2026-07-29 because Spotify requires Premium for the development-mode
+> app owner. The current supported Spotify-link path remains SpotDL. The S4/S12
+> inspection feedback and settings language below are retained for the shipped
+> implementation and historical traceability, but are not an active release
+> commitment until a replacement is approved in a new spec.
+
 ## Persistent application shell
 
 Screens S2–S12 share four stable regions:
@@ -319,7 +326,7 @@ Browser back/forward restores the previous content view without remounting the p
 4. **S11:** When Redis returns, system requeues unfinished database jobs; interrupted work visibly restarts from the beginning.
 5. **S11:** User retries a failed job or cancels it; system updates global status and advances the serial queue.
 
-### F5 — Cycle 002 kernel: inspect a Spotify link quickly, legibly, and cancellably
+### F5 — Historical, cancelled cycle 002: inspect a Spotify link quickly, legibly, and cancellably
 
 1. **S12:** User pastes Spotify client credentials and saves; system stores them encrypted and reports only that they are configured, never echoing the secret.
 2. **S4:** User pastes a Spotify track link and submits; system shows the phase "Reading Spotify details" with elapsed seconds and an active Cancel.
