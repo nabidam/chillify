@@ -1,0 +1,42 @@
+# Task 24 evidence — S4 Add Music inspection feedback
+
+Captured 2026-07-29 against implementation commit `d9106c5`.
+
+## Focused exercised behavior
+
+```text
+$ cd frontend && npm test -- --run tests/component/inspection-feedback.test.tsx
+
+ RUN  v4.1.10 /home/dev/projects/chillify/frontend
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  00:33:45
+   Duration  2.39s (transform 189ms, setup 214ms, import 428ms, tests 1.08s, environment 553ms)
+
+$ npm run typecheck
+
+> typecheck
+> tsc -b --noEmit
+
+$ npm run lint
+
+> lint
+> biome check .
+
+Checked 120 files in 56ms. No fixes applied.
+```
+
+The component journey drives the accepted 202 response and SSE events for
+`reading_spotify`, the SpotDL fallback, elapsed continuity, cancellation with
+preserved input, `expired`, and `done` result handoff. It also asserts that no
+percentage progress is shown.
+
+## Canonical verification note
+
+`./scripts/verify.sh --fast` reached and passed frontend lint, typecheck, all
+12 frontend test files (101 tests), raw-color, primitive-boundary,
+domain-boundary, and secret scans. Its only failure was the pre-existing
+backend integration test `TestValidLinks.test_a_spotify_track_inspects_without_review`:
+the inspection worker hit SQLite `unable to open database file` in the temporary
+`.gate/suite` path. No backend files are part of Task 24.

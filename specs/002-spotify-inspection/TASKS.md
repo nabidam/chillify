@@ -241,6 +241,8 @@ layer = "e2e"
 gate = 5
 ```
 
+- **Done:** `d9106c5` — evidence `specs/002-spotify-inspection/evidence/task-24.txt`
+
 **Context pack (hint):** UX.md **S4** and flow **F5**; DESIGN.md; ARCHITECTURE
 §17.1, §17.8; `AddLinkDialog.tsx`, the existing job-phase presentation components,
 `api/generated.ts` (regenerate, never hand-edit).
