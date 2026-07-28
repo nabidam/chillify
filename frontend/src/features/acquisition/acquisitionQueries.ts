@@ -12,26 +12,16 @@ import type { components } from "@/api/generated";
 import { DOWNLOADS_QUERY_PREFIX } from "@/api/queryKeys";
 
 export type TrackCandidate = components["schemas"]["TrackCandidateModel"];
-export type LinkInspection = components["schemas"]["LinkInspectionModel"];
+export type LinkInspection = {
+  source_type: DownloadSourceType;
+  provider: "deezer" | "spotdl" | "yt_dlp";
+  review_required: boolean;
+  candidate: TrackCandidate;
+  is_playable: false;
+  existing_track_id?: string | null;
+};
 export type DownloadSourceType = components["schemas"]["DownloadRequestModel"]["source_type"];
 export type DownloadJob = components["schemas"]["JobModel"];
-
-/**
- * Inspect one submitted link.
- *
- * A read, never a write: it recognizes and describes the link but queues
- * nothing. An unsupported, malformed, or bulk link fails here, which is why the
- * dialog can report exactly what went wrong before any download exists.
- */
-export function useInspectLink() {
-  return useMutation({
-    // A link inspection is a fresh explicit action every time; a failed attempt
-    // should surface its own error rather than be retried behind the person.
-    retry: false,
-    mutationFn: async (url: string): Promise<LinkInspection> =>
-      unwrap(await api.POST("/api/v1/links/inspect", { body: { url } })),
-  });
-}
 
 /** Queue one reviewed acquisition. The durable job is the response, not a promise. */
 export function useQueueReviewedDownload() {

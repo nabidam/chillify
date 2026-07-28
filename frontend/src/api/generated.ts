@@ -298,9 +298,43 @@ export interface paths {
         put?: never;
         /**
          * Inspect one Spotify track or YouTube video link
-         * @description Recognize and inspect one link, reporting its candidate and review need.
+         * @description Accept one link and return before provider work completes.
          */
         post: operations["inspect_link_api_v1_links_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/links/inspect/{inspection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel one link inspection */
+        delete: operations["cancel_inspection_api_v1_links_inspect__inspection_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/links/inspect/{inspection_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stream one link inspection */
+        get: operations["stream_inspection_api_v1_links_inspect__inspection_id__events_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -475,6 +509,40 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/inspection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Save inspection mode and timeouts */
+        patch: operations["update_inspection_api_v1_settings_inspection_patch"];
+        trace?: never;
+    };
+    "/api/v1/settings/providers/spotify_api": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Save or clear Spotify Client Credentials */
+        patch: operations["update_spotify_api_api_v1_settings_providers_spotify_api_patch"];
         trace?: never;
     };
     "/api/v1/settings/providers/{provider}": {
@@ -974,6 +1042,43 @@ export interface components {
             status: "ready" | "not_ready";
         };
         /**
+         * InspectionAcceptedModel
+         * @description The small acknowledgement returned before provider work finishes.
+         */
+        InspectionAcceptedModel: {
+            /** Inspection Id */
+            inspection_id: string;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "reading_spotify" | "matching_spotdl" | "inspecting_youtube" | "cancelled" | "expired" | "failed" | "done";
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+        };
+        /**
+         * InspectionSettingsModel
+         * @description Persisted inspection mode and bounded timeout budget.
+         */
+        InspectionSettingsModel: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "fast" | "thorough";
+            /** Revision */
+            revision: number;
+            /** Timeout Spotdl S */
+            timeout_spotdl_s: number;
+            /** Timeout Spotify S */
+            timeout_spotify_s: number;
+            /** Timeout Ytdlp S */
+            timeout_ytdlp_s: number;
+        };
+        /**
          * JobDetailModel
          * @description One job together with its complete replayable history.
          */
@@ -1089,44 +1194,6 @@ export interface components {
          * @enum {string}
          */
         LibrarySort: "recent" | "title" | "artist";
-        /**
-         * LinkInspectionModel
-         * @description What one link resolves to, and how it should be queued.
-         *
-         *     `source_type` is always `spotify_track` or `youtube_video` in practice —
-         *     inspection only recognizes those two — and the wire literal is shared with
-         *     the download request so the same candidate flows straight into it.
-         */
-        LinkInspectionModel: {
-            candidate: components["schemas"]["TrackCandidateModel"];
-            /**
-             * Existing Track Id
-             * @description The local track this link already duplicates, if any.
-             */
-            existing_track_id?: string | null;
-            /**
-             * Is Playable
-             * @description Always false. A link resolves to something to acquire, never a local file.
-             * @default false
-             * @constant
-             */
-            is_playable: false;
-            /**
-             * Provider
-             * @enum {string}
-             */
-            provider: "deezer" | "spotdl" | "yt_dlp";
-            /**
-             * Review Required
-             * @description True when S5 metadata review must precede queueing, as for YouTube.
-             */
-            review_required: boolean;
-            /**
-             * Source Type
-             * @enum {string}
-             */
-            source_type: "deezer_result" | "spotify_track" | "youtube_video";
-        };
         /**
          * LinkInspectionRequest
          * @description One submitted URL to recognize and inspect.
@@ -1399,9 +1466,21 @@ export interface components {
          * @description The masked settings surface.
          */
         SettingsModel: {
+            inspection: components["schemas"]["InspectionSettingsModel"];
             /** Providers */
             providers: components["schemas"]["ProviderStateModel"][];
             proxy: components["schemas"]["ProxyStateModel"];
+            spotify_api: components["schemas"]["SpotifyApiStateModel"];
+        };
+        /**
+         * SpotifyApiStateModel
+         * @description Masked Spotify credential state; client values never cross this boundary.
+         */
+        SpotifyApiStateModel: {
+            /** Configured */
+            configured: boolean;
+            /** Revision */
+            revision: number;
         };
         /**
          * SystemStatusModel
@@ -1423,7 +1502,7 @@ export interface components {
              * Environment
              * @enum {string}
              */
-            environment: "production" | "gate";
+            environment: "production" | "gate" | "release";
             /** Providers */
             providers: components["schemas"]["ProviderStatusModel"][];
             /**
@@ -1566,6 +1645,28 @@ export interface components {
             updated_at: string;
         };
         /**
+         * UpdateInspectionRequest
+         * @description Save the inspection ordering policy and its bounded timeout budget.
+         */
+        UpdateInspectionRequest: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "fast" | "thorough";
+            /**
+             * Revision
+             * @description The revision the browser last read.
+             */
+            revision: number;
+            /** Timeout Spotdl S */
+            timeout_spotdl_s: number;
+            /** Timeout Spotify S */
+            timeout_spotify_s: number;
+            /** Timeout Ytdlp S */
+            timeout_ytdlp_s: number;
+        };
+        /**
          * UpdateProviderRequest
          * @description Toggle a provider and, for Last.fm, set or clear its API key.
          */
@@ -1616,6 +1717,30 @@ export interface components {
              * @description Proxy URL, or null to clear.
              */
             url?: string | null;
+        };
+        /**
+         * UpdateSpotifyApiRequest
+         * @description Save or clear Spotify Client Credentials.
+         *
+         *     Empty credential values retain the stored value.  The response only reports
+         *     whether a complete pair is configured; it never includes either credential.
+         */
+        UpdateSpotifyApiRequest: {
+            /**
+             * Clear Secret
+             * @description Remove both stored credentials.
+             * @default false
+             */
+            clear_secret: boolean;
+            /** Client Id */
+            client_id?: string | null;
+            /** Client Secret */
+            client_secret?: string | null;
+            /**
+             * Revision
+             * @description The revision the browser last read.
+             */
+            revision: number;
         };
         /**
          * UpdateTrackRequest
@@ -2224,12 +2349,72 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InspectionAcceptedModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    cancel_inspection_api_v1_links_inspect__inspection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                inspection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    stream_inspection_api_v1_links_inspect__inspection_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                inspection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LinkInspectionModel"];
+                    "text/event-stream": string;
                 };
             };
             /** @description Error envelope */
@@ -2599,6 +2784,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingsModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_inspection_api_v1_settings_inspection_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateInspectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InspectionSettingsModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_spotify_api_api_v1_settings_providers_spotify_api_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSpotifyApiRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpotifyApiStateModel"];
                 };
             };
             /** @description Error envelope */

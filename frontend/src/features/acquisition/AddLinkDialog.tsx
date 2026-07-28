@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { toast } from "sonner";
 import { ApiRequestError } from "@/api/client";
 import { routes } from "@/app/routes";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,12 +19,15 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   type LinkInspection,
-  useInspectLink,
   useQueueReviewedDownload,
 } from "@/features/acquisition/acquisitionQueries";
+import {
+  formatElapsed,
+  type InspectionPhase,
+  useInspection,
+} from "@/features/acquisition/useInspection";
 import { YouTubeReviewDialog } from "@/features/acquisition/YouTubeReviewDialog";
 import { useRestoreFocusOnClose } from "@/features/shared/restoreFocusOnClose";
 
@@ -47,7 +51,7 @@ export function AddLinkDialog({
   // never live here — they transition straight to review.
   const [detected, setDetected] = useState<LinkInspection | null>(null);
   const [reviewing, setReviewing] = useState<LinkInspection | null>(null);
-  const inspect = useInspectLink();
+  const inspect = useInspection();
   const queue = useQueueReviewedDownload();
 
   // Reopening the dialog starts a clean submission rather than showing the last
@@ -63,32 +67,28 @@ export function AddLinkDialog({
     // render would clear an error or result the person is still reading.
   }, [open, inspect.reset, queue.reset]);
 
+  useEffect(() => {
+    if (inspect.result === null) {
+      return;
+    }
+    if (inspect.result.review_required) {
+      onOpenChange(false);
+      setReviewing(inspect.result);
+    } else {
+      setDetected(inspect.result);
+    }
+  }, [inspect.result, onOpenChange]);
+
   const trimmed = url.trim();
-  const inspectFailure = inspect.error;
-  const inspectMessage =
-    inspectFailure instanceof ApiRequestError
-      ? inspectFailure.message
-      : inspectFailure
-        ? "That link could not be inspected."
-        : null;
+  const inspectMessage = inspect.error?.message ?? null;
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (trimmed.length === 0 || inspect.isPending) {
+    if (trimmed.length === 0 || inspect.isActive) {
       return;
     }
     setDetected(null);
-    inspect.mutate(trimmed, {
-      onSuccess: (result) => {
-        if (result.review_required) {
-          // Transition S4 → S5: close this dialog and open the review.
-          onOpenChange(false);
-          setReviewing(result);
-        } else {
-          setDetected(result);
-        }
-      },
-    });
+    inspect.start(trimmed);
   }
 
   function downloadDetected() {
@@ -114,10 +114,16 @@ export function AddLinkDialog({
   }
 
   const onCloseAutoFocus = useRestoreFocusOnClose(open);
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && inspect.isActive) {
+      void inspect.cancel();
+    }
+    onOpenChange(nextOpen);
+  };
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent onCloseAutoFocus={onCloseAutoFocus}>
           <form onSubmit={submit} noValidate>
             <DialogHeader>
@@ -137,12 +143,13 @@ export function AddLinkDialog({
                   autoComplete="off"
                   inputMode="url"
                   placeholder="https://open.spotify.com/track/… or https://youtu.be/…"
-                  disabled={inspect.isPending}
+                  disabled={inspect.isActive}
                   aria-invalid={inspectMessage !== null}
                   aria-describedby={inspectMessage !== null ? "add-link-error" : undefined}
                   onChange={(event) => {
                     setUrl(event.target.value);
                     setDetected(null);
+                    inspect.reset();
                   }}
                 />
                 {inspectMessage !== null ? (
@@ -155,9 +162,34 @@ export function AddLinkDialog({
                 )}
               </Field>
 
-              {inspect.isPending ? <Skeleton className="h-row w-full" /> : null}
+              {inspect.isActive ? (
+                <InspectionFeedback phase={inspect.phase} elapsedMs={inspect.elapsedMs} />
+              ) : null}
 
-              {detected !== null && !inspect.isPending ? (
+              {inspect.status === "expired" ? (
+                <Alert variant="destructive">
+                  <AlertTitle>Inspection expired</AlertTitle>
+                  <AlertDescription>
+                    <span className="type-meta">
+                      {inspect.error?.message ??
+                        "This inspection expired. Paste the link again to retry."}
+                    </span>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              {inspect.status === "failed" ? (
+                <Alert variant="destructive">
+                  <AlertTitle>Inspection failed</AlertTitle>
+                  <AlertDescription>
+                    <span className="type-meta">
+                      {inspectMessage ?? "That link could not be inspected."}
+                    </span>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              {detected !== null && !inspect.isActive ? (
                 <DetectedResult
                   inspection={detected}
                   isQueueing={queue.isPending}
@@ -167,13 +199,19 @@ export function AddLinkDialog({
             </div>
 
             <DialogFooter>
-              <DialogClose asChild>
-                <Button type="button" variant="ghost" disabled={inspect.isPending}>
+              {inspect.isActive ? (
+                <Button type="button" variant="ghost" onClick={() => void inspect.cancel()}>
                   Cancel
                 </Button>
-              </DialogClose>
-              <Button type="submit" disabled={trimmed.length === 0 || inspect.isPending}>
-                {inspect.isPending ? "Inspecting…" : "Continue"}
+              ) : (
+                <DialogClose asChild>
+                  <Button type="button" variant="ghost">
+                    Cancel
+                  </Button>
+                </DialogClose>
+              )}
+              <Button type="submit" disabled={trimmed.length === 0 || inspect.isActive}>
+                Continue
               </Button>
             </DialogFooter>
           </form>
@@ -190,6 +228,43 @@ export function AddLinkDialog({
         }}
       />
     </>
+  );
+}
+
+const PHASE_LABELS: Record<
+  Exclude<InspectionPhase, "cancelled" | "expired" | "failed" | "done">,
+  string
+> = {
+  reading_spotify: "Reading Spotify details",
+  matching_spotdl: "Matching with SpotDL",
+  inspecting_youtube: "Inspecting YouTube details",
+};
+
+function InspectionFeedback({
+  phase,
+  elapsedMs,
+}: {
+  phase: InspectionPhase | null;
+  elapsedMs: number;
+}) {
+  const phaseLabel =
+    phase && phase in PHASE_LABELS
+      ? PHASE_LABELS[phase as keyof typeof PHASE_LABELS]
+      : "Starting inspection";
+
+  return (
+    <div
+      className="flex items-center justify-between gap-4 rounded-md bg-surface-raised px-4 py-3"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="min-w-0">
+        <p className="type-label text-foreground">{phaseLabel}</p>
+        <p className="type-meta text-foreground-muted tabular-nums">
+          {formatElapsed(elapsedMs)}
+        </p>
+      </div>
+    </div>
   );
 }
 
