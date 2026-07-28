@@ -17,6 +17,7 @@ import {
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InspectionSettingsCard } from "@/features/settings/InspectionSettingsCard";
 import { ProviderCard } from "@/features/settings/ProviderCard";
 import { StorageDiagnostics } from "@/features/settings/StorageDiagnostics";
 
@@ -67,6 +68,10 @@ export function SettingsPage() {
               <ProviderCard key={provider.name} provider={provider} />
             ))}
           </section>
+          <InspectionSettingsCard
+            inspection={settings.data.inspection}
+            spotifyApi={settings.data.spotify_api}
+          />
           <StorageDiagnostics />
         </>
       )}
