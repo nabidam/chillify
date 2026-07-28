@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from chillify.config import Settings
@@ -74,7 +75,11 @@ class ProviderRegistry:
         return provider in self.acquisition
 
 
-def build_registry(settings: Settings) -> ProviderRegistry:
+def build_registry(
+    settings: Settings,
+    *,
+    spotify_credentials_provider: Callable[[], tuple[str, str] | None] | None = None,
+) -> ProviderRegistry:
     """Bind the adapters this environment is allowed to use.
 
     The fixture import lives inside the gate branch and the production imports in
@@ -133,6 +138,10 @@ def build_registry(settings: Settings) -> ProviderRegistry:
             JobProvider.YT_DLP: YouTubeInspector(),
             JobProvider.SPOTDL: SpotdlInspector(executable=spotdl_bin),
         },
-        spotify_api=SpotifyApiInspector(),
+        # Credentials are read through the settings service at inspection time.
+        # They are operator-managed secrets, so taking a startup snapshot would
+        # make a dashboard save appear successful while the running process
+        # continued to behave as if Spotify were unconfigured.
+        spotify_api=SpotifyApiInspector(credentials_provider=spotify_credentials_provider),
         artwork={"url": HttpArtworkFetcher()},
     )

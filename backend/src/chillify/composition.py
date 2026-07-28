@@ -453,11 +453,19 @@ def build_composition(settings: Settings, *, verify_mounts: bool = True) -> Comp
     redactor().register(settings.redis_url)
 
     engine = create_database_engine(settings.database_path)
+    session_factory = create_session_factory(engine)
+    settings_service = SettingsService(
+        session_factory=session_factory,
+        cipher=SecretCipher.from_key(settings.secret_key),
+    )
     return Composition(
         settings=settings,
         engine=engine,
-        session_factory=create_session_factory(engine),
-        registry=build_registry(settings),
+        session_factory=session_factory,
+        registry=build_registry(
+            settings,
+            spotify_credentials_provider=settings_service.current_spotify_credentials,
+        ),
     )
 
 

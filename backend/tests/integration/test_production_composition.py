@@ -40,6 +40,7 @@ from chillify.domain.jobs import JobProvider
 from chillify.infrastructure.providers.artwork_http import HttpArtworkFetcher
 from chillify.infrastructure.providers.deezer import DeezerDiscoveryProvider
 from chillify.infrastructure.providers.spotdl import SpotdlAcquisitionProvider, SpotdlInspector
+from chillify.infrastructure.providers.spotify_api import SpotifyApiInspector
 from chillify.infrastructure.providers.ytdlp import YouTubeInspector, YtDlpAcquisitionProvider
 
 pytestmark = pytest.mark.integration
@@ -140,6 +141,28 @@ class TestRealAdapterResolution:
         registry = production_composition.registry
         assert isinstance(registry.link_inspectors[JobProvider.YT_DLP], YouTubeInspector)
         assert isinstance(registry.link_inspectors[JobProvider.SPOTDL], SpotdlInspector)
+
+    def test_spotify_credentials_are_read_after_the_process_starts(
+        self, production_composition: Composition
+    ) -> None:
+        inspector = production_composition.registry.spotify_api
+        assert isinstance(inspector, SpotifyApiInspector)
+        assert inspector.credentials is None
+        assert inspector.credentials_provider is not None
+
+        settings = production_composition.settings_service()
+        revision = settings.read().spotify_api.revision
+        settings.save_spotify_credentials(
+            client_id="client-id-after-startup",
+            client_secret="client-secret-after-startup",
+            clear_secret=False,
+            revision=revision,
+        )
+
+        assert inspector.credentials_provider() == (
+            "client-id-after-startup",
+            "client-secret-after-startup",
+        )
 
     def test_artwork_fetcher_is_the_real_http_adapter(
         self, production_composition: Composition
