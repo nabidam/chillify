@@ -195,6 +195,13 @@ has neither. Only the `os.killpg` primitive transfers. The trigger here is
 job-event SSE envelope and heartbeat; `api/routes/links.py`, `db/{models,repositories}.py`,
 `providers/spotdl.py`, `infrastructure/queue/cancellation.py`. Backend only.
 
+- **Done:** `2ce9adf` — evidence `specs/002-spotify-inspection/evidence/task-23.txt`
+  The migration lives at the repository's actual Alembic path,
+  `backend/migrations/versions/0003_inspections.py`, rather than the predicted
+  `backend/alembic/versions` path. The existing synchronous link-inspection
+  tests were updated for the new 202/SSE contract; lifecycle coverage is in
+  `backend/tests/integration/test_inspection_lifecycle.py`.
+
 ---
 
 ## Task 24 — S4 Add Music: phases, elapsed, cancel, fallback
