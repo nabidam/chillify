@@ -73,6 +73,8 @@ precedent.
 `api/schemas/settings.py`, `api/routes/settings.py`, `alembic/versions/0001_core.py`.
 Backend only — no DESIGN.md, no UX.md.
 
+- **Done:** `e9299ca` — evidence `specs/002-spotify-inspection/evidence/task-21.txt`
+
 ---
 
 ## Task 22 — Spotify Web API inspector, fixtures, and the fallback policy

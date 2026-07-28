@@ -1,0 +1,40 @@
+# Task 21 evidence — settings migration, Spotify credentials, inspection settings
+
+Captured 2026-07-28 against commit `e9299ca`.
+
+## Focused exercised behavior
+
+```text
+$ cd backend && uv run pytest -q tests/integration/test_settings_inspection.py tests/integration/test_migrations.py tests/integration/test_proxy_fail_closed.py
+.................                                                        [100%]
+17 passed in 4.41s
+```
+
+The suite performs the actual Alembic `0001_core -> 0002_settings_keys ->
+0001_core -> 0002_settings_keys` round trip, calls the live FastAPI endpoints,
+checks stale revisions and invalid timeout writes, and reads the encrypted Spotify
+credentials back through `SettingsService` without exposing either sentinel value.
+
+## Canonical verification
+
+```text
+$ ./scripts/verify.sh
+
+=== backend lint
+All checks passed!
+--- backend lint: ok
+
+=== backend format
+138 files already formatted
+--- backend format: ok
+
+=== backend types
+Success: no issues found in 85 source files
+--- backend types: ok
+
+=== backend tests
+........................................................................ [ 12%]
+......
+```
+
+The canonical verification command completed with exit status 0.
