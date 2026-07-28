@@ -282,6 +282,8 @@ layer = "e2e"
 gate = 5
 ```
 
+- **Done:** `16864ef` — evidence `specs/002-spotify-inspection/evidence/task-25.txt`
+
 **Context pack (hint):** UX.md **S12**; DESIGN.md; ARCHITECTURE §17.8;
 `SettingsPage.tsx` and the existing proxy/provider card components for the
 credential conventions to mirror.

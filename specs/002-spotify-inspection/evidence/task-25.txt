@@ -1,0 +1,23 @@
+Command: `cd frontend && npm test -- --run tests/component/inspection-settings.test.tsx`
+
+Output (captured live):
+
+```text
+> test
+> vitest run --run tests/component/inspection-settings.test.tsx
+
+
+ RUN  v4.1.10 /home/dev/projects/chillify/frontend
+
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  00:53:26
+   Duration  2.04s (transform 146ms, setup 196ms, import 351ms, tests 843ms, environment 539ms)
+```
+
+The focused journey covers credential save without secret echoing, explicit credential clear,
+Fast/Thorough mode and timeout persistence, and field-local out-of-range rejection without a
+PATCH request. `npm run typecheck` and `npm run lint` also passed. The canonical verify retry
+reached the frontend checks successfully but was blocked by pre-existing SQLite disk I/O/database
+open failures in the nested clean-checkout backend aggregate.
