@@ -134,6 +134,8 @@ happen only in Task 29's canary through the production composition — never her
 `infrastructure/security/outbound.py`, `providers/{deezer,spotdl,registry}.py`,
 `domain/protocols.py`. Backend only.
 
+- **Done:** `795e29f` — evidence `specs/002-spotify-inspection/evidence/task-22.txt`
+
 ---
 
 ## Task 23 — Inspection as a tracked, cancellable operation

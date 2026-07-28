@@ -1,0 +1,31 @@
+Command: ./scripts/verify.sh --fast
+
+Live output (final verification):
+596 passed in 415.36s (0:06:55)
+--- backend tests: ok
+
+=== frontend lint
+Checked 119 files in 56ms. No fixes applied.
+--- frontend lint: ok
+
+=== frontend types
+--- frontend types: ok
+
+=== frontend tests
+Test Files  11 passed (11)
+Tests  97 passed (97)
+--- frontend tests: ok
+
+=== raw color literals
+--- raw color literals: ok
+
+=== primitive boundary
+--- primitive boundary: ok
+
+=== domain boundary
+--- domain boundary: ok
+
+=== secret scan
+--- secret scan: ok
+
+verify: all checks passed
