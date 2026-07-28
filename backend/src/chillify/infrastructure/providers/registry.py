@@ -43,6 +43,10 @@ class ProviderRegistry:
     # SpotDL. Empty until an adapter is bound; a submitted link is then reported
     # as unsupported, exactly as a disabled provider already is.
     link_inspectors: dict[JobProvider, LinkInspector] = field(default_factory=dict)
+    # The official Spotify API is a separate inspection capability. It is kept
+    # apart from the SpotDL acquisition inspector so the application policy can
+    # order API -> SpotDL without making either adapter know about the other.
+    spotify_api: LinkInspector | None = None
     # Keyed by the artwork origin it serves — `url` for a submitted link,
     # `lastfm` for the enricher's best match — so the staging use case asks for
     # a capability rather than naming an adapter.
@@ -83,6 +87,7 @@ def build_registry(settings: Settings) -> ProviderRegistry:
             FixtureDiscoveryProvider,
         )
         from chillify.infrastructure.providers.spotdl import FixtureSpotdlInspector
+        from chillify.infrastructure.providers.spotify_api import FixtureSpotifyApiInspector
         from chillify.infrastructure.providers.ytdlp import FixtureYouTubeInspector
 
         fixture_root = settings.fixture_root
@@ -98,6 +103,7 @@ def build_registry(settings: Settings) -> ProviderRegistry:
                 JobProvider.YT_DLP: FixtureYouTubeInspector(fixture_root=fixture_root),
                 JobProvider.SPOTDL: FixtureSpotdlInspector(fixture_root=fixture_root),
             },
+            spotify_api=FixtureSpotifyApiInspector(fixture_root=fixture_root),
         )
 
     from chillify.infrastructure.providers.artwork_http import HttpArtworkFetcher
@@ -106,6 +112,7 @@ def build_registry(settings: Settings) -> ProviderRegistry:
         SpotdlAcquisitionProvider,
         SpotdlInspector,
     )
+    from chillify.infrastructure.providers.spotify_api import SpotifyApiInspector
     from chillify.infrastructure.providers.ytdlp import (
         YouTubeInspector,
         YtDlpAcquisitionProvider,
@@ -126,5 +133,6 @@ def build_registry(settings: Settings) -> ProviderRegistry:
             JobProvider.YT_DLP: YouTubeInspector(),
             JobProvider.SPOTDL: SpotdlInspector(executable=spotdl_bin),
         },
+        spotify_api=SpotifyApiInspector(),
         artwork={"url": HttpArtworkFetcher()},
     )

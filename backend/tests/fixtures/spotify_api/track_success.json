@@ -1,0 +1,20 @@
+{
+  "id": "2cGxRwrMyEAp8dEbuZaVv6",
+  "name": "Instant Crush",
+  "artists": [
+    {"name": "Daft Punk"},
+    {"name": "Julian Casablancas"}
+  ],
+  "album": {
+    "name": "Random Access Memories",
+    "release_date": "2013-05-17",
+    "images": [
+      {"url": "https://i.scdn.co/image/small", "width": 64, "height": 64},
+      {"url": "https://i.scdn.co/image/large", "width": 640, "height": 640}
+    ]
+  },
+  "disc_number": 1,
+  "track_number": 5,
+  "duration_ms": 337560,
+  "external_ids": {"isrc": "USQX91300108"}
+}
