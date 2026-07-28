@@ -119,8 +119,11 @@ class Composition:
     registry: ProviderRegistry = field(default_factory=ProviderRegistry)
     _tool_cache: dict[str, ComponentStatus] = field(default_factory=dict)
     _celery_app: Celery | None = None
+    _inspection_service: InspectionService | None = None
 
     def dispose(self) -> None:
+        if self._inspection_service is not None:
+            self._inspection_service.shutdown()
         self.engine.dispose()
 
     # -- use cases --------------------------------------------------------
@@ -207,11 +210,13 @@ class Composition:
 
     def inspection_service(self) -> InspectionService:
         """Bind tracked inspections to the policy and current saved settings."""
+        if self._inspection_service is not None:
+            return self._inspection_service
         spotify_api = self.registry.spotify_api
         spotdl = self.registry.link_inspectors.get(JobProvider.SPOTDL)
         if spotify_api is None or spotdl is None:
             raise ProviderDisabledError("Link inspection is unavailable in this deployment.")
-        return InspectionService(
+        self._inspection_service = InspectionService(
             session_factory=self.session_factory,
             spotify_api=spotify_api,
             spotdl=spotdl,
@@ -219,6 +224,7 @@ class Composition:
             settings_provider=self.settings_service().current_inspection,
             proxy_provider=self.settings_service().current_proxy_url,
         )
+        return self._inspection_service
 
     def download_service(self, *, worker_identity: str = "api") -> DownloadService:
         """Bind the acquisition use cases.

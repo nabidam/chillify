@@ -9,7 +9,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from urllib.parse import urlsplit
@@ -193,6 +193,8 @@ class InspectionService:
     settings_provider: Callable[[], InspectionSettings]
     proxy_provider: Callable[[], str | None] = lambda: None
     ttl_seconds: int = INSPECTION_TTL_SECONDS
+    _threads: dict[str, threading.Thread] = field(default_factory=dict, init=False, repr=False)
+    _threads_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
 
     @contextmanager
     def _transaction(self) -> Iterator[Session]:
@@ -227,8 +229,24 @@ class InspectionService:
             name=f"chillify-inspection-{record.id[:8]}",
             daemon=True,
         )
+        with self._threads_lock:
+            self._threads[record.id] = thread
         thread.start()
         return InspectionAccepted(id=record.id, phase=record.phase, started_at=record.started_at)
+
+    def shutdown(self, timeout: float = 5.0) -> None:
+        """Cancel active workers and wait before their database closes."""
+        with self._threads_lock:
+            active_ids = tuple(self._threads)
+            threads = tuple(self._threads.values())
+        for inspection_id in active_ids:
+            try:
+                self.cancel(inspection_id)
+            except RecordNotFoundError:
+                continue
+        deadline = time.monotonic() + timeout
+        for thread in threads:
+            thread.join(max(0.0, deadline - time.monotonic()))
 
     def cancel(self, inspection_id: str) -> None:
         with self._transaction() as session:
@@ -401,6 +419,9 @@ class InspectionService:
                     code="inspection_failed",
                     message="The link could not be inspected.",
                 )
+        finally:
+            with self._threads_lock:
+                self._threads.pop(inspection_id, None)
 
     def _fail(self, inspection_id: str, *, code: str, message: str) -> None:
         with self._transaction() as session:

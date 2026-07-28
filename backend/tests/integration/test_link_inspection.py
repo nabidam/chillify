@@ -23,16 +23,34 @@ def _job_count(gate_api: TestClient) -> int:
     return len(response.json()["items"])
 
 
+def _settle_inspection(gate_api: TestClient, response) -> None:
+    """Drain an accepted inspection so its worker exits before teardown."""
+    if response.status_code != 202:
+        return
+
+    inspection_id = response.json()["inspection_id"]
+    with gate_api.stream("GET", f"/api/v1/links/inspect/{inspection_id}/events") as events:
+        assert events.status_code == 200
+        terminal = False
+        for line in events.iter_lines():
+            if line.startswith("data: ") and '"terminal":true' in line:
+                terminal = True
+                break
+        assert terminal
+
+
 class TestValidLinks:
     def test_a_youtube_video_inspects_and_asks_for_review(self, gate_api: TestClient) -> None:
         response = gate_api.post(INSPECT, json={"url": VIDEO_URL})
         assert response.status_code == 202
         assert response.json()["phase"] == "inspecting_youtube"
+        _settle_inspection(gate_api, response)
 
     def test_a_spotify_track_inspects_without_review(self, gate_api: TestClient) -> None:
         response = gate_api.post(INSPECT, json={"url": TRACK_URL})
         assert response.status_code == 202
         assert response.json()["phase"] == "reading_spotify"
+        _settle_inspection(gate_api, response)
 
 
 class TestRejectedLinksLeaveNoJob:
@@ -52,12 +70,15 @@ class TestRejectedLinksLeaveNoJob:
         assert _job_count(gate_api) == 0
 
         response = gate_api.post(INSPECT, json={"url": url})
+        _settle_inspection(gate_api, response)
 
         assert response.status_code == status
         assert _job_count(gate_api) == 0
 
     def test_inspecting_a_valid_link_alone_queues_nothing(self, gate_api: TestClient) -> None:
         """Inspection is a read; only POST /downloads commits work."""
-        assert gate_api.post(INSPECT, json={"url": VIDEO_URL}).status_code == 202
+        response = gate_api.post(INSPECT, json={"url": VIDEO_URL})
+        assert response.status_code == 202
+        _settle_inspection(gate_api, response)
 
         assert _job_count(gate_api) == 0
