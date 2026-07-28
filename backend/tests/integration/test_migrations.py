@@ -37,10 +37,12 @@ EXPECTED_TABLES = {
 
 EXPECTED_SETTINGS_KEYS = {
     "proxy",
+    "inspection",
     "provider.deezer",
     "provider.spotdl",
     "provider.yt_dlp",
     "provider.lastfm",
+    "provider.spotify_api",
 }
 
 
@@ -89,6 +91,8 @@ def test_upgrade_seeds_provider_and_proxy_settings(
         rows = dict(connection.execute("SELECT key, public_json FROM settings").fetchall())
     assert set(rows) == EXPECTED_SETTINGS_KEYS
     assert '"enabled":true' in rows["provider.deezer"]
+    assert '"mode":"fast"' in rows["inspection"]
+    assert '"configured":false' in rows["provider.spotify_api"]
     # Last.fm stays disabled until the operator configures a key.
     assert '"enabled":false' in rows["provider.lastfm"]
 

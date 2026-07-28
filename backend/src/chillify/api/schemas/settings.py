@@ -13,10 +13,12 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from chillify.application.settings import (
+    InspectionView,
     ProviderDiagnosis,
     ProviderView,
     ProxyView,
     SettingsView,
+    SpotifyApiView,
 )
 from chillify.infrastructure.security.outbound import ProxyDiagnosis
 
@@ -66,17 +68,52 @@ class ProviderStateModel(BaseModel):
         )
 
 
+class InspectionSettingsModel(BaseModel):
+    """Persisted inspection mode and bounded timeout budget."""
+
+    mode: Literal["fast", "thorough"]
+    timeout_spotify_s: int = Field(ge=1, le=30)
+    timeout_spotdl_s: int = Field(ge=30, le=600)
+    timeout_ytdlp_s: int = Field(ge=10, le=300)
+    revision: int
+
+    @classmethod
+    def of(cls, view: InspectionView) -> InspectionSettingsModel:
+        return cls(
+            mode=view.mode.value,
+            timeout_spotify_s=view.timeout_spotify_s,
+            timeout_spotdl_s=view.timeout_spotdl_s,
+            timeout_ytdlp_s=view.timeout_ytdlp_s,
+            revision=view.revision,
+        )
+
+
+class SpotifyApiStateModel(BaseModel):
+    """Masked Spotify credential state; client values never cross this boundary."""
+
+    configured: bool
+    revision: int
+
+    @classmethod
+    def of(cls, view: SpotifyApiView) -> SpotifyApiStateModel:
+        return cls(configured=view.configured, revision=view.revision)
+
+
 class SettingsModel(BaseModel):
     """The masked settings surface."""
 
     proxy: ProxyStateModel
     providers: list[ProviderStateModel]
+    inspection: InspectionSettingsModel
+    spotify_api: SpotifyApiStateModel
 
     @classmethod
     def of(cls, view: SettingsView) -> SettingsModel:
         return cls(
             proxy=ProxyStateModel.of(view.proxy),
             providers=[ProviderStateModel.of(provider) for provider in view.providers],
+            inspection=InspectionSettingsModel.of(view.inspection),
+            spotify_api=SpotifyApiStateModel.of(view.spotify_api),
         )
 
 
@@ -114,6 +151,29 @@ class UpdateProviderRequest(BaseModel):
         description="A new API key for a credentialled provider. Blank means unchanged.",
     )
     clear_secret: bool = Field(default=False, description="Remove the stored credential.")
+    revision: int = Field(ge=1, description="The revision the browser last read.")
+
+
+class UpdateInspectionRequest(BaseModel):
+    """Save the inspection ordering policy and its bounded timeout budget."""
+
+    mode: Literal["fast", "thorough"]
+    timeout_spotify_s: int = Field(ge=1, le=30)
+    timeout_spotdl_s: int = Field(ge=30, le=600)
+    timeout_ytdlp_s: int = Field(ge=10, le=300)
+    revision: int = Field(ge=1, description="The revision the browser last read.")
+
+
+class UpdateSpotifyApiRequest(BaseModel):
+    """Save or clear Spotify Client Credentials.
+
+    Empty credential values retain the stored value.  The response only reports
+    whether a complete pair is configured; it never includes either credential.
+    """
+
+    client_id: str | None = Field(default=None, max_length=512)
+    client_secret: str | None = Field(default=None, max_length=512)
+    clear_secret: bool = Field(default=False, description="Remove both stored credentials.")
     revision: int = Field(ge=1, description="The revision the browser last read.")
 
 

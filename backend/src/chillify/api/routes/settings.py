@@ -15,16 +15,20 @@ from fastapi import APIRouter, Depends
 
 from chillify.api.dependencies import get_settings_service
 from chillify.api.schemas.settings import (
+    InspectionSettingsModel,
     ProviderDiagnosisModel,
     ProviderStateModel,
     ProxyDiagnosisModel,
     ProxyStateModel,
     SettingsModel,
+    SpotifyApiStateModel,
     TestProxyRequest,
+    UpdateInspectionRequest,
     UpdateProviderRequest,
     UpdateProxyRequest,
+    UpdateSpotifyApiRequest,
 )
-from chillify.application.settings import SettingsService
+from chillify.application.settings import InspectionMode, SettingsService
 
 router = APIRouter(tags=["settings"])
 
@@ -53,6 +57,25 @@ def update_proxy(
     return ProxyStateModel.of(view)
 
 
+@router.patch(
+    "/settings/inspection",
+    response_model=InspectionSettingsModel,
+    summary="Save inspection mode and timeouts",
+)
+def update_inspection(
+    request: UpdateInspectionRequest,
+    settings: Annotated[SettingsService, Depends(get_settings_service)],
+) -> InspectionSettingsModel:
+    view = settings.save_inspection(
+        mode=InspectionMode(request.mode),
+        timeout_spotify_s=request.timeout_spotify_s,
+        timeout_spotdl_s=request.timeout_spotdl_s,
+        timeout_ytdlp_s=request.timeout_ytdlp_s,
+        revision=request.revision,
+    )
+    return InspectionSettingsModel.of(view)
+
+
 @router.post(
     "/settings/proxy/test",
     response_model=ProxyDiagnosisModel,
@@ -63,6 +86,24 @@ def test_proxy(
     settings: Annotated[SettingsService, Depends(get_settings_service)],
 ) -> ProxyDiagnosisModel:
     return ProxyDiagnosisModel.of(settings.test_proxy(request.url))
+
+
+@router.patch(
+    "/settings/providers/spotify_api",
+    response_model=SpotifyApiStateModel,
+    summary="Save or clear Spotify Client Credentials",
+)
+def update_spotify_api(
+    request: UpdateSpotifyApiRequest,
+    settings: Annotated[SettingsService, Depends(get_settings_service)],
+) -> SpotifyApiStateModel:
+    view = settings.save_spotify_credentials(
+        client_id=request.client_id,
+        client_secret=request.client_secret,
+        clear_secret=request.clear_secret,
+        revision=request.revision,
+    )
+    return SpotifyApiStateModel.of(view)
 
 
 @router.patch(
