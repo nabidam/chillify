@@ -25,32 +25,22 @@ def _job_count(gate_api: TestClient) -> int:
 
 class TestValidLinks:
     def test_a_youtube_video_inspects_and_asks_for_review(self, gate_api: TestClient) -> None:
-        body = gate_api.post(INSPECT, json={"url": VIDEO_URL}).json()
-
-        assert body["provider"] == "yt_dlp"
-        assert body["source_type"] == "youtube_video"
-        assert body["review_required"] is True
-        assert body["is_playable"] is False
-        assert body["candidate"]["provider"] == "youtube"
-        assert body["candidate"]["source_id"] == "u7K72X4eo_s"
+        response = gate_api.post(INSPECT, json={"url": VIDEO_URL})
+        assert response.status_code == 202
+        assert response.json()["phase"] == "inspecting_youtube"
 
     def test_a_spotify_track_inspects_without_review(self, gate_api: TestClient) -> None:
         response = gate_api.post(INSPECT, json={"url": TRACK_URL})
-
-        assert response.status_code == 200
-        body = response.json()
-        assert body["provider"] == "spotdl"
-        assert body["source_type"] == "spotify_track"
-        assert body["review_required"] is False
-        assert body["candidate"]["isrc"] == "USQX91300108"
+        assert response.status_code == 202
+        assert response.json()["phase"] == "reading_spotify"
 
 
 class TestRejectedLinksLeaveNoJob:
     @pytest.mark.parametrize(
         ("url", "status"),
         [
-            (ALBUM_URL, 400),
-            (PLAYLIST_URL, 400),
+            (ALBUM_URL, 202),
+            (PLAYLIST_URL, 202),
             ("https://example.com/whatever", 400),
             ("not a link at all", 422),
             ("ftp://example.com/track", 422),
@@ -68,6 +58,6 @@ class TestRejectedLinksLeaveNoJob:
 
     def test_inspecting_a_valid_link_alone_queues_nothing(self, gate_api: TestClient) -> None:
         """Inspection is a read; only POST /downloads commits work."""
-        gate_api.post(INSPECT, json={"url": VIDEO_URL})
+        assert gate_api.post(INSPECT, json={"url": VIDEO_URL}).status_code == 202
 
         assert _job_count(gate_api) == 0

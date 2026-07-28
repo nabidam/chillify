@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Select, func, or_, select, tuple_
+from sqlalchemy import Select, delete, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
@@ -72,6 +72,7 @@ from chillify.infrastructure.db.models import (
     ApiIdempotencyRow,
     ArtworkStageRow,
     DownloadJobRow,
+    InspectionRow,
     JobEventRow,
     MediaMutationRow,
     PlaylistRow,
@@ -1765,6 +1766,154 @@ class IdempotencyRepository:
         self._session.query(ApiIdempotencyRow).filter(
             ApiIdempotencyRow.expires_at <= to_rfc3339(now)
         ).delete(synchronize_session=False)
+
+
+@dataclass(frozen=True, slots=True)
+class InspectionRecord:
+    """The ephemeral state exposed to the inspection application service."""
+
+    id: str
+    url: str
+    mode: str
+    phase: str
+    provider: str | None
+    started_at: datetime
+    expires_at: datetime
+    cancel_requested_at: datetime | None
+    result: dict[str, Any] | None
+    error: dict[str, Any] | None
+
+
+class InspectionRepository:
+    """Persists one short-lived inspection and its latest observable state."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def create(
+        self,
+        *,
+        url: str,
+        mode: str,
+        phase: str,
+        provider: str | None,
+        started_at: datetime,
+        expires_at: datetime,
+    ) -> InspectionRecord:
+        self.prune(now=started_at)
+        row = InspectionRow(
+            id=new_id(),
+            url=url,
+            mode=mode,
+            phase=phase,
+            provider=provider,
+            started_at=to_rfc3339(started_at),
+            expires_at=to_rfc3339(expires_at),
+        )
+        self._session.add(row)
+        self._session.flush()
+        return _to_inspection(row)
+
+    def get(self, inspection_id: str, *, include_expired: bool = False) -> InspectionRecord | None:
+        row = self._session.get(InspectionRow, inspection_id)
+        if row is None:
+            return None
+        if not include_expired and from_rfc3339(row.expires_at) <= datetime.now(UTC):
+            return None
+        return _to_inspection(row)
+
+    def update_phase(
+        self, inspection_id: str, *, phase: str, provider: str | None
+    ) -> InspectionRecord | None:
+        row = self._session.get(InspectionRow, inspection_id)
+        if row is None or row.phase in {"cancelled", "expired", "failed", "done"}:
+            return None if row is None else _to_inspection(row)
+        if row.cancel_requested_at is not None:
+            row.phase = "cancelled"
+            row.error_json = _json_object("inspection_cancelled", "That inspection was cancelled.")
+        else:
+            row.phase = phase
+            row.provider = provider
+        self._session.flush()
+        return _to_inspection(row)
+
+    def complete(self, inspection_id: str, *, result: dict[str, Any]) -> InspectionRecord | None:
+        row = self._session.get(InspectionRow, inspection_id)
+        if row is None or row.phase in {"cancelled", "expired", "failed", "done"}:
+            return None if row is None else _to_inspection(row)
+        row.phase = "done"
+        row.result_json = json.dumps(result, separators=(",", ":"), sort_keys=True)
+        self._session.flush()
+        return _to_inspection(row)
+
+    def fail(
+        self, inspection_id: str, *, error: dict[str, Any], phase: str = "failed"
+    ) -> InspectionRecord | None:
+        row = self._session.get(InspectionRow, inspection_id)
+        if row is None or row.phase in {"cancelled", "expired", "failed", "done"}:
+            return None if row is None else _to_inspection(row)
+        row.phase = phase
+        row.error_json = json.dumps(error, separators=(",", ":"), sort_keys=True)
+        self._session.flush()
+        return _to_inspection(row)
+
+    def request_cancel(self, inspection_id: str, *, now: datetime) -> InspectionRecord | None:
+        row = self._session.get(InspectionRow, inspection_id)
+        if row is None or from_rfc3339(row.expires_at) <= now:
+            return None
+        if row.phase not in {"cancelled", "expired", "failed", "done"}:
+            row.cancel_requested_at = to_rfc3339(now)
+            row.phase = "cancelled"
+            row.error_json = _json_object("inspection_cancelled", "That inspection was cancelled.")
+            self._session.flush()
+        return _to_inspection(row)
+
+    def expire(self, inspection_id: str, *, now: datetime) -> InspectionRecord | None:
+        row = self._session.get(InspectionRow, inspection_id)
+        if row is None:
+            return None
+        if row.phase not in {"cancelled", "expired", "failed", "done"}:
+            row.cancel_requested_at = row.cancel_requested_at or to_rfc3339(now)
+            row.phase = "expired"
+            row.error_json = _json_object("inspection_expired", "That inspection expired.")
+            self._session.flush()
+        return _to_inspection(row)
+
+    def prune(self, *, now: datetime) -> None:
+        self._session.execute(
+            delete(InspectionRow).where(InspectionRow.expires_at <= to_rfc3339(now))
+        )
+        self._session.flush()
+
+
+def _json_object(code: str, message: str) -> str:
+    return json.dumps({"code": code, "message": message}, separators=(",", ":"), sort_keys=True)
+
+
+def _to_inspection(row: InspectionRow) -> InspectionRecord:
+    def decode(value: str | None) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    return InspectionRecord(
+        id=row.id,
+        url=row.url,
+        mode=row.mode,
+        phase=row.phase,
+        provider=row.provider,
+        started_at=from_rfc3339(row.started_at),
+        expires_at=from_rfc3339(row.expires_at),
+        cancel_requested_at=(
+            None if row.cancel_requested_at is None else from_rfc3339(row.cancel_requested_at)
+        ),
+        result=decode(row.result_json),
+        error=decode(row.error_json),
+    )
 
 
 @dataclass(frozen=True, slots=True)

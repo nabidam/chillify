@@ -33,6 +33,7 @@ EXPECTED_TABLES = {
     "artwork_stages",
     "api_idempotency",
     "media_mutations",
+    "inspections",
 }
 
 EXPECTED_SETTINGS_KEYS = {

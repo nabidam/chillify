@@ -14,6 +14,7 @@ from fastapi import Depends, Request
 from chillify.application.artwork import ArtworkService
 from chillify.application.deletion import DeletionService
 from chillify.application.downloads import DownloadService, IdempotencyGuard
+from chillify.application.inspection import InspectionService
 from chillify.application.library import LibraryService
 from chillify.application.links import LinkInspectionService
 from chillify.application.metadata import MetadataService
@@ -44,6 +45,12 @@ def get_link_inspection_service(
     composition: Annotated[Composition, Depends(get_composition)],
 ) -> LinkInspectionService:
     return composition.link_inspection_service()
+
+
+def get_inspection_service(
+    composition: Annotated[Composition, Depends(get_composition)],
+) -> InspectionService:
+    return composition.inspection_service()
 
 
 def get_download_service(

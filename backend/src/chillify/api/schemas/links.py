@@ -8,12 +8,24 @@ identical body whichever way the person reached it.
 
 from __future__ import annotations
 
-from typing import Literal
+from datetime import datetime
+from typing import Literal, cast
 
 from pydantic import BaseModel, Field
 
 from chillify.api.schemas.downloads import SourceTypeLiteral, TrackCandidateModel
+from chillify.application.inspection import InspectionAccepted
 from chillify.application.links import LinkInspection
+
+InspectionPhaseLiteral = Literal[
+    "reading_spotify",
+    "matching_spotdl",
+    "inspecting_youtube",
+    "cancelled",
+    "expired",
+    "failed",
+    "done",
+]
 
 
 class LinkInspectionRequest(BaseModel):
@@ -55,4 +67,20 @@ class LinkInspectionModel(BaseModel):
             existing_track_id=(
                 None if inspection.existing_track_id is None else str(inspection.existing_track_id)
             ),
+        )
+
+
+class InspectionAcceptedModel(BaseModel):
+    """The small acknowledgement returned before provider work finishes."""
+
+    inspection_id: str
+    phase: InspectionPhaseLiteral
+    started_at: datetime
+
+    @classmethod
+    def of(cls, accepted: InspectionAccepted) -> InspectionAcceptedModel:
+        return cls(
+            inspection_id=accepted.id,
+            phase=cast(InspectionPhaseLiteral, accepted.phase),
+            started_at=accepted.started_at,
         )

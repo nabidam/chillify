@@ -1,0 +1,17 @@
+Command:
+`cd backend && PYTHONPATH=src .venv/bin/pytest -vv tests/integration/test_inspection_lifecycle.py tests/integration/test_migrations.py tests/integration/test_inspection_fallback.py tests/contract/test_spotdl_contract.py`
+
+Last output:
+```
+tests/contract/test_spotdl_contract.py::TestSpotdlProxyEnvironmentContract::test_the_proxy_reaches_the_save_child_environment PASSED [82%]
+tests/contract/test_spotdl_contract.py::TestSpotdlProxyEnvironmentContract::test_the_proxy_reaches_the_download_child_environment PASSED [85%]
+tests/contract/test_spotdl_contract.py::TestSpotdlProxyEnvironmentContract::test_the_scheme_conversion_is_exactly_socks5_to_socks5h[socks5://p.invalid:1080-socks5h://p.invalid:1080] PASSED [87%]
+tests/contract/test_spotdl_contract.py::TestSpotdlProxyEnvironmentContract::test_the_scheme_conversion_is_exactly_socks5_to_socks5h[socks5h://p.invalid:1080-socks5h://p.invalid:1080] PASSED [89%]
+tests/contract/test_spotdl_contract.py::TestSpotdlProxyEnvironmentContract::test_the_scheme_conversion_is_exactly_socks5_to_socks5h[http://p.invalid:8080-http://p.invalid:8080] PASSED [91%]
+tests/contract/test_spotdl_contract.py::TestSpotdlProxyEnvironmentContract::test_the_scheme_conversion_is_exactly_socks5_to_socks5h[https://p.invalid:8443-https://p.invalid:8443] PASSED [93%]
+tests/contract/test_spotdl_contract.py::TestSpotdlProxyEnvironmentContract::test_no_proxy_configured_means_no_proxy_argv_flag_and_no_env PASSED [95%]
+tests/contract/test_spotdl_contract.py::TestSpotdlProxyEnvironmentContract::test_the_child_still_inherits_variables_it_needs PASSED [97%]
+tests/contract/test_spotdl_contract.py::TestSpotdlProxyEnvironmentContract::test_a_credentialed_proxy_never_appears_in_a_raised_error_message PASSED [100%]
+
+============================== 47 passed in 0.71s ==============================
+```

@@ -10,23 +10,60 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
+from fastapi.responses import StreamingResponse
 
-from chillify.api.dependencies import get_link_inspection_service
-from chillify.api.schemas.links import LinkInspectionModel, LinkInspectionRequest
-from chillify.application.links import LinkInspectionService
+from chillify.api.dependencies import get_inspection_service
+from chillify.api.schemas.links import InspectionAcceptedModel, LinkInspectionRequest
+from chillify.application.inspection import InspectionService
 
 router = APIRouter(tags=["links"])
 
 
 @router.post(
     "/links/inspect",
-    response_model=LinkInspectionModel,
+    response_model=InspectionAcceptedModel,
+    status_code=202,
     summary="Inspect one Spotify track or YouTube video link",
 )
 def inspect_link(
     submission: LinkInspectionRequest,
-    links: Annotated[LinkInspectionService, Depends(get_link_inspection_service)],
-) -> LinkInspectionModel:
-    """Recognize and inspect one link, reporting its candidate and review need."""
-    return LinkInspectionModel.of(links.inspect(submission.url))
+    inspections: Annotated[InspectionService, Depends(get_inspection_service)],
+) -> InspectionAcceptedModel:
+    """Accept one link and return before provider work completes."""
+    return InspectionAcceptedModel.of(inspections.start(submission.url))
+
+
+@router.get(
+    "/links/inspect/{inspection_id}/events",
+    response_class=StreamingResponse,
+    summary="Stream one link inspection",
+    responses={200: {"content": {"text/event-stream": {"schema": {"type": "string"}}}}},
+)
+def stream_inspection(
+    inspection_id: str,
+    inspections: Annotated[InspectionService, Depends(get_inspection_service)],
+) -> StreamingResponse:
+    inspections.ensure_active(inspection_id)
+    return StreamingResponse(
+        inspections.event_frames(inspection_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@router.delete(
+    "/links/inspect/{inspection_id}",
+    status_code=204,
+    summary="Cancel one link inspection",
+)
+def cancel_inspection(
+    inspection_id: str,
+    inspections: Annotated[InspectionService, Depends(get_inspection_service)],
+) -> Response:
+    inspections.cancel(inspection_id)
+    return Response(status_code=204)

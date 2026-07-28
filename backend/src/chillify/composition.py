@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from chillify.application.artwork import ArtworkService
 from chillify.application.deletion import DeletionService
 from chillify.application.downloads import DownloadService
+from chillify.application.inspection import InspectionService
 from chillify.application.library import LibraryService
 from chillify.application.links import LinkInspectionService, RegisteredInspector
 from chillify.application.metadata import MetadataService
@@ -39,6 +40,8 @@ from chillify.application.reconciliation import ReconciliationService
 from chillify.application.search import SearchService
 from chillify.application.settings import SettingsService
 from chillify.config import Settings, preflight_mounted_roots
+from chillify.domain.errors import ProviderDisabledError
+from chillify.domain.jobs import JobProvider
 from chillify.infrastructure.db.engine import create_database_engine, create_session_factory
 from chillify.infrastructure.logging.setup import redactor
 from chillify.infrastructure.media.recovery import MediaRecoveryService
@@ -199,6 +202,21 @@ class Composition:
         return LinkInspectionService(
             session_factory=self.session_factory,
             inspectors=inspectors,
+            proxy_provider=self.settings_service().current_proxy_url,
+        )
+
+    def inspection_service(self) -> InspectionService:
+        """Bind tracked inspections to the policy and current saved settings."""
+        spotify_api = self.registry.spotify_api
+        spotdl = self.registry.link_inspectors.get(JobProvider.SPOTDL)
+        if spotify_api is None or spotdl is None:
+            raise ProviderDisabledError("Link inspection is unavailable in this deployment.")
+        return InspectionService(
+            session_factory=self.session_factory,
+            spotify_api=spotify_api,
+            spotdl=spotdl,
+            youtube=self.registry.link_inspectors.get(JobProvider.YT_DLP),
+            settings_provider=self.settings_service().current_inspection,
             proxy_provider=self.settings_service().current_proxy_url,
         )
 

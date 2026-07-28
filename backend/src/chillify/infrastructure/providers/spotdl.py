@@ -178,6 +178,8 @@ class FixtureSpotdlInspector:
         self,
         url: str,
         proxy: str | None,  # noqa: ARG002 - protocol parameter; a fixture makes no request
+        *,
+        cancelled: CancelledCallback | None = None,
     ) -> TrackCandidate:
         link = recognize(url)
         if link is None or link.kind is LinkKind.BULK or link.canonical_url is None:
@@ -186,6 +188,8 @@ class FixtureSpotdlInspector:
                 field="url",
                 context={"provider": PROVIDER_NAME, "reason": "bulk"},
             )
+        if cancelled is not None and cancelled():
+            raise AcquisitionCancelledError("That inspection was cancelled.")
         payload = _read_json(self.fixture_root / METADATA_FIXTURE)
         candidate = candidate_from_metadata(
             payload, track_id=link.track_id or "", canonical_url=link.canonical_url
@@ -205,7 +209,7 @@ class SubprocessResult:
 
 # Runs one SpotDL argument vector and returns its captured result. A test injects
 # a double so no case here launches a real process. `cancelled` is consulted by
-# the download runner while the child runs; inspection passes None.
+# the runner while the child runs for both acquisition and inspection.
 SpotdlRunner = Callable[..., SubprocessResult]
 
 
@@ -319,7 +323,13 @@ class SpotdlInspector:
     def supports(self, url: str) -> bool:
         return recognize(url) is not None
 
-    def inspect(self, url: str, proxy: str | None) -> TrackCandidate:
+    def inspect(
+        self,
+        url: str,
+        proxy: str | None,
+        *,
+        cancelled: CancelledCallback | None = None,
+    ) -> TrackCandidate:
         link = recognize(url)
         if link is None or link.kind is LinkKind.BULK or link.canonical_url is None:
             raise UnsupportedEntityError(
@@ -336,7 +346,12 @@ class SpotdlInspector:
                 "--save-file",
                 str(save_file),
             ]
-            result = self.runner(argv, timeout=_INSPECT_TIMEOUT_SECONDS, env=_child_env(proxy))
+            result = self.runner(
+                argv,
+                timeout=_INSPECT_TIMEOUT_SECONDS,
+                cancelled=cancelled,
+                env=_child_env(proxy),
+            )
             if result.returncode != 0 or not save_file.is_file():
                 # The captured stderr can carry the URL and the proxy; it is
                 # logged under the provider, never returned to the browser.
@@ -347,6 +362,8 @@ class SpotdlInspector:
                 raise ProviderResponseError(
                     "Spotify could not be inspected.", context={"provider": PROVIDER_NAME}
                 )
+            if cancelled is not None and cancelled():
+                raise AcquisitionCancelledError("That inspection was cancelled.")
             payload = _read_json(save_file)
         candidate = candidate_from_metadata(
             payload, track_id=link.track_id or "", canonical_url=link.canonical_url

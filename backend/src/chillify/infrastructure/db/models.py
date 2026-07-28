@@ -203,3 +203,20 @@ class ApiIdempotencyRow(Base):
     response_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(String, nullable=False)
     expires_at: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class InspectionRow(Base):
+    """Ephemeral metadata inspection state and its terminal result."""
+
+    __tablename__ = "inspections"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    mode: Mapped[str] = mapped_column(String, nullable=False)
+    phase: Mapped[str] = mapped_column(String, nullable=False)
+    provider: Mapped[str | None] = mapped_column(String)
+    started_at: Mapped[str] = mapped_column(String, nullable=False)
+    expires_at: Mapped[str] = mapped_column(String, nullable=False)
+    cancel_requested_at: Mapped[str | None] = mapped_column(String)
+    result_json: Mapped[str | None] = mapped_column(Text)
+    error_json: Mapped[str | None] = mapped_column(Text)
