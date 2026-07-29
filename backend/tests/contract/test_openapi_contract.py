@@ -156,9 +156,18 @@ class TestServedShape:
         body = client.get(STATUS_PATH).json()
 
         providers = {provider["name"]: provider for provider in body["providers"]}
-        assert set(providers) == {"deezer", "spotdl", "yt_dlp", "lastfm"}
+        assert set(providers) == {"deezer", "yt_dlp", "lastfm"}
         assert providers["deezer"]["enabled"] is True
         assert providers["lastfm"]["enabled"] is False
+
+    def test_settings_does_not_expose_retired_spotdl_provider(self, client: TestClient) -> None:
+        body = client.get("/api/v1/settings").json()
+
+        assert {provider["name"] for provider in body["providers"]} == {
+            "deezer",
+            "yt_dlp",
+            "lastfm",
+        }
 
     def test_status_names_both_mounted_roots(self, client: TestClient) -> None:
         body = client.get(STATUS_PATH).json()

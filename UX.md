@@ -4,7 +4,8 @@ This living document defines the interactive desktop experience for milestone 00
 
 > **Cycle 002 status:** The fast Spotify API inspection experiment is cancelled
 > as of 2026-07-29 because Spotify requires Premium for the development-mode
-> app owner. The current supported Spotify-link path remains SpotDL. The S4/S12
+> app owner. The current supported Spotify-link path uses the public oEmbed
+> reference and an independent catalog match, then downloads through yt-dlp. The S4/S12
 > inspection feedback and settings language below are retained for the shipped
 > implementation and historical traceability, but are not an active release
 > commitment until a replacement is approved in a new spec.
@@ -117,11 +118,7 @@ Browser back/forward restores the previous content view without remounting the p
 - **Spotify track:** resolve the public oEmbed reference without credentials, then show independent catalog matches. Because Spotify supplies no artist or album in this path, the person chooses the correct match before queueing; Chillify never guesses.
 - **YouTube loading:** show link inspection and disable repeated submission. Inspection
   reports its **named phase** and **elapsed seconds**, and offers **Cancel**
-  throughout. Phase names state real work ("Reading Spotify details", "Matching
-  with SpotDL"); no percentage is shown, because inspection has no honest one.
-- **Fallback:** when the fast Spotify lookup fails and SpotDL takes over, the
-  phase changes visibly and names the switch. The fallback is never silent, and
-  the elapsed timer keeps running across the handover rather than resetting.
+  throughout. No percentage is shown, because inspection has no honest one.
 - **Cancel:** stops inspection at any phase and leaves no provider subprocess
   running. The dialog returns to the editable URL field with the input preserved.
 - **Spotify success:** identify the track source and allow queueing; job progress continues in S11.
@@ -137,8 +134,8 @@ Browser back/forward restores the previous content view without remounting the p
 
 - **Loading:** keep the modal open while metadata/artwork inspection completes.
 - **Partial metadata:** a source may not know every field — a YouTube video rarely
-  carries an album, and a SpotDL fallback can return less than the Spotify API
-  would. Fields the source never populated arrive marked as not-yet-known rather
+  carries an album and can return less metadata than a catalog match. Fields the
+  source never populated arrive marked as not-yet-known rather
   than silently blank, so the person can tell "nothing found" from "nothing there".
   An untouched not-yet-known field stays eligible for Last.fm gap enrichment; a
   field the person edits — including deliberately clearing it — is their answer
@@ -219,27 +216,18 @@ Browser back/forward restores the previous content view without remounting the p
 
 ### S12 — Settings
 
-**Regions:** global proxy at the top with Save and Test; provider list with enabled state, credential fields, Test, and health; **link inspection** with mode and per-provider timeouts; storage/tool diagnostics showing mounted path, free space, and required binaries.  
+**Regions:** global proxy at the top with Save and Test; supported provider list with enabled state, credential fields, Test, and health; storage/tool diagnostics showing mounted path, free space, and required binaries.
 **Primary action:** save and test the proxy, then resolve provider health.  
 **Eye first:** proxy state and last test result.
 
-- **Spotify credentials:** client id and secret, following the existing credential
-  conventions exactly — the secret is write-only, a blank value on save means
-  unchanged, and an explicit clear removes it. Unconfigured is a normal state, not
-  an error: the block says plainly that without credentials Spotify links are
-  inspected by SpotDL instead, which is slower, and links to where to obtain them.
-- **Link inspection:** a mode choice between **Fast** (default) and **Thorough**,
-  each stating its trade in one line — Fast asks Spotify directly and returns in
-  about a second; Thorough asks SpotDL, which is thorough but can take minutes on
-  a slow connection. Below it, one timeout per inspection path, each showing its
-  unit, default, and permitted range. Fast always falls back to SpotDL on failure
-  or missing credentials, and the mode copy says so, so the choice reads as "what
-  to try first", not "what is allowed".
+- **Spotify links:** no Spotify credentials are required. Chillify resolves the
+  public reference through oEmbed, shows independent catalog matches, and then
+  downloads the selected match through yt-dlp.
 - **Loading:** settings fields remain stable while health checks resolve independently.
 - **Validation:** reject malformed proxy URLs before save; credentials are never echoed after persistence. Timeouts are bounded, and a value outside its range is rejected at the field with the permitted range stated.
 - **Proxy failure:** identify connection, authentication, timeout, or unsupported-scheme failure; never suggest direct fallback.
 - **Provider error:** isolate it to that provider and show the next action. Missing Last.fm key marks enrichment optional, not globally unhealthy.
-- **Diagnostics error:** distinguish unreadable mount, low disk space, unavailable Redis, missing FFmpeg, SpotDL, or yt-dlp.
+- **Diagnostics error:** distinguish unreadable mount, low disk space, unavailable Redis, missing FFmpeg, ffprobe, or yt-dlp.
 - **Density/hierarchy:** proxy and provider recovery are direct. Redis URL, bind mounts, and LAN port are read-only deployment concerns.
 
 ### S13 — Track details/editor

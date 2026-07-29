@@ -165,11 +165,11 @@ test.describe
       // ready or degraded — either is a legitimate outcome; a crash or an
       // unavailable database is not, and either would make this assertion fail.
       expect(output).toMatch(/production_canary: ready=true degraded=(true|false)/);
-      // Every real adapter/tool this environment allows is named in the report.
-      for (const provider of ["deezer", "spotdl", "yt_dlp", "lastfm"]) {
+      // Every supported provider/tool this environment reports is named here.
+      for (const provider of ["deezer", "yt_dlp", "lastfm"]) {
         expect(output).toContain(`production_canary: provider: {"name": "${provider}"`);
       }
-      for (const tool of ["ffmpeg", "ffprobe", "yt_dlp", "spotdl", "deno"]) {
+      for (const tool of ["ffmpeg", "ffprobe", "yt_dlp"]) {
         expect(output).toContain(`production_canary: tool: {"name": "${tool}"`);
       }
       expect(output).toContain("production_canary: PASS");

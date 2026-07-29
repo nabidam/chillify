@@ -20,12 +20,9 @@ export function systemStatusFixture(overrides: Partial<SystemStatus> = {}): Syst
       { name: "ffmpeg", health: "ok", detail: null },
       { name: "ffprobe", health: "ok", detail: null },
       { name: "yt_dlp", health: "ok", detail: null },
-      { name: "spotdl", health: "ok", detail: null },
-      { name: "deno", health: "ok", detail: null },
     ],
     providers: [
       { name: "deezer", enabled: true, configured: true },
-      { name: "spotdl", enabled: true, configured: true },
       { name: "yt_dlp", enabled: true, configured: true },
       { name: "lastfm", enabled: false, configured: false },
     ],

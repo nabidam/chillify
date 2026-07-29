@@ -16,7 +16,6 @@ type ProviderDiagnosis = components["schemas"]["ProviderDiagnosisModel"];
 
 const DISPLAY_NAMES: Record<string, string> = {
   deezer: "Deezer",
-  spotdl: "SpotDL",
   yt_dlp: "YouTube (yt-dlp)",
   lastfm: "Last.fm",
 };

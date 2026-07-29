@@ -53,7 +53,7 @@ Every dependency is pinned exactly in lockfiles and container images. Renovation
 | Browser build runtime | Node.js `24.18.0` LTS, npm `12.0.1` | system Node |
 | SPA/static reverse proxy | nginx `1.30.4` | dev server in production |
 | conversion/probing | FFmpeg `8.1.2` | ad-hoc media conversion |
-| SpotDL JavaScript runtime | Deno `2.9.3` | implicit/unpinned JS runtime |
+| Historical SpotDL compatibility runtime | Deno `2.9.3` | implicit/unpinned JS runtime |
 | queue broker | operator Redis Server `8.6.1` through `REDIS_URL` | Compose-owned Redis |
 
 ### Frontend
@@ -87,7 +87,7 @@ Shadcn's `new-york-v4` registry with the Radix base is the component source of r
 | persistence/migrations | `SQLAlchemy@2.0.51`, `alembic@1.18.5` | raw application SQL |
 | background jobs | `celery@5.6.3`, `redis@8.0.1` | in-process tasks |
 | outbound HTTP/proxy | `httpx[socks]@0.28.1` | mixed HTTP clients |
-| audio acquisition | `yt-dlp@2026.7.4` (library), `spotdl@4.5.2` (isolated CLI) | home-grown extractors |
+| audio acquisition | `yt-dlp@2026.7.4` (library) | home-grown extractors |
 | media tags/images | `mutagen@1.48.1`, `pillow@12.3.0` | FFmpeg-only metadata writes |
 | multipart forms | `python-multipart@0.0.32` | manual upload parsing |
 | retry policy | `tenacity@9.1.4` | nested retry loops |
@@ -95,7 +95,11 @@ Shadcn's `new-york-v4` registry with the Radix base is the component source of r
 | safe paths/locks | `pathvalidate@3.3.1`, `filelock@3.31.1` | ad-hoc filename and lock handling |
 | stdout observability | `rich@15.0.0` | plain `print` and file logs |
 
-SpotDL is not importable alongside this stack: every `spotdl@4.x` release caps `fastapi<0.104` and `uvicorn<0.24`, which the pinned API versions exceed. SpotDL is therefore installed into its own isolated environment inside the backend image and invoked as a pinned argument-vector subprocess behind the same `LinkInspector`/`AcquisitionProvider` protocols. No SpotDL module is imported into the API or worker process, no shell is involved, and the subprocess argument/output shape is a contract-tested boundary. The isolated environment's version is pinned exactly like every other dependency.
+The cancelled SpotDL experiment is retained as an isolated compatibility adapter
+for historical data and tests, but it is not part of the supported acquisition
+path or the runtime health contract. The active acquisition path uses yt-dlp;
+the application must remain ready and non-degraded when the optional SpotDL
+environment is absent.
 
 Rich configures Python's standard `logging` pipeline with `RichHandler` and structured `extra` fields. Libraries log through `logging.getLogger(__name__)`; they never print. API and worker logs go only to stdout/stderr for `docker compose logs`, with timestamps, level, service, request/job ID, phase, provider, and redacted error context. Tracebacks are enabled for unexpected failures; secrets and proxy credentials are filtered before formatting.
 
@@ -788,7 +792,7 @@ Deployment configuration is validated at process startup:
 
 Compose contains `web`, `api`, and `worker`; it contains no Redis service. API and worker receive identical, explicit bind mounts for data and music. The worker runs Celery with concurrency/prefetch one. Containers run as `CHILLIFY_UID:CHILLIFY_GID`, use read-only root filesystems where tool behavior permits, and have only their required writable mounts/tmpfs. A one-shot preflight reports the exact path and expected UID/GID, then fails before migration if either mounted root is absent, not a normal filesystem, or not writable by that identity.
 
-Application Settings store provider enabled flags and the optional proxy/Last.fm key. The initial migration enables Deezer, SpotDL, and yt-dlp, and disables Last.fm until a key is configured. A missing required provider settings row after migration is configuration corruption: that provider is disabled, Settings shows a repairable error, and no implementation-specific fallback is guessed. Secrets are encrypted with Fernet before SQLite; GET returns only `configured: true/false` and masked proxy username/host. A blank credential on PATCH means “unchanged”; explicit `clear_secret: true` removes it. The key is never stored in SQLite, image, Compose file, or logs. `.env.example` names the required key and includes a safe generation command; startup fails with a named error if it is missing, malformed, or cannot decrypt existing settings.
+Application Settings expose supported provider enabled flags and the optional proxy/Last.fm key. The active settings contract supports Deezer and yt-dlp, and disables Last.fm until a key is configured. Legacy SpotDL rows may remain in an existing database, but are not returned by the active Settings or system-status views. A missing required provider settings row after migration is configuration corruption: that provider is disabled, Settings shows a repairable error, and no implementation-specific fallback is guessed. Secrets are encrypted with Fernet before SQLite; GET returns only `configured: true/false` and masked proxy username/host. A blank credential on PATCH means “unchanged”; explicit `clear_secret: true` removes it. The key is never stored in SQLite, image, Compose file, or logs. `.env.example` names the required key and includes a safe generation command; startup fails with a named error if it is missing, malformed, or cannot decrypt existing settings.
 
 ## 13. Threat model
 
@@ -1112,6 +1116,14 @@ request returned `403 Active premium subscription required for the owner of the
 app`. The project will not pay for Premium, so cycle 002 is archived rather
 than released. Its implementation and evidence remain available for a future
 provider-feasibility review; cycle 003 is the next active roadmap item.
+
+### 2026-07-29 — Retire SpotDL from active health and settings surfaces
+
+The supported Spotify-link flow resolves a public reference to independent
+catalog results and downloads through yt-dlp. SpotDL is therefore optional
+historical compatibility code, not a required deployment tool; missing SpotDL
+or Deno must not make the shell warn that new downloads may fail or expose a
+retired provider in Settings.
 
 ### 2026-07-20 — Independent review arbitration
 

@@ -36,10 +36,11 @@ PROXY_KEY: Final = "proxy"
 INSPECTION_KEY: Final = "inspection"
 SPOTIFY_API_KEY: Final = "provider.spotify_api"
 
-# Providers whose settings row this service edits, and whether each one carries
-# a credential. Only Last.fm has a key; the rest are configured as soon as they
-# are enabled.
-_PROVIDER_NAMES: Final = ("deezer", "spotdl", "yt_dlp", "lastfm")
+# Supported providers whose settings row this service edits, and whether each
+# one carries a credential. Legacy rows remain in SQLite so existing databases
+# can upgrade without a destructive migration, but they are not surfaced or
+# editable after the provider was retired.
+_PROVIDER_NAMES: Final = ("deezer", "yt_dlp", "lastfm")
 _CREDENTIALLED: Final = frozenset({"lastfm"})
 
 

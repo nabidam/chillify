@@ -56,23 +56,20 @@ logger = logging.getLogger(__name__)
 TOOL_PROBE_TIMEOUT_SECONDS: Final = 5.0
 REDIS_PROBE_TIMEOUT_SECONDS: Final = 2.0
 
-# Tools the acquisition path shells out to, as argument vectors. There is no
-# shell involved and no metadata ever reaches these argument lists.
+# Tools used by the supported acquisition path, as argument vectors. There is
+# no shell involved and no metadata ever reaches these argument lists.
 #
 # The third element names an environment variable holding an absolute path to
-# the executable. SpotDL in particular lives in an isolated environment that is
-# deliberately kept off PATH, so it is only reachable through its variable.
+# the executable. Historical provider adapters are intentionally not included:
+# an abandoned optional adapter must not make the whole application degraded.
 _TOOL_PROBES: Final = (
     ("ffmpeg", ("ffmpeg", "-version"), "CHILLIFY_FFMPEG_BIN"),
     ("ffprobe", ("ffprobe", "-version"), "CHILLIFY_FFPROBE_BIN"),
     ("yt_dlp", ("yt-dlp", "--version"), "CHILLIFY_YT_DLP_BIN"),
-    ("spotdl", ("spotdl", "--version"), "CHILLIFY_SPOTDL_BIN"),
-    ("deno", ("deno", "--version"), "CHILLIFY_DENO_BIN"),
 )
 
 _PROVIDER_KEYS: Final = (
     "provider.deezer",
-    "provider.spotdl",
     "provider.yt_dlp",
     "provider.lastfm",
 )

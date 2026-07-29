@@ -4,13 +4,13 @@ Every other integration/contract test in this suite deliberately runs against
 `gate_composition` (fixture adapters, disposable Redis) so no test needs a live
 provider. This file is the one place that proves the *other* half of the
 composition root: `build_composition` against a `CHILLIFY_ENV=production`
-environment binds the real Deezer/SpotDL/yt-dlp/HTTP-artwork classes named in
-ARCHITECTURE's registry table, and `system_status()` reaches a legitimate
-ready-or-degraded state on a disposable root — without calling out to any
-provider. Building the registry only imports and instantiates adapters; it
-never invokes them, so this stays true to "provider tests never need live
-network" while still proving the classes bound are the real ones, not
-fixtures.
+environment binds the real Deezer/yt-dlp/HTTP-artwork classes named in
+ARCHITECTURE's active registry table (plus historical SpotDL compatibility
+adapters), and `system_status()` reaches a legitimate ready-or-degraded state
+on a disposable root — without calling out to any provider. Building the
+registry only imports and instantiates adapters; it never invokes them, so this
+stays true to "provider tests never need live network" while still proving the
+classes bound are the real ones, not fixtures.
 
 The script-level behavior of `scripts/production_canary.sh` (household-root
 refusal, live docker compose, network-failure handling) is covered at two
@@ -256,9 +256,9 @@ class TestReadyAndDegradedStates:
     ) -> None:
         status = production_composition.system_status()
         tool_names = {tool.name for tool in status.tools}
-        assert tool_names == {"ffmpeg", "ffprobe", "yt_dlp", "spotdl", "deno"}
+        assert tool_names == {"ffmpeg", "ffprobe", "yt_dlp"}
         provider_names = {provider.name for provider in status.providers}
-        assert provider_names == {"deezer", "spotdl", "yt_dlp", "lastfm"}
+        assert provider_names == {"deezer", "yt_dlp", "lastfm"}
 
 
 def _run(*arguments: str) -> subprocess.CompletedProcess[str]:
