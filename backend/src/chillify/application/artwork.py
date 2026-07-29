@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -22,8 +22,9 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from chillify.domain.errors import ProviderDisabledError
+from chillify.domain.errors import ArtworkUnreadableError, ProviderDisabledError
 from chillify.domain.models import ArtworkOrigin, ArtworkStage
+from chillify.domain.protocols import MetadataPatch, TrackCandidate
 from chillify.infrastructure.db.repositories import ArtworkStageRepository
 from chillify.infrastructure.media.artwork import (
     ARTWORK_MIME_TYPE,
@@ -46,12 +47,21 @@ ARTWORK_STAGE_LIFETIME = timedelta(hours=1)
 
 
 @dataclass(frozen=True, slots=True)
+class LastfmArtworkStage:
+    """A Last.fm cover stage plus the missing metadata found beside it."""
+
+    stage: ArtworkStage
+    metadata: MetadataPatch
+
+
+@dataclass(frozen=True, slots=True)
 class ArtworkService:
     """Validating, normalizing, and staging one replacement cover image."""
 
     session_factory: sessionmaker[Session]
     music_root: Path
     registry: ProviderRegistry
+    proxy_provider: Callable[[], str | None] = lambda: None
 
     @contextmanager
     def _transaction(self) -> Iterator[Session]:
@@ -84,23 +94,70 @@ class ArtworkService:
                 context={"origin": str(ArtworkOrigin.URL)},
             )
         with self._workspace() as workspace:
-            artifact = fetcher.fetch(url, str(workspace), None)
+            artifact = fetcher.fetch(url, str(workspace), self.proxy_provider())
             data = Path(artifact.location).read_bytes()
         return self._stage(data, origin=ArtworkOrigin.URL)
 
-    def stage_from_lastfm(self, *, artist: str, title: str, album: str | None) -> ArtworkStage:
-        """Stage the best cover Last.fm has for one track, when it has any."""
-        fetcher = self.registry.artwork.get("lastfm")
-        if fetcher is None:
+    def stage_from_lastfm(
+        self, *, artist: str, title: str, album: str | None
+    ) -> LastfmArtworkStage:
+        """Stage Last.fm art and return the metadata gaps from the same lookup."""
+        enricher = self.registry.metadata_enricher()
+        if enricher is None:
             raise ProviderDisabledError(
                 "Last.fm cover lookup is not configured for this deployment.",
                 context={"origin": str(ArtworkOrigin.LASTFM)},
             )
-        query = " ".join(part for part in (artist, album, title) if part)
+
+        candidate = TrackCandidate(
+            provider="lastfm",
+            source_id=None,
+            source_url="",
+            title=title,
+            artist=artist,
+            album=album,
+            release_year=None,
+            disc_number=None,
+            track_number=None,
+            duration_ms=None,
+            isrc=None,
+            artwork_url=None,
+            acquisition_locator="",
+            raw_fingerprint=None,
+        )
+        missing_fields = tuple(
+            field
+            for field, value in (("title", title), ("artist", artist), ("album", album))
+            if value is None or value.strip() == ""
+        )
+        try:
+            metadata = enricher.enrich(
+                candidate,
+                (*missing_fields, "artwork_url"),
+                self.proxy_provider(),
+            )
+        except Exception:
+            # The enrichment adapter normally turns provider failures into an
+            # empty patch, but the artwork action remains optional if a custom
+            # adapter fails before it can do that.
+            metadata = MetadataPatch()
+        if metadata.artwork_url is None:
+            raise ArtworkUnreadableError("Last.fm did not return a usable cover for this track.")
+
+        fetcher = self.registry.artwork.get("url")
+        if fetcher is None:
+            raise ProviderDisabledError(
+                "Fetching cover art is unavailable in this deployment.",
+                context={"origin": str(ArtworkOrigin.LASTFM)},
+            )
+
         with self._workspace() as workspace:
-            artifact = fetcher.fetch(query, str(workspace), None)
+            artifact = fetcher.fetch(metadata.artwork_url, str(workspace), self.proxy_provider())
             data = Path(artifact.location).read_bytes()
-        return self._stage(data, origin=ArtworkOrigin.LASTFM)
+        return LastfmArtworkStage(
+            stage=self._stage(data, origin=ArtworkOrigin.LASTFM),
+            metadata=metadata,
+        )
 
     def prune_expired(self) -> int:
         """Remove unconsumed stages past their hour, and their files.

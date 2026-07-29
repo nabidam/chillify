@@ -206,7 +206,7 @@ The initial registry is:
 | Spotify oEmbed | reference resolver | one public Spotify track title/reference without credentials; never a complete candidate or audio |
 | SpotDL | `LinkInspector`, `AcquisitionProvider` | historical/advanced Spotify compatibility behind the isolated CLI boundary; not the supported UI path |
 | yt-dlp | `LinkInspector`, `AcquisitionProvider` | one YouTube video, or one audio match for a catalog candidate |
-| Last.fm | `MetadataEnricher` | optional missing metadata/artwork only |
+| Last.fm | `MetadataEnricher` | optional missing metadata/artwork for downloads and Track Details |
 | HTTP artwork | `ArtworkFetcher` | provider/user URL retrieval through validated outbound policy |
 
 ## 4. Data model
@@ -491,7 +491,7 @@ Idempotency responses are retained for 24 hours in `api_idempotency` and pruned 
 | `GET /tracks/{id}/stream` | `Range` optional → `audio/mpeg`, ranges, ETag | player |
 | `POST /artwork/stages/upload` | multipart image → one-hour artwork stage | S5, S13 |
 | `POST /artwork/stages/url` | `{url}` → one-hour artwork stage | S5, S13 |
-| `POST /artwork/stages/lastfm` | `{artist,title,album?}` → best-match artwork stage or miss | S5, S13 |
+| `POST /artwork/stages/lastfm` | `{artist,title,album?}` → `{stage, metadata}` from one Last.fm lookup, or miss | S5, S13 |
 | `PATCH /tracks/{id}` | complete metadata + optional `artwork_stage_id` + `If-Match` → atomically updated track | S13 |
 | `GET /tracks/{id}/delete-impact` | — → server-owned playlist count | S15 |
 | `DELETE /tracks/{id}` | `If-Match` → `204` | S15 |
@@ -518,6 +518,12 @@ Idempotency responses are retained for 24 hours in `api_idempotency` and pruned 
 | `POST /settings/providers/{provider}/test` | — → diagnostic result | S12 |
 
 Artwork-stage endpoints validate, normalize, and store a JPEG beneath `.chillify/staging/artwork/{stage-id}.jpg`; they do not mutate a track. A stage expires after one hour, is single-use, and is consumed only inside the final track-edit or download-publication transaction. S13 therefore has one Save mutation covering metadata, ID3 artwork, external artwork, path, and database revision. S5 can use the same stage token in its immutable reviewed download request. Expired, missing, or consumed tokens return `409 artwork_stage_unavailable`; periodic/startup cleanup removes unconsumed expired files and rows.
+
+The Last.fm stage action uses one `track.getInfo` lookup for the cover URL and
+the fields that are absent in the submitted identity. It fetches and validates
+the returned image through the regular artwork URL policy, and returns the
+staged cover together with the metadata gap patch; neither result changes the
+track until S13 Save consumes the stage.
 
 Profiles deliberately have no rename/delete endpoint. Playlists deliberately have no delete endpoint in v1. Favorites have no endpoint. The session queue has no endpoint.
 

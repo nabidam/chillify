@@ -5,6 +5,7 @@ import {
   type ArtworkStage,
   api,
   artworkStageUrl,
+  type LastfmArtworkStage,
   trackArtworkUrl,
   unwrap,
 } from "@/api/client";
@@ -25,6 +26,7 @@ export function ArtworkPicker({
   hasArtwork,
   stage,
   onStaged,
+  onLastfmMetadata,
   disabled,
   identity,
 }: {
@@ -34,6 +36,7 @@ export function ArtworkPicker({
   /** The stage this editor has chosen but not yet saved. */
   stage: ArtworkStage | null;
   onStaged: (stage: ArtworkStage | null) => void;
+  onLastfmMetadata: (metadata: LastfmArtworkStage["metadata"]) => void;
   disabled: boolean;
   /** Current field values, so a Last.fm lookup follows the edits on screen. */
   identity: { artist: string; title: string; album: string | null };
@@ -56,6 +59,32 @@ export function ArtworkPicker({
         failure instanceof ApiRequestError
           ? failure.message
           : "That cover image could not be prepared.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function lookupLastfm() {
+    setBusy(true);
+    setWarning(null);
+    try {
+      const result = unwrap(
+        await api.POST("/api/v1/artwork/stages/lastfm", {
+          body: {
+            artist: identity.artist,
+            title: identity.title,
+            album: identity.album,
+          },
+        }),
+      );
+      onStaged(result.stage);
+      onLastfmMetadata(result.metadata);
+    } catch (failure) {
+      setWarning(
+        failure instanceof ApiRequestError
+          ? failure.message
+          : "That Last.fm lookup could not be completed.",
       );
     } finally {
       setBusy(false);
@@ -129,19 +158,7 @@ export function ArtworkPicker({
             size="sm"
             className="gap-2"
             disabled={disabled || isBusy || identity.artist === "" || identity.title === ""}
-            onClick={() =>
-              void stageWith(async () =>
-                unwrap(
-                  await api.POST("/api/v1/artwork/stages/lastfm", {
-                    body: {
-                      artist: identity.artist,
-                      title: identity.title,
-                      album: identity.album,
-                    },
-                  }),
-                ),
-              )
-            }
+            onClick={() => void lookupLastfm()}
           >
             Last.fm
           </Button>

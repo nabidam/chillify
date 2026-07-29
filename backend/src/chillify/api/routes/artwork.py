@@ -19,6 +19,8 @@ from chillify.api.schemas.artwork import (
     ArtworkLastfmRequest,
     ArtworkStageModel,
     ArtworkUrlRequest,
+    LastfmArtworkStageModel,
+    LastfmMetadataModel,
 )
 from chillify.application.artwork import ArtworkService
 from chillify.application.metadata import MetadataService
@@ -73,16 +75,25 @@ def stage_artwork_from_url(
 
 @router.post(
     "/artwork/stages/lastfm",
-    response_model=ArtworkStageModel,
+    response_model=LastfmArtworkStageModel,
     status_code=status.HTTP_201_CREATED,
     summary="Stage Last.fm's best cover for one track",
 )
 def stage_artwork_from_lastfm(
     request: ArtworkLastfmRequest,
     artwork: Annotated[ArtworkService, Depends(get_artwork_service)],
-) -> ArtworkStageModel:
-    return ArtworkStageModel.of(
-        artwork.stage_from_lastfm(artist=request.artist, title=request.title, album=request.album)
+) -> LastfmArtworkStageModel:
+    result = artwork.stage_from_lastfm(
+        artist=request.artist, title=request.title, album=request.album
+    )
+    return LastfmArtworkStageModel(
+        stage=ArtworkStageModel.of(result.stage),
+        metadata=LastfmMetadataModel(
+            title=result.metadata.title,
+            artist=result.metadata.artist,
+            album=result.metadata.album,
+            duration_ms=result.metadata.duration_ms,
+        ),
     )
 
 

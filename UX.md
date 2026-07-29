@@ -232,7 +232,7 @@ Browser back/forward restores the previous content view without remounting the p
 
 ### S13 — Track details/editor
 
-**Regions:** playback identity and availability; editable title, artist, album, year, disc/track number; artwork preview with Upload, URL, and Last.fm actions; source identities; Save; destructive Delete action at the end.  
+**Regions:** playback identity and availability; editable title, artist, album, year, disc/track number; artwork preview with Upload, URL, and Last.fm actions; source identities; Save; destructive Delete action at the end. Last.fm stages the cover and fills any currently missing metadata it returns; Save remains the one mutation.
 **Primary action:** save corrected metadata consistently.  
 **Eye first:** title/artist and artwork.
 

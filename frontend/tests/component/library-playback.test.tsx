@@ -95,6 +95,9 @@ describe("persistent playback", () => {
     });
     const player = screen.getByLabelText("Player");
     expect(player.textContent).toContain("Hoppipolla");
+    expect(player.querySelector("img")?.getAttribute("src")).toBe(
+      `/media/artwork/tracks/${trackSummaryFixture().id}?v=${trackSummaryFixture().revision}`,
+    );
     expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
   });
 

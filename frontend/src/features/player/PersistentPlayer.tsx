@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Music2Icon, PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } from "lucide-react";
-import type { TrackSummary } from "@/api/client";
+import { useState } from "react";
+import { type TrackSummary, trackArtworkUrl } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -45,12 +46,10 @@ export function PersistentPlayer() {
       <audio ref={audioRef} preload="metadata" />
 
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <div
-          aria-hidden="true"
-          className="flex size-cover-sm shrink-0 items-center justify-center rounded-sm bg-cover-placeholder"
-        >
-          <Music2Icon className="size-4 text-foreground-subtle" />
-        </div>
+        <TrackCover
+          key={track === null ? "empty" : `${track.id}:${track.revision}`}
+          track={track}
+        />
         <div className="min-w-0">
           {hasTrack && track ? (
             <>
@@ -154,6 +153,32 @@ export function PersistentPlayer() {
         <QueueDrawer />
       </div>
     </section>
+  );
+}
+
+/** The current cover, with the existing music placeholder for missing art. */
+function TrackCover({ track }: { track: TrackSummary | null }) {
+  const [failedSource, setFailedSource] = useState<string | null>(null);
+  const source = track === null ? null : trackArtworkUrl(track.id, track.revision);
+  const showArtwork = source !== null && source !== failedSource;
+
+  return (
+    <div
+      aria-hidden="true"
+      className="flex size-cover-sm shrink-0 items-center justify-center overflow-hidden rounded-sm bg-cover-placeholder"
+    >
+      {showArtwork ? (
+        <img
+          key={source}
+          src={source}
+          alt=""
+          className="size-full object-cover"
+          onError={() => setFailedSource(source)}
+        />
+      ) : (
+        <Music2Icon className="size-4 text-foreground-subtle" />
+      )}
+    </div>
   );
 }
 

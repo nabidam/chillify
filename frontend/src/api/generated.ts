@@ -1229,6 +1229,28 @@ export interface components {
             version: number;
         };
         /**
+         * LastfmArtworkStageModel
+         * @description One staged Last.fm cover and the same lookup's metadata gap fill.
+         */
+        LastfmArtworkStageModel: {
+            metadata: components["schemas"]["LastfmMetadataModel"];
+            stage: components["schemas"]["ArtworkStageModel"];
+        };
+        /**
+         * LastfmMetadataModel
+         * @description Metadata gaps returned beside a Last.fm artwork stage.
+         */
+        LastfmMetadataModel: {
+            /** Album */
+            album?: string | null;
+            /** Artist */
+            artist?: string | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Title */
+            title?: string | null;
+        };
+        /**
          * LibrarySort
          * @description The orderings `GET /library/tracks` accepts.
          * @enum {string}
@@ -1892,7 +1914,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ArtworkStageModel"];
+                    "application/json": components["schemas"]["LastfmArtworkStageModel"];
                 };
             };
             /** @description Error envelope */

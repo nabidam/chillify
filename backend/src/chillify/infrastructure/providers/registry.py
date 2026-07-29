@@ -9,8 +9,9 @@ Production adapters are bound in production mode and the fixture adapters in gat
 mode, against the same protocols. A production process never imports fixture
 code, and a gate process never imports a real provider package; the two branches
 below keep that separation an import-time fact, not a runtime check. The Last.fm
-enricher and the Last.fm cover fetcher are not bound here: both need the
-DB-stored API key, which this Settings-only builder cannot read.
+enricher is exposed as a lazy factory because it reads the DB-stored API key;
+the Track Details cover action reuses that lookup and the regular HTTP artwork
+fetcher rather than maintaining a second Last.fm image adapter.
 """
 
 from __future__ import annotations

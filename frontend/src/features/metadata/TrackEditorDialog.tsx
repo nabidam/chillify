@@ -147,6 +147,33 @@ export function TrackEditorDialog({
     setFields((current) => (current === null ? current : { ...current, [key]: value }));
   }
 
+  function applyLastfmMetadata(metadata: {
+    title?: string | null;
+    artist?: string | null;
+    album?: string | null;
+  }) {
+    setFields((current) => {
+      if (current === null) {
+        return current;
+      }
+      return {
+        ...current,
+        title:
+          current.title.trim() === "" && metadata.title != null
+            ? metadata.title
+            : current.title,
+        artist:
+          current.artist.trim() === "" && metadata.artist != null
+            ? metadata.artist
+            : current.artist,
+        album:
+          current.album.trim() === "" && metadata.album != null
+            ? metadata.album
+            : current.album,
+      };
+    });
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!isLoaded || isSaving || blankField !== null || isMissingFile) {
@@ -215,6 +242,7 @@ export function TrackEditorDialog({
                 hasArtwork={detail.data.has_artwork}
                 stage={stage}
                 onStaged={setStage}
+                onLastfmMetadata={applyLastfmMetadata}
                 disabled={isSaving || isMissingFile}
                 identity={{
                   artist: fields.artist.trim(),

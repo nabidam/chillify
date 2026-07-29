@@ -199,6 +199,40 @@ describe("S13 track editor", () => {
 });
 
 describe("S13 artwork", () => {
+  it("uses Last.fm to stage art and fill an empty metadata field", async () => {
+    serveDetail(
+      trackDetailFixture({
+        track: trackSummaryFixture({ album: null }),
+      }),
+    );
+    const bodies: Array<{ album: string | null; artwork_stage_id: string | null }> = [];
+    server.use(
+      http.post("/api/v1/artwork/stages/lastfm", () =>
+        HttpResponse.json({
+          stage: artworkStageFixture({ origin: "lastfm" }),
+          metadata: { title: null, artist: null, album: "Mezzanine", duration_ms: null },
+        }),
+      ),
+      http.patch("/api/v1/tracks/:trackId", async ({ request }) => {
+        bodies.push((await request.json()) as (typeof bodies)[number]);
+        return HttpResponse.json(trackDetailFixture({ has_artwork: true }));
+      }),
+    );
+    const user = userEvent.setup();
+    renderLibrary();
+    await openEditor(user);
+
+    await user.click(screen.getByRole("button", { name: "Last.fm" }));
+
+    expect((await screen.findByLabelText("Album")).getAttribute("value")).toBe("Mezzanine");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(bodies.length).toBe(1));
+    expect(first(bodies)).toMatchObject({
+      album: "Mezzanine",
+      artwork_stage_id: artworkStageFixture({ origin: "lastfm" }).id,
+    });
+  });
+
   it("stages an uploaded cover and applies it only on save", async () => {
     serveDetail();
     let staged = false;

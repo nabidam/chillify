@@ -51,3 +51,19 @@ class ArtworkLastfmRequest(BaseModel):
     artist: str = Field(min_length=1, max_length=200)
     title: str = Field(min_length=1, max_length=200)
     album: str | None = Field(default=None, max_length=200)
+
+
+class LastfmMetadataModel(BaseModel):
+    """Metadata gaps returned beside a Last.fm artwork stage."""
+
+    title: str | None = None
+    artist: str | None = None
+    album: str | None = None
+    duration_ms: int | None = None
+
+
+class LastfmArtworkStageModel(BaseModel):
+    """One staged Last.fm cover and the same lookup's metadata gap fill."""
+
+    stage: ArtworkStageModel
+    metadata: LastfmMetadataModel

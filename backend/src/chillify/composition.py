@@ -165,6 +165,7 @@ class Composition:
             session_factory=self.session_factory,
             music_root=self.settings.music_root,
             registry=self.registry,
+            proxy_provider=self.settings_service().current_proxy_url,
         )
 
     def search_service(self) -> SearchService:

@@ -14,7 +14,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
+import respx
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
@@ -170,6 +172,60 @@ class TestDocumentedShape:
 
 
 class TestServedShape:
+    def test_lastfm_lookup_stages_cover_and_returns_missing_metadata(
+        self, client: TestClient, seeded_track: str
+    ) -> None:
+        settings = client.get("/api/v1/settings").json()
+        lastfm = next(
+            provider for provider in settings["providers"] if provider["name"] == "lastfm"
+        )
+        saved = client.patch(
+            "/api/v1/settings/providers/lastfm",
+            json={
+                "enabled": True,
+                "credential": "test-lastfm-key",
+                "revision": lastfm["revision"],
+            },
+        )
+        assert saved.status_code == 200
+
+        with respx.mock:
+            respx.get("https://ws.audioscrobbler.com/2.0/").mock(
+                return_value=httpx.Response(
+                    200,
+                    json={
+                        "track": {
+                            "name": "Hoppipolla",
+                            "artist": {"name": "Sigur Ros"},
+                            "album": {
+                                "title": "Takk",
+                                "image": [
+                                    {"#text": "https://img.invalid/takk.jpg", "size": "large"}
+                                ],
+                            },
+                        }
+                    },
+                )
+            )
+            respx.get("https://img.invalid/takk.jpg").mock(
+                return_value=httpx.Response(200, content=_cover_bytes())
+            )
+            response = client.post(
+                "/api/v1/artwork/stages/lastfm",
+                json={"artist": "Sigur Ros", "title": "Hoppipolla", "album": None},
+            )
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["stage"]["origin"] == "lastfm"
+        assert body["metadata"] == {
+            "title": None,
+            "artist": None,
+            "album": "Takk",
+            "duration_ms": None,
+        }
+        assert seeded_track not in response.text
+
     def test_patching_a_track_returns_the_documented_detail_shape(
         self, client: TestClient, seeded_track: str
     ) -> None:
