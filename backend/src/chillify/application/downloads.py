@@ -420,23 +420,66 @@ class DownloadService:
         }
 
     def _fetch_artwork(self, candidate: TrackCandidate, workspace: Path) -> Path | None:
-        """Fetch a candidate cover best-effort through the registered policy."""
-        if candidate.artwork_url is None:
+        """Fetch catalog art, then try the enricher when that URL fails."""
+        fetcher = self.registry.artwork.get("url")
+        if fetcher is None:
             return None
+        proxy = self.proxy_provider()
+        if candidate.artwork_url is not None:
+            artwork = self._fetch_artwork_url(
+                candidate.artwork_url,
+                workspace=workspace,
+                proxy=proxy,
+                source="catalog",
+            )
+            if artwork is not None:
+                return artwork
+
+        # Cover Art Archive and catalog CDNs can legitimately lack one release
+        # or retire one URL. Last.fm is a secondary lookup in that case, not a
+        # prerequisite for catalog art and never a reason to fail the audio.
+        enricher = self.registry.metadata_enricher()
+        if enricher is None:
+            return None
+        try:
+            fallback = enricher.enrich(candidate, ("artwork_url",), proxy).artwork_url
+        except Exception as exc:
+            logger.info(
+                "fallback cover lookup unavailable",
+                extra={"provider": enricher.name, "reason": type(exc).__name__},
+            )
+            return None
+        if fallback is None or fallback == candidate.artwork_url:
+            return None
+        return self._fetch_artwork_url(
+            fallback,
+            workspace=workspace,
+            proxy=proxy,
+            source="enrichment",
+        )
+
+    def _fetch_artwork_url(
+        self,
+        url: str,
+        *,
+        workspace: Path,
+        proxy: str | None,
+        source: str,
+    ) -> Path | None:
         fetcher = self.registry.artwork.get("url")
         if fetcher is None:
             return None
         try:
-            artifact = fetcher.fetch(
-                candidate.artwork_url,
-                str(workspace),
-                self.proxy_provider(),
-            )
+            artifact = fetcher.fetch(url, str(workspace), proxy)
             return Path(artifact.location)
         except Exception as exc:
             logger.info(
                 "download cover art unavailable",
-                extra={"provider": fetcher.name, "reason": type(exc).__name__},
+                extra={
+                    "provider": fetcher.name,
+                    "source": source,
+                    "reason": type(exc).__name__,
+                },
             )
             return None
 

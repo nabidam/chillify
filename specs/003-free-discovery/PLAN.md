@@ -24,8 +24,9 @@ credentials, an Apple account, or a paid metadata API.
 
 - **MusicBrainz:** primary open metadata; meaningful User-Agent and one request
   per second.
-- **Apple:** fast keyless song search. Apple previews and artwork are neither
-  acquired nor persisted; the store URL is retained as provenance.
+- **Apple:** fast keyless song search. Apple previews are never acquired;
+  documented artwork is retained for the selected track, and the store URL is
+  retained as provenance.
 - **Deezer:** optional additional catalog coverage.
 - **Spotify:** oEmbed reference only. No Web API, OAuth, Premium, page scraping,
   private JSON, or Spotify audio.

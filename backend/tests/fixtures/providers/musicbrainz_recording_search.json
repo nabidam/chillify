@@ -13,6 +13,7 @@
       "isrcs": ["USQX91300108"],
       "releases": [
         {
+          "id": "eed19ecf-3bf4-36ae-ab05-4e49df76fa8b",
           "title": "Random Access Memories",
           "date": "2013-05-17",
           "release-group": { "first-release-date": "2013-05-17" }
@@ -28,8 +29,16 @@
       ],
       "isrcs": ["invalid", "GBAYE9801635"],
       "releases": [
-        { "title": "Mezzanine", "date": "1998-04-20" },
-        { "title": "Mezzanine", "date": "2009-01-01" }
+        {
+          "id": "8c529323-0e8a-4c15-aea9-c0008bf35c29",
+          "title": "Mezzanine",
+          "date": "1998-04-20"
+        },
+        {
+          "id": "02b6af28-4d2e-4431-b9fd-15e23bf93e4e",
+          "title": "Mezzanine",
+          "date": "2009-01-01"
+        }
       ]
     },
     {

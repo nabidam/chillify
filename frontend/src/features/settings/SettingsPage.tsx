@@ -86,8 +86,8 @@ function DiscoveryCard() {
       </CardHeader>
       <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
         <p>
-          Online search combines MusicBrainz, Apple, and Deezer metadata. Apple previews and
-          artwork are not downloaded or stored.
+          Online search combines MusicBrainz, Apple, and Deezer metadata. Catalog cover art is
+          saved with downloaded tracks; Apple audio previews are never used.
         </p>
         <p>
           Spotify track links use the public oEmbed reference, then ask you to choose an

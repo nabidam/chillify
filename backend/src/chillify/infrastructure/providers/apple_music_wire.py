@@ -3,8 +3,8 @@
 Apple's search response is deliberately contained here.  The discovery adapter
 and its recorded-payload tests share this parser, so no Apple response shape
 can escape into the application layer.  ``previewUrl`` is intentionally never
-read: it is promotional content, not an acquisition source.  Artwork is also
-discarded so it cannot be persisted without a separately approved usage path.
+read: it is promotional content, not an acquisition source. Documented artwork
+is retained and normalized to a useful cover size.
 """
 
 from __future__ import annotations
@@ -71,9 +71,7 @@ def _candidate_or_none(item: object) -> TrackCandidate | None:
         track_number=_positive_int(item.get("trackNumber")),
         duration_ms=_positive_int(item.get("trackTimeMillis")),
         isrc=None,
-        # Apple's documented artwork and previews are promotional content.
-        # Do not retain either until a policy-approved artwork path exists.
-        artwork_url=None,
+        artwork_url=_artwork_url(item.get("artworkUrl100")),
         # Apple does not supply audio for acquisition; yt-dlp resolves the
         # explicit, metadata-based search target under the user's control.
         acquisition_locator=f"ytsearch1:{artist} {title}",
@@ -114,6 +112,12 @@ def _https_url(value: object) -> str | None:
         return None
     parts = urlsplit(url)
     return url if parts.scheme == "https" and parts.hostname else None
+
+
+def _artwork_url(value: object) -> str | None:
+    """Keep a secure documented artwork URL and request a useful cover size."""
+    url = _https_url(value)
+    return None if url is None else url.replace("100x100", "512x512")
 
 
 def _text(value: object) -> str | None:

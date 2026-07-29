@@ -28,7 +28,7 @@ def _recorded_payload() -> dict[str, object]:
 
 
 class TestAppleMusicDiscoveryContract:
-    def test_a_match_is_normalized_without_promo_preview_or_artwork(self) -> None:
+    def test_a_match_keeps_artwork_but_never_uses_the_promo_preview(self) -> None:
         with respx.mock:
             route = respx.get(_SEARCH_URL).mock(
                 return_value=httpx.Response(200, json=_recorded_payload())
@@ -50,7 +50,10 @@ class TestAppleMusicDiscoveryContract:
         assert first.disc_number == 1
         assert first.track_number == 1
         assert first.duration_ms == 320000
-        assert first.artwork_url is None
+        assert (
+            first.artwork_url
+            == "https://is1-ssl.mzstatic.com/image/thumb/Music.example/512x512bb.jpg"
+        )
         assert first.acquisition_locator == "ytsearch1:Daft Punk One More Time"
         assert "preview" not in first.acquisition_locator.lower()
         assert all(not candidate.is_playable for candidate in results)
@@ -111,6 +114,16 @@ class TestAppleMusicDiscoveryContract:
         )
 
         assert results == ()
+
+    def test_insecure_artwork_is_dropped_without_losing_the_track(self) -> None:
+        payload = _recorded_payload()
+        first = payload["results"][0]
+        assert isinstance(first, dict)
+        first["artworkUrl100"] = "http://images.invalid/100x100bb.jpg"
+
+        candidate = candidates_from_search(payload)[0]
+
+        assert candidate.artwork_url is None
 
 
 @pytest.mark.integration

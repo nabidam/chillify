@@ -198,7 +198,7 @@ The initial registry is:
 |---|---|---|
 | Deezer | `DiscoveryProvider` | keyless matching-track search and metadata; never audio |
 | MusicBrainz | `DiscoveryProvider` | primary keyless/open recording search; never audio |
-| Apple iTunes Search | `DiscoveryProvider` | fast keyless song metadata and store provenance; never previews, artwork persistence, or audio |
+| Apple iTunes Search | `DiscoveryProvider` | fast keyless song metadata, artwork, and store provenance; never previews or audio |
 | Spotify oEmbed | reference resolver | one public Spotify track title/reference without credentials; never a complete candidate or audio |
 | SpotDL | `LinkInspector`, `AcquisitionProvider` | historical/advanced Spotify compatibility behind the isolated CLI boundary; not the supported UI path |
 | yt-dlp | `LinkInspector`, `AcquisitionProvider` | one YouTube video, or one audio match for a catalog candidate |
@@ -548,7 +548,9 @@ All outbound HTTP uses one `httpx.Client` factory. If a proxy is saved, it is su
 
 - Request: `GET https://itunes.apple.com/search?term={query}&media=music&entity=song&country=US&limit={1..50}`.
 - Accepted song fields include Apple IDs/store URL, title, artist, collection, release date, disc/track number, and duration.
-- Preview URLs are ignored and Apple artwork is not persisted. Apple supplies metadata/store provenance only; acquisition uses `ytsearch1:{artist} {title}`.
+- Preview URLs are ignored. Documented Apple artwork URLs are retained for the
+  selected track; Apple supplies metadata/store provenance only, while audio
+  acquisition uses `ytsearch1:{artist} {title}`.
 
 ### Spotify oEmbed
 

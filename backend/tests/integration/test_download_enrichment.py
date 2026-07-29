@@ -130,9 +130,83 @@ class TestOnlineDownloadEnrichment:
         assert cover.read_bytes().startswith(b"\xff\xd8")
 
         audio = next(gate_composition.settings.music_root.glob("Music/**/*.mp3"))
-        tags = ID3(audio)
-        assert tags.getall("APIC"), "the published MP3 should embed its front cover"
-        assert tags.getall("TPOS")[0].text == ["2"]
+        tags = ID3(audio)  # type: ignore[no-untyped-call]
+        assert tags.getall(  # type: ignore[no-untyped-call]
+            "APIC"
+        ), "the published MP3 should embed its front cover"
+        assert tags.getall("TPOS")[0].text == ["2"]  # type: ignore[no-untyped-call]
+
+    def test_a_dead_catalog_cover_falls_back_to_enriched_artwork(
+        self,
+        gate_downloads: DownloadService,
+        gate_composition: Composition,
+    ) -> None:
+        class _CoverFallback:
+            name = "fallback-enricher"
+
+            def enrich(
+                self,
+                candidate: TrackCandidate,
+                missing_fields: Sequence[str],
+                proxy: str | None,
+            ) -> MetadataPatch:
+                assert missing_fields == ("artwork_url",)
+                return MetadataPatch(artwork_url="https://covers.invalid/fallback.jpg")
+
+        class _CatalogThenFallbackFetcher:
+            name = "catalog-then-fallback"
+
+            def __init__(self) -> None:
+                self.sources: list[str] = []
+
+            def fetch(
+                self,
+                source: str,
+                workspace: str,
+                proxy: str | None,
+            ) -> ImageArtifact:
+                self.sources.append(source)
+                if source.endswith("/front-500"):
+                    raise RuntimeError("release has no front cover")
+                buffer = io.BytesIO()
+                Image.new("RGB", (4, 4), color=(120, 40, 80)).save(buffer, format="JPEG")
+                target = Path(workspace) / "cover.jpg"
+                target.write_bytes(buffer.getvalue())
+                return ImageArtifact(location=str(target), byte_size=target.stat().st_size)
+
+        existing = gate_composition.registry
+        fetcher = _CatalogThenFallbackFetcher()
+        service = replace(
+            gate_downloads,
+            registry=ProviderRegistry(
+                discovery=existing.discovery,
+                acquisition=existing.acquisition,
+                metadata_enricher=lambda: _CoverFallback(),
+                artwork={"url": fetcher},
+            ),
+        )
+        candidate = replace(
+            _online_candidate(),
+            album="Catalog Album",
+            release_year=2005,
+            duration_ms=253_000,
+            artwork_url=(
+                "https://coverartarchive.org/release/eed19ecf-3bf4-36ae-ab05-4e49df76fa8b/front-500"
+            ),
+        )
+        job = service.request_download(candidate, SourceType.DEEZER_RESULT)
+
+        service.run_job(job.id)
+
+        detail = service.get_job(job.id)
+        assert detail.job.state.value == "completed"
+        track_id = detail.job.result_track_id
+        assert track_id is not None
+        assert gate_composition.metadata_service().open_artwork(track_id) is not None
+        assert fetcher.sources == [
+            candidate.artwork_url,
+            "https://covers.invalid/fallback.jpg",
+        ]
 
     def test_enrichment_and_artwork_failures_do_not_fail_the_audio(
         self,

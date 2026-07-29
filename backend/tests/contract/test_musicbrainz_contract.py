@@ -30,7 +30,7 @@ def _recorded_payload() -> dict[str, object]:
 
 
 class TestMusicBrainzDiscoveryContract:
-    def test_a_match_is_normalized_without_an_artwork_or_audio_claim(self) -> None:
+    def test_a_match_carries_cover_art_without_an_audio_claim(self) -> None:
         with respx.mock:
             route = respx.get(_SEARCH_URL).mock(
                 return_value=httpx.Response(200, json=_recorded_payload())
@@ -50,7 +50,10 @@ class TestMusicBrainzDiscoveryContract:
         assert first.release_year == 2013
         assert first.duration_ms == 337560
         assert first.isrc == "USQX91300108"
-        assert first.artwork_url is None
+        assert (
+            first.artwork_url == "https://coverartarchive.org/release/"
+            "eed19ecf-3bf4-36ae-ab05-4e49df76fa8b/front-500"
+        )
         assert first.acquisition_locator == "ytsearch1:Daft Punk Instant Crush"
         assert all(not candidate.is_playable for candidate in results)
 
@@ -105,6 +108,16 @@ class TestMusicBrainzDiscoveryContract:
 
         candidate = candidates_from_recording_search(payload)[0]
         assert candidate.album is None
+
+    def test_a_release_without_a_valid_mbid_makes_no_cover_claim(self) -> None:
+        payload = _recorded_payload()
+        recording = payload["recordings"][0]
+        assert isinstance(recording, dict)
+        recording["releases"] = [{"id": "not-an-mbid", "title": "Album"}]
+
+        candidate = candidates_from_recording_search(payload)[0]
+
+        assert candidate.artwork_url is None
 
     def test_throttle_is_adapter_local_and_clock_testable(self) -> None:
         clock_values = iter((0.0, 0.0, 1.0))

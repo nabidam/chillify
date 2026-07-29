@@ -17,6 +17,7 @@ from chillify.domain.normalization import normalize_isrc
 from chillify.domain.protocols import TrackCandidate
 
 PROVIDER_NAME: Final = "musicbrainz"
+_COVER_ART_BASE: Final = "https://coverartarchive.org/release"
 
 
 def candidates_from_recording_search(payload: object) -> tuple[TrackCandidate, ...]:
@@ -56,9 +57,10 @@ def _candidate_or_none(recording: object) -> TrackCandidate | None:
         track_number=None,
         duration_ms=_positive_int(recording.get("length")),
         isrc=_first_valid_isrc(recording.get("isrcs")),
-        # Cover Art Archive is deliberately not contacted in the search path.
-        # A selected candidate can be enriched separately if artwork is wanted.
-        artwork_url=None,
+        # MusicBrainz search includes release MBIDs. Cover Art Archive accepts
+        # those IDs directly, so discovery can carry a fetchable cover URL
+        # without making a second request or requiring Last.fm credentials.
+        artwork_url=_cover_art_url(recording.get("releases")),
         acquisition_locator=f"ytsearch1:{artist} {title}",
         raw_fingerprint=fingerprint(recording),
     )
@@ -135,6 +137,19 @@ def _first_valid_isrc(value: object) -> str | None:
             return normalize_isrc(text)
         except ValidationFailedError:
             continue
+    return None
+
+
+def _cover_art_url(value: object) -> str | None:
+    """Return the first release's front-cover endpoint when its MBID is valid."""
+    if not isinstance(value, list):
+        return None
+    for release in value:
+        if not isinstance(release, dict):
+            continue
+        release_id = _mbid(release.get("id"))
+        if release_id is not None:
+            return f"{_COVER_ART_BASE}/{release_id}/front-500"
     return None
 
 
