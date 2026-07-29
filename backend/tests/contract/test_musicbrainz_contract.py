@@ -40,7 +40,10 @@ class TestMusicBrainzDiscoveryContract:
         first = results[0]
         assert first.provider == "musicbrainz"
         assert first.source_id == "fd9bc42e-77b0-4c29-a1e0-0a5263f6f72c"
-        assert first.source_url == "https://musicbrainz.org/recording/fd9bc42e-77b0-4c29-a1e0-0a5263f6f72c"
+        assert (
+            first.source_url
+            == "https://musicbrainz.org/recording/fd9bc42e-77b0-4c29-a1e0-0a5263f6f72c"
+        )
         assert first.title == "Instant Crush"
         assert first.artist == "Daft Punk"
         assert first.album == "Random Access Memories"

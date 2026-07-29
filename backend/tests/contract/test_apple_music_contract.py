@@ -40,7 +40,9 @@ class TestAppleMusicDiscoveryContract:
         first = results[0]
         assert first.provider == "apple"
         assert first.source_id == "5468305"
-        assert first.source_url == "https://music.apple.com/us/album/one-more-time/5468303?i=5468305"
+        assert (
+            first.source_url == "https://music.apple.com/us/album/one-more-time/5468303?i=5468305"
+        )
         assert first.title == "One More Time"
         assert first.artist == "Daft Punk"
         assert first.album == "Discovery"

@@ -63,9 +63,7 @@ def _rebuild_track_sources(*, destination: str, providers: str) -> None:
 
 
 def upgrade() -> None:
-    _rebuild_track_sources(
-        destination="track_sources_with_catalogs", providers=_CATALOG_PROVIDERS
-    )
+    _rebuild_track_sources(destination="track_sources_with_catalogs", providers=_CATALOG_PROVIDERS)
 
 
 def downgrade() -> None:

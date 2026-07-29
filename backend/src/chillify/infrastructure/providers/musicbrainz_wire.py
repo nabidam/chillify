@@ -171,7 +171,7 @@ def _positive_int(value: object) -> int | None:
         return None
     try:
         number = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return number if number > 0 else None
 
