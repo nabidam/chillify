@@ -218,6 +218,20 @@ class SettingsService:
         redactor().register(client_secret)
         return client_id, client_secret
 
+    def current_lastfm_api_key(self) -> str | None:
+        """Decrypt the enabled Last.fm key only at the enrichment boundary."""
+        with self._transaction() as session:
+            record = SettingsRepository(session).get(_provider_key("lastfm"))
+        if (
+            not record.public.get("enabled")
+            or not record.public.get("configured")
+            or record.secret_ciphertext is None
+        ):
+            return None
+        api_key = self.cipher.decrypt(record.secret_ciphertext)
+        redactor().register(api_key)
+        return api_key
+
     # -- proxy ------------------------------------------------------------
 
     def save_proxy(self, url: str | None, *, revision: int, clear: bool = False) -> ProxyView:

@@ -28,6 +28,7 @@ from chillify.domain.protocols import (
     ArtworkFetcher,
     DiscoveryProvider,
     LinkInspector,
+    MetadataEnricher,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,9 @@ class ProviderRegistry:
     # apart from the SpotDL acquisition inspector so the application policy can
     # order API -> SpotDL without making either adapter know about the other.
     spotify_api: LinkInspector | None = None
+    # Built on demand so a Last.fm key changed in Settings is used by the next
+    # worker job without restarting the worker process.
+    metadata_enricher: Callable[[], MetadataEnricher | None] = lambda: None
     # Keyed by the artwork origin it serves — `url` for a submitted link,
     # `lastfm` for the enricher's best match — so the staging use case asks for
     # a capability rather than naming an adapter.
@@ -79,6 +83,7 @@ def build_registry(
     settings: Settings,
     *,
     spotify_credentials_provider: Callable[[], tuple[str, str] | None] | None = None,
+    lastfm_api_key_provider: Callable[[], str | None] | None = None,
 ) -> ProviderRegistry:
     """Bind the adapters this environment is allowed to use.
 
@@ -114,6 +119,7 @@ def build_registry(
     from chillify.infrastructure.providers.apple_music import AppleMusicDiscoveryProvider
     from chillify.infrastructure.providers.artwork_http import HttpArtworkFetcher
     from chillify.infrastructure.providers.deezer import DeezerDiscoveryProvider
+    from chillify.infrastructure.providers.lastfm import LastfmEnricher
     from chillify.infrastructure.providers.musicbrainz import MusicBrainzDiscoveryProvider
     from chillify.infrastructure.providers.spotdl import (
         SpotdlAcquisitionProvider,
@@ -149,5 +155,8 @@ def build_registry(
         # make a dashboard save appear successful while the running process
         # continued to behave as if Spotify were unconfigured.
         spotify_api=SpotifyApiInspector(credentials_provider=spotify_credentials_provider),
+        metadata_enricher=lambda: LastfmEnricher(
+            api_key=None if lastfm_api_key_provider is None else lastfm_api_key_provider()
+        ),
         artwork={"url": HttpArtworkFetcher()},
     )

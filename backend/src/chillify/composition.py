@@ -474,6 +474,7 @@ def build_composition(settings: Settings, *, verify_mounts: bool = True) -> Comp
         registry=build_registry(
             settings,
             spotify_credentials_provider=settings_service.current_spotify_credentials,
+            lastfm_api_key_provider=settings_service.current_lastfm_api_key,
         ),
     )
 

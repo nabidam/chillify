@@ -14,7 +14,7 @@ import hashlib
 import logging
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -40,7 +40,7 @@ from chillify.domain.jobs import (
     build_dedupe_key,
 )
 from chillify.domain.models import Page, Track, TrackId
-from chillify.domain.protocols import TrackCandidate
+from chillify.domain.protocols import MetadataPatch, TrackCandidate
 from chillify.infrastructure.db.repositories import (
     JOB_LEASE_SECONDS,
     JOB_PAGE_LIMIT_DEFAULT,
@@ -51,10 +51,11 @@ from chillify.infrastructure.db.repositories import (
 from chillify.infrastructure.media.storage import (
     job_workspace,
     organized_relpath,
+    publish_artwork,
     publish_audio,
     remove_workspace,
 )
-from chillify.infrastructure.media.tags import write_audio_tags
+from chillify.infrastructure.media.tags import write_track_tags
 from chillify.infrastructure.media.workspaces import existing_workspaces
 from chillify.infrastructure.providers.registry import ProviderRegistry
 from chillify.infrastructure.queue.cancellation import ActiveAcquisitions, active_acquisitions
@@ -321,16 +322,27 @@ class DownloadService:
 
         self._record(job.id, JobPhase.CONVERTING, None)
         self._record(job.id, JobPhase.ENRICHING, None)
+        candidate, enrichment_payload = self._enrich(candidate)
+        artwork = self._fetch_artwork(candidate, workspace)
+        enrichment_payload["artwork"] = "fetched" if artwork is not None else "unavailable"
+        self._record(
+            job.id,
+            JobPhase.ENRICHING,
+            None,
+            payload=enrichment_payload,
+        )
 
         self._record(job.id, JobPhase.TAGGING, None)
         acquired = Path(artifact.location)
-        write_audio_tags(
+        write_track_tags(
             acquired,
             title=candidate.title,
             artist=candidate.artist,
             album=candidate.album,
             release_year=candidate.release_year,
+            disc_number=candidate.disc_number,
             track_number=candidate.track_number,
+            artwork=artwork,
         )
 
         self._record(job.id, JobPhase.ORGANIZING, None)
@@ -343,6 +355,9 @@ class DownloadService:
                 title=candidate.title,
                 track_number=candidate.track_number,
             ),
+        )
+        artwork_relative = (
+            None if artwork is None else publish_artwork(self.music_root, artwork, str(job.id))
         )
 
         # The track, its source identity, and the job's completion are one
@@ -360,7 +375,7 @@ class DownloadService:
                 duration_ms=artifact.duration_ms or candidate.duration_ms,
                 isrc=candidate.isrc,
                 file_relpath=published.relative_path,
-                artwork_relpath=None,
+                artwork_relpath=artwork_relative,
                 file_size_bytes=published.size_bytes,
                 content_sha256=published.content_sha256,
                 source_provider=candidate.provider,
@@ -373,6 +388,57 @@ class DownloadService:
                 job.id, state=JobState.COMPLETED, now=now, result_track_id=TrackId(track.id)
             )
         return track
+
+    def _enrich(
+        self, candidate: TrackCandidate
+    ) -> tuple[TrackCandidate, dict[str, str | int | float | bool]]:
+        """Gap-fill a candidate without ever replacing catalog metadata."""
+        missing_fields = tuple(
+            field
+            for field in ("album", "release_year", "duration_ms", "artwork_url")
+            if getattr(candidate, field) is None
+        )
+        if not missing_fields:
+            return candidate, {"metadata": "not_needed", "filled_fields": 0}
+
+        enricher = self.registry.metadata_enricher()
+        if enricher is None:
+            return candidate, {"metadata": "skipped", "filled_fields": 0}
+        try:
+            patch = enricher.enrich(candidate, missing_fields, self.proxy_provider())
+        except Exception as exc:
+            logger.info(
+                "metadata enrichment skipped",
+                extra={"provider": enricher.name, "reason": type(exc).__name__},
+            )
+            return candidate, {"metadata": "failed", "filled_fields": 0}
+
+        merged, filled = _merge_metadata_patch(candidate, patch, missing_fields)
+        return merged, {
+            "metadata": "filled" if filled else "no_match",
+            "filled_fields": len(filled),
+        }
+
+    def _fetch_artwork(self, candidate: TrackCandidate, workspace: Path) -> Path | None:
+        """Fetch a candidate cover best-effort through the registered policy."""
+        if candidate.artwork_url is None:
+            return None
+        fetcher = self.registry.artwork.get("url")
+        if fetcher is None:
+            return None
+        try:
+            artifact = fetcher.fetch(
+                candidate.artwork_url,
+                str(workspace),
+                self.proxy_provider(),
+            )
+            return Path(artifact.location)
+        except Exception as exc:
+            logger.info(
+                "download cover art unavailable",
+                extra={"provider": fetcher.name, "reason": type(exc).__name__},
+            )
+            return None
 
     def _claim(self, job_id: JobId) -> DownloadJob | None:
         with self._transaction() as session:
@@ -390,10 +456,21 @@ class DownloadService:
             raise UnsupportedEntityError("That download request carries no track to acquire.")
         return _candidate_from_payload(payload)
 
-    def _record(self, job_id: JobId, phase: JobPhase, progress: float | None) -> JobEvent:
+    def _record(
+        self,
+        job_id: JobId,
+        phase: JobPhase,
+        progress: float | None,
+        *,
+        payload: dict[str, str | int | float | bool] | None = None,
+    ) -> JobEvent:
         with self._transaction() as session:
             return DownloadJobRepository(session).record_phase(
-                job_id, phase=phase, progress_percent=progress, now=datetime.now(UTC)
+                job_id,
+                phase=phase,
+                progress_percent=progress,
+                payload=payload,
+                now=datetime.now(UTC),
             )
 
     def _finish(self, job_id: JobId, state: JobState, *, error: ChillifyError) -> None:
@@ -527,3 +604,50 @@ def _optional_string(payload: dict[str, object], key: str) -> str | None:
 def _optional_int(payload: dict[str, object], key: str) -> int | None:
     value = payload.get(key)
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _merge_metadata_patch(
+    candidate: TrackCandidate,
+    patch: MetadataPatch,
+    missing_fields: tuple[str, ...],
+) -> tuple[TrackCandidate, tuple[str, ...]]:
+    """Apply non-empty patch values only to fields proven absent beforehand."""
+    requested = frozenset(missing_fields)
+    album = patch.album if "album" in requested and candidate.album is None else candidate.album
+    release_year = (
+        patch.release_year
+        if "release_year" in requested and candidate.release_year is None
+        else candidate.release_year
+    )
+    duration_ms = (
+        patch.duration_ms
+        if "duration_ms" in requested and candidate.duration_ms is None
+        else candidate.duration_ms
+    )
+    artwork_url = (
+        patch.artwork_url
+        if "artwork_url" in requested and candidate.artwork_url is None
+        else candidate.artwork_url
+    )
+    filled = tuple(
+        field
+        for field, before, after in (
+            ("album", candidate.album, album),
+            ("release_year", candidate.release_year, release_year),
+            ("duration_ms", candidate.duration_ms, duration_ms),
+            ("artwork_url", candidate.artwork_url, artwork_url),
+        )
+        if before is None and after is not None
+    )
+    if not filled:
+        return candidate, ()
+    return (
+        replace(
+            candidate,
+            album=album,
+            release_year=release_year,
+            duration_ms=duration_ms,
+            artwork_url=artwork_url,
+        ),
+        filled,
+    )

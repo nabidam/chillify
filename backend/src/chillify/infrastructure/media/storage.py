@@ -35,6 +35,7 @@ INTERNAL_DIRECTORY = ".chillify"
 WORK_DIRECTORY = "work"
 
 AUDIO_SUFFIX = ".mp3"
+ARTWORK_SUFFIX = ".jpg"
 
 # Filesystems commonly cap one name at 255 bytes. Components are capped well
 # below that so the two-digit prefix, separator, and suffix always fit.
@@ -179,6 +180,18 @@ def publish_audio(music_root: Path, source: Path, relative_path: str) -> Publish
         raise StorageUnwritableError("The music folder refused the finished download.") from exc
 
     return PublishedFile(relative_path=relative_path, size_bytes=size, content_sha256=digest)
+
+
+def publish_artwork(music_root: Path, source: Path, identifier: str) -> str:
+    """Move one normalized cover into the managed Artwork directory."""
+    relative_path = f"{ARTWORK_DIRECTORY}/{_safe_component(identifier)}{ARTWORK_SUFFIX}"
+    target = resolve_managed_path(music_root, relative_path)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source.replace(target)
+    except OSError as exc:
+        raise StorageUnwritableError("The music folder refused the downloaded cover art.") from exc
+    return relative_path
 
 
 def _track_prefix(track_number: int) -> str:
