@@ -24,27 +24,27 @@ function renderSearch() {
 }
 
 describe("S3 local-first search", () => {
-  it("never contacts Deezer while the person is typing", async () => {
+  it("never contacts remote catalogs while the person is typing", async () => {
     const online = vi.fn(() => HttpResponse.json({ items: [], next_cursor: null }));
-    server.use(http.get("/api/v1/search/deezer", online));
+    server.use(http.get("/api/v1/search/catalog", online));
     renderSearch();
 
     await userEvent.type(await screen.findByLabelText("Track or artist"), "daft punk");
 
     await waitFor(() => expect(screen.getByText(/In your library/)).toBeTruthy());
     expect(online).not.toHaveBeenCalled();
-    expect(screen.getByText(/Nothing has been sent to Deezer/)).toBeTruthy();
+    expect(screen.getByText(/Nothing has been sent online/)).toBeTruthy();
   });
 
-  it("contacts Deezer only when the explicit action is used", async () => {
+  it("contacts remote catalogs only when the explicit action is used", async () => {
     const online = vi.fn(() =>
       HttpResponse.json({ items: [remoteResultFixture()], next_cursor: null }),
     );
-    server.use(http.get("/api/v1/search/deezer", online));
+    server.use(http.get("/api/v1/search/catalog", online));
     renderSearch();
 
     await userEvent.type(await screen.findByLabelText("Track or artist"), "daft punk");
-    await userEvent.click(screen.getByRole("button", { name: "Search Deezer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Search online" }));
 
     expect(await screen.findByText("Harder Better Faster Stronger")).toBeTruthy();
     expect(online).toHaveBeenCalledTimes(1);
@@ -61,7 +61,7 @@ describe("S3 local-first search", () => {
     await userEvent.type(await screen.findByLabelText("Track or artist"), "unknown");
 
     expect(await screen.findByText("No local matches")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Search Deezer" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Search online" })).toBeTruthy();
   });
 });
 
@@ -70,7 +70,7 @@ describe("S3 internet results", () => {
     renderSearch();
 
     await userEvent.type(await screen.findByLabelText("Track or artist"), "daft");
-    await userEvent.click(screen.getByRole("button", { name: "Search Deezer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Search online" }));
 
     expect(
       await screen.findByRole("button", { name: "Download Harder Better Faster Stronger" }),
@@ -80,7 +80,7 @@ describe("S3 internet results", () => {
 
   it("links a duplicate to the local track instead of downloading it again", async () => {
     server.use(
-      http.get("/api/v1/search/deezer", () =>
+      http.get("/api/v1/search/catalog", () =>
         HttpResponse.json({
           items: [remoteResultFixture({ existing_track_id: trackSummaryFixture().id })],
           next_cursor: null,
@@ -90,7 +90,7 @@ describe("S3 internet results", () => {
     renderSearch();
 
     await userEvent.type(await screen.findByLabelText("Track or artist"), "daft");
-    await userEvent.click(screen.getByRole("button", { name: "Search Deezer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Search online" }));
 
     expect(await screen.findByRole("link", { name: /Already in your library/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^Download/ })).toBeNull();
@@ -100,7 +100,7 @@ describe("S3 internet results", () => {
     renderSearch();
 
     await userEvent.type(await screen.findByLabelText("Track or artist"), "daft");
-    await userEvent.click(screen.getByRole("button", { name: "Search Deezer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Search online" }));
     await userEvent.click(
       await screen.findByRole("button", { name: "Download Harder Better Faster Stronger" }),
     );
@@ -129,7 +129,7 @@ describe("S3 internet results", () => {
     renderSearch();
 
     await userEvent.type(await screen.findByLabelText("Track or artist"), "daft");
-    await userEvent.click(screen.getByRole("button", { name: "Search Deezer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Search online" }));
     await userEvent.click(
       await screen.findByRole("button", { name: "Download Harder Better Faster Stronger" }),
     );
@@ -142,7 +142,7 @@ describe("S3 internet results", () => {
 
   it("explains a provider failure and keeps local results readable", async () => {
     server.use(
-      http.get("/api/v1/search/deezer", () =>
+      http.get("/api/v1/search/catalog", () =>
         HttpResponse.json(
           {
             error: {
@@ -161,9 +161,9 @@ describe("S3 internet results", () => {
     renderSearch();
 
     await userEvent.type(await screen.findByLabelText("Track or artist"), "daft");
-    await userEvent.click(screen.getByRole("button", { name: "Search Deezer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Search online" }));
 
-    expect(await screen.findByText("Deezer could not be searched")).toBeTruthy();
+    expect(await screen.findByText("Online catalogs could not be searched")).toBeTruthy();
     expect(
       screen.getByText("Could not reach Deezer through the configured proxy."),
     ).toBeTruthy();
@@ -184,7 +184,7 @@ describe("S3 internet results", () => {
     renderSearch();
 
     await userEvent.type(await screen.findByLabelText("Track or artist"), "daft");
-    await userEvent.click(screen.getByRole("button", { name: "Search Deezer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Search online" }));
 
     const download = await screen.findByRole("button", {
       name: "Download Harder Better Faster Stronger",

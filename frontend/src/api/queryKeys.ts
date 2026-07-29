@@ -26,11 +26,11 @@ export const queryKeys = {
   track: (trackId: string) => ["library", "track", trackId] as const,
   deleteImpact: (trackId: string) => ["library", "delete-impact", trackId] as const,
   /**
-   * The Deezer query carries a submission token rather than the live input:
+   * The catalog query carries a submission token rather than the live input:
    * local search reacts to typing, online search happens only when the person
    * presses the button, and the token is what separates the two.
    */
-  deezerSearch: (submission: string) => ["search", "deezer", submission] as const,
+  catalogSearch: (submission: string) => ["search", "catalog", submission] as const,
   downloads: (state?: string) => ["downloads", "list", state ?? "all"] as const,
   download: (jobId: string) => ["downloads", "detail", jobId] as const,
   /**

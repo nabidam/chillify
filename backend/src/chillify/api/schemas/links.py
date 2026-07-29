@@ -13,9 +13,14 @@ from typing import Literal, cast
 
 from pydantic import BaseModel, Field
 
-from chillify.api.schemas.downloads import SourceTypeLiteral, TrackCandidateModel
+from chillify.api.schemas.downloads import (
+    RemoteResultModel,
+    SourceTypeLiteral,
+    TrackCandidateModel,
+)
 from chillify.application.inspection import InspectionAccepted
 from chillify.application.links import LinkInspection
+from chillify.application.spotify_links import SpotifyLinkMatches
 
 InspectionPhaseLiteral = Literal[
     "reading_spotify",
@@ -32,6 +37,34 @@ class LinkInspectionRequest(BaseModel):
     """One submitted URL to recognize and inspect."""
 
     url: str = Field(min_length=1, max_length=2048, description="The submitted link.")
+
+
+class SpotifyTrackReferenceModel(BaseModel):
+    """The public fields Spotify exposes without an account."""
+
+    spotify_id: str
+    canonical_url: str
+    title: str
+    thumbnail_url: str | None
+
+
+class SpotifyLinkMatchesModel(BaseModel):
+    """A Spotify reference and independent catalog candidates for selection."""
+
+    reference: SpotifyTrackReferenceModel
+    items: list[RemoteResultModel]
+
+    @classmethod
+    def of(cls, result: SpotifyLinkMatches) -> SpotifyLinkMatchesModel:
+        return cls(
+            reference=SpotifyTrackReferenceModel(
+                spotify_id=result.reference.spotify_id,
+                canonical_url=result.reference.canonical_url,
+                title=result.reference.title,
+                thumbnail_url=result.reference.thumbnail_url,
+            ),
+            items=[RemoteResultModel.of(item) for item in result.matches],
+        )
 
 
 class LinkInspectionModel(BaseModel):

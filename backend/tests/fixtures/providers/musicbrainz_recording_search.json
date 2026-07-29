@@ -1,0 +1,41 @@
+{
+  "created": "2026-07-29T00:00:00.000Z",
+  "count": 3,
+  "offset": 0,
+  "recordings": [
+    {
+      "id": "fd9bc42e-77b0-4c29-a1e0-0a5263f6f72c",
+      "title": "Instant Crush",
+      "length": 337560,
+      "artist-credit": [
+        { "name": "Daft Punk", "artist": { "name": "Daft Punk" } }
+      ],
+      "isrcs": ["USQX91300108"],
+      "releases": [
+        {
+          "title": "Random Access Memories",
+          "date": "2013-05-17",
+          "release-group": { "first-release-date": "2013-05-17" }
+        }
+      ]
+    },
+    {
+      "id": "1f4c672d-c46d-4ba4-b52c-f55c8e9c4920",
+      "title": "Teardrop",
+      "length": 330000,
+      "artist-credit": [
+        { "name": "Massive Attack", "artist": { "name": "Massive Attack" } }
+      ],
+      "isrcs": ["invalid", "GBAYE9801635"],
+      "releases": [
+        { "title": "Mezzanine", "date": "1998-04-20" },
+        { "title": "Mezzanine", "date": "2009-01-01" }
+      ]
+    },
+    {
+      "id": "not-an-mbid",
+      "title": "Malformed recording",
+      "artist-credit": [{ "name": "Nobody" }]
+    }
+  ]
+}

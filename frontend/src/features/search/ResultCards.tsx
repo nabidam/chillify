@@ -96,7 +96,7 @@ export function ResultCards({
   );
 }
 
-/** Card-shaped placeholders while Deezer is being contacted. */
+/** Card-shaped placeholders while remote catalogs are being contacted. */
 export function ResultCardsPlaceholder({ rows = 3 }: { rows?: number }) {
   return (
     <div className="flex flex-col gap-2" aria-hidden="true">

@@ -169,6 +169,20 @@ export const handlers = [
   http.get("/api/v1/search/deezer", () =>
     HttpResponse.json({ items: [remoteResultFixture()], next_cursor: null }),
   ),
+  http.get("/api/v1/search/catalog", () =>
+    HttpResponse.json({ items: [remoteResultFixture()], next_cursor: null }),
+  ),
+  http.post("/api/v1/links/spotify/matches", () =>
+    HttpResponse.json({
+      reference: {
+        spotify_id: "2cGxRwrMyEAp8dEbuZaVv6",
+        canonical_url: "https://open.spotify.com/track/2cGxRwrMyEAp8dEbuZaVv6",
+        title: "Instant Crush",
+        thumbnail_url: "https://i.scdn.co/image/reference",
+      },
+      items: [remoteResultFixture()],
+    }),
+  ),
   http.get("/api/v1/downloads", () => HttpResponse.json({ items: [], next_cursor: null })),
   http.post("/api/v1/downloads", () => HttpResponse.json(jobFixture(), { status: 201 })),
 ];

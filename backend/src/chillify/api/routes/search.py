@@ -7,7 +7,7 @@ reaches this module, and therefore only that press reaches a provider.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 
@@ -37,4 +37,23 @@ def search_deezer(
     cursor that cannot be honoured.
     """
     results = search.search_deezer(q, limit=limit)
+    return PageModel(items=[RemoteResultModel.of(result) for result in results], next_cursor=None)
+
+
+@router.get(
+    "/search/catalog",
+    response_model=PageModel[RemoteResultModel],
+    summary="Search the configured remote music catalogs",
+)
+def search_catalog(
+    search: Annotated[SearchService, Depends(get_search_service)],
+    q: Annotated[str, Query(min_length=1, max_length=200, description="The submitted query.")],
+    provider: Annotated[
+        Literal["all", "musicbrainz", "apple", "deezer"],
+        Query(description="Search every available catalog or one named catalog."),
+    ] = "all",
+    limit: Annotated[int, Query(ge=1, le=DISCOVERY_LIMIT_MAX)] = DISCOVERY_LIMIT_DEFAULT,
+) -> PageModel[RemoteResultModel]:
+    """Return normalized candidates from keyless remote catalogs."""
+    results = search.search_catalog(q, provider=provider, limit=limit)
     return PageModel(items=[RemoteResultModel.of(result) for result in results], next_cursor=None)

@@ -44,8 +44,9 @@ x-backend-environment: &backend-environment
 # On Linux `host.docker.internal` does not resolve inside a container unless the
 # host gateway is mapped explicitly, so a SOCKS/HTTP proxy at
 # host.docker.internal:PORT is otherwise unreachable and the proxy test fails on
-# DNS before it ever reaches the operator's proxy. migrate and web make no
-# outbound proxy calls and do not need it.
+# DNS before it ever reaches the operator's proxy. The migration service also
+# receives the alias so every backend container has one consistent host-network
+# contract; web makes no outbound proxy calls and does not need it.
 x-backend-extra-hosts: &backend-extra-hosts
   - "host.docker.internal:host-gateway"
 
@@ -69,6 +70,7 @@ services:
     restart: "no"
     environment: *backend-environment
     volumes: *backend-volumes
+    extra_hosts: *backend-extra-hosts
     read_only: true
     tmpfs:
       - /tmp:mode=1777,size=16m

@@ -13,11 +13,29 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import StreamingResponse
 
-from chillify.api.dependencies import get_inspection_service
-from chillify.api.schemas.links import InspectionAcceptedModel, LinkInspectionRequest
+from chillify.api.dependencies import get_inspection_service, get_spotify_link_service
+from chillify.api.schemas.links import (
+    InspectionAcceptedModel,
+    LinkInspectionRequest,
+    SpotifyLinkMatchesModel,
+)
 from chillify.application.inspection import InspectionService
+from chillify.application.spotify_links import SpotifyLinkService
 
 router = APIRouter(tags=["links"])
+
+
+@router.post(
+    "/links/spotify/matches",
+    response_model=SpotifyLinkMatchesModel,
+    summary="Resolve one Spotify track and find independent catalog matches",
+)
+def match_spotify_link(
+    submission: LinkInspectionRequest,
+    spotify_links: Annotated[SpotifyLinkService, Depends(get_spotify_link_service)],
+) -> SpotifyLinkMatchesModel:
+    """Resolve public oEmbed data, then search keyless catalogs by title."""
+    return SpotifyLinkMatchesModel.of(spotify_links.resolve(submission.url))
 
 
 @router.post(

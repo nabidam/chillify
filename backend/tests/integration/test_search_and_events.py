@@ -7,7 +7,9 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import httpx
 import pytest
+import respx
 from fastapi.testclient import TestClient
 
 from chillify.api.routes.events import event_frames
@@ -17,6 +19,7 @@ from chillify.domain.jobs import JobId, JobProvider
 from chillify.domain.protocols import TrackCandidate
 from chillify.infrastructure.providers.fixtures import FixtureDiscoveryProvider
 from chillify.infrastructure.providers.registry import ProviderRegistry
+from chillify.infrastructure.providers.spotify_oembed import OEMBED_URL
 
 pytestmark = pytest.mark.integration
 
@@ -109,6 +112,40 @@ class TestDeezerSearch:
 
         assert response.status_code == 422
         assert counted_discovery.calls == []
+
+
+class TestCatalogSearch:
+    def test_all_catalog_search_uses_available_providers(self, gate_api: TestClient) -> None:
+        response = gate_api.get(
+            "/api/v1/search/catalog",
+            params={"q": "daft punk", "provider": "all", "limit": 5},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["items"]
+
+    def test_spotify_reference_returns_catalog_choices(self, gate_api: TestClient) -> None:
+        track_id = "2cGxRwrMyEAp8dEbuZaVv6"
+        with respx.mock:
+            respx.get(OEMBED_URL).mock(
+                return_value=httpx.Response(
+                    200,
+                    json={
+                        "title": "Hoppipolla",
+                        "thumbnail_url": "https://i.scdn.co/image/reference",
+                    },
+                )
+            )
+            response = gate_api.post(
+                "/api/v1/links/spotify/matches",
+                json={"url": f"https://open.spotify.com/track/{track_id}"},
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["reference"]["spotify_id"] == track_id
+        assert body["reference"]["title"] == "Hoppipolla"
+        assert body["items"][0]["candidate"]["provider"] == "deezer"
 
 
 class TestUnavailableProviders:

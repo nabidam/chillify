@@ -1,0 +1,37 @@
+{
+  "resultCount": 2,
+  "results": [
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 5468295,
+      "collectionId": 5468303,
+      "trackId": 5468305,
+      "artistName": "Daft Punk",
+      "collectionName": "Discovery",
+      "trackName": "One More Time",
+      "trackViewUrl": "https://music.apple.com/us/album/one-more-time/5468303?i=5468305",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview.example.m4a",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music.example/100x100bb.jpg",
+      "releaseDate": "2001-02-22T08:00:00Z",
+      "discNumber": 1,
+      "trackNumber": 1,
+      "trackTimeMillis": 320000
+    },
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 5468295,
+      "collectionId": 5468303,
+      "trackId": 5468306,
+      "artistName": "Daft Punk",
+      "collectionName": "Discovery",
+      "trackName": "Aerodynamic",
+      "trackViewUrl": "https://music.apple.com/us/album/aerodynamic/5468303?i=5468306",
+      "releaseDate": "2001-02-22T08:00:00Z",
+      "discNumber": 1,
+      "trackNumber": 2,
+      "trackTimeMillis": 212000
+    }
+  ]
+}

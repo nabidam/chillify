@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AddLinkDialog } from "@/features/acquisition/AddLinkDialog";
-import type { LinkInspection } from "@/features/acquisition/acquisitionQueries";
+import { remoteResultFixture } from "../msw/handlers";
 import { server } from "../msw/server";
 
 class FakeEventSource {
@@ -27,30 +27,6 @@ class FakeEventSource {
   }
 }
 
-const inspectedTrack: LinkInspection = {
-  source_type: "spotify_track",
-  provider: "spotdl",
-  review_required: false,
-  is_playable: false,
-  existing_track_id: null,
-  candidate: {
-    provider: "spotdl",
-    source_id: "2cGxRwrMyEAp8dEbuZaVv6",
-    source_url: "https://open.spotify.com/track/2cGxRwrMyEAp8dEbuZaVv6",
-    title: "Hoppípolla",
-    artist: "Sigur Rós",
-    album: "Takk...",
-    release_year: 2005,
-    disc_number: 1,
-    track_number: 4,
-    duration_ms: 268000,
-    isrc: null,
-    artwork_url: null,
-    acquisition_locator: "spotify:track:2cGxRwrMyEAp8dEbuZaVv6",
-    raw_fingerprint: null,
-  },
-};
-
 function renderDialog() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -62,13 +38,13 @@ function renderDialog() {
   );
 }
 
-function serveAccepted() {
+function serveAccepted(phase = "inspecting_youtube") {
   server.use(
     http.post("/api/v1/links/inspect", () =>
       HttpResponse.json(
         {
           inspection_id: "inspection-1",
-          phase: "reading_spotify",
+          phase,
           started_at: "2026-07-29T10:00:00.000Z",
         },
         { status: 202 },
@@ -100,24 +76,21 @@ describe("S4 inspection feedback", () => {
 
   it("shows named phases and a rising elapsed value without percentage progress", async () => {
     renderDialog();
-    await userEvent.type(
-      screen.getByLabelText("Link"),
-      "https://open.spotify.com/track/example",
-    );
+    await userEvent.type(screen.getByLabelText("Link"), "https://youtu.be/example");
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));
 
-    expect(await screen.findByText("Reading Spotify details")).toBeTruthy();
+    expect(await screen.findByText("Inspecting YouTube details")).toBeTruthy();
     const stream = await activeStream();
     act(() => {
       stream.emit("inspection.changed", {
-        phase: "matching_spotdl",
+        phase: "inspecting_youtube",
         elapsed_ms: 1200,
-        provider: "spotdl",
+        provider: "yt_dlp",
         terminal: false,
       });
     });
 
-    expect(await screen.findByText("Matching with SpotDL")).toBeTruthy();
+    expect(await screen.findByText("Inspecting YouTube details")).toBeTruthy();
     expect(screen.getByText("1.2 seconds elapsed")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled).toBe(
       false,
@@ -125,53 +98,28 @@ describe("S4 inspection feedback", () => {
     expect(document.body.textContent).not.toContain("%");
   });
 
-  it("keeps elapsed time across the SpotDL fallback and preserves input on cancel", async () => {
-    server.use(
-      http.delete(
-        "/api/v1/links/inspect/:inspectionId",
-        () => new HttpResponse(null, { status: 204 }),
-      ),
-    );
+  it("uses Spotify oEmbed matching without opening the legacy inspection stream", async () => {
     renderDialog();
     const input = screen.getByLabelText("Link");
-    await userEvent.type(input, "https://open.spotify.com/track/fallback");
+    await userEvent.type(input, "https://open.spotify.com/track/2cGxRwrMyEAp8dEbuZaVv6");
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));
-    const stream = await activeStream();
-    act(() => {
-      stream.emit("inspection.changed", {
-        phase: "reading_spotify",
-        elapsed_ms: 800,
-        provider: "spotify_api",
-        terminal: false,
-      });
-      stream.emit("inspection.changed", {
-        phase: "matching_spotdl",
-        elapsed_ms: 2400,
-        provider: "spotdl",
-        terminal: false,
-      });
-    });
 
-    expect(await screen.findByText("Matching with SpotDL")).toBeTruthy();
-    expect(screen.getByText("2.4 seconds elapsed")).toBeTruthy();
-    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-
-    await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false));
-    expect((input as HTMLInputElement).value).toBe("https://open.spotify.com/track/fallback");
-    expect(stream.close).toHaveBeenCalled();
+    expect(await screen.findByText("Spotify reference")).toBeTruthy();
+    expect(await screen.findByText("Harder Better Faster Stronger")).toBeTruthy();
+    expect(FakeEventSource.instances).toHaveLength(0);
   });
 
   it("renders expiry as its own terminal state", async () => {
     renderDialog();
     const input = screen.getByLabelText("Link");
-    await userEvent.type(input, "https://open.spotify.com/track/expired");
+    await userEvent.type(input, "https://youtu.be/expired");
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));
     const stream = await activeStream();
     act(() => {
       stream.emit("inspection.changed", {
         phase: "expired",
         elapsed_ms: 300000,
-        provider: "spotify_api",
+        provider: "yt_dlp",
         terminal: true,
         error: { code: "inspection_expired", message: "This inspection expired. Try again." },
       });
@@ -182,22 +130,33 @@ describe("S4 inspection feedback", () => {
     expect((input as HTMLInputElement).disabled).toBe(false);
   });
 
-  it("hands a completed Spotify result back to the existing download action", async () => {
+  it("queues the catalog match selected for a Spotify reference", async () => {
+    const queued = vi.fn(() => HttpResponse.json({ id: "job-1" }, { status: 201 }));
+    server.use(
+      http.post("/api/v1/links/spotify/matches", () =>
+        HttpResponse.json({
+          reference: {
+            spotify_id: "2cGxRwrMyEAp8dEbuZaVv6",
+            canonical_url: "https://open.spotify.com/track/2cGxRwrMyEAp8dEbuZaVv6",
+            title: "Instant Crush",
+            thumbnail_url: "https://i.scdn.co/image/reference",
+          },
+          items: [remoteResultFixture()],
+        }),
+      ),
+      http.post("/api/v1/downloads", queued),
+    );
     renderDialog();
-    await userEvent.type(screen.getByLabelText("Link"), "https://open.spotify.com/track/done");
+    await userEvent.type(
+      screen.getByLabelText("Link"),
+      "https://open.spotify.com/track/2cGxRwrMyEAp8dEbuZaVv6",
+    );
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));
-    const stream = await activeStream();
-    act(() => {
-      stream.emit("inspection.changed", {
-        phase: "done",
-        elapsed_ms: 1800,
-        provider: "spotdl",
-        terminal: true,
-        result: inspectedTrack,
-      });
-    });
-
-    expect(await screen.findByText("Hoppípolla")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Download Harder Better Faster Stronger",
+      }),
+    );
+    await waitFor(() => expect(queued).toHaveBeenCalledTimes(1));
   });
 });

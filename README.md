@@ -12,7 +12,9 @@ and reviewed engineering conventions this repository holds itself to.
 
 Copy `.env.example` to `.env` and fill in the mounted roots, Redis URL, and
 secret key (`.env.example` documents every value, including how to generate
-the Fernet secret key). Then, from the repository root:
+the Fernet secret key). The example Redis URL uses `host.docker.internal` so
+containers reach the Redis instance on the Docker host. Then, from the
+repository root:
 
 ```sh
 docker compose up --build -d
@@ -24,7 +26,9 @@ degrades background acquisition only; the library itself stays readable.
 
 Compose applies the Alembic migration as a one-shot `migrate` service; `api`
 and `worker` do not start until it succeeds, so no process ever serves an
-unmigrated database.
+unmigrated database. On Linux, all three backend services receive the
+`host.docker.internal` host-gateway alias used by the example Redis URL and
+operator-configured host proxies.
 
 Boot smoke test:
 

@@ -16,11 +16,19 @@ cycle's implementation and evidence remain archived under
 `specs/002-spotify-inspection/`; unfinished work is deferred and any replacement
 must begin with a new feasibility/specification pass.
 
-**Next active cycle:** 003 — Discovery and bulk acquisition.
+**Next cycle:** 003 — Free discovery and Spotify references.
 
-## 003 — Discovery and bulk acquisition
+## 003 — COMPLETE — Free discovery and Spotify references
 
-Expand collection building with favorites, grouped Spotify-style search, Spotify album/playlist and YouTube playlist imports, and configurable download format/quality.
+Deliver keyless MusicBrainz, Apple, and Deezer catalog search plus credential-free
+Spotify track references through oEmbed and explicit match selection. Bulk
+Spotify album/playlist import remains deferred because oEmbed cannot enumerate
+collection tracks. See `specs/003-free-discovery/PLAN.md`.
+
+**Status:** Completed and operator-tested 2026-07-29. Migration
+`0004_catalog_track_sources` preserves Apple and MusicBrainz provenance.
+
+**Next active cycle:** 004 — Existing library integration.
 
 ## 004 — Existing library integration
 

@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 from mutagen.easyid3 import EasyID3
 
-from chillify.domain.errors import DuplicateRecordError
 from chillify.infrastructure.media.storage import (
     job_workspace,
     organized_relpath,
@@ -78,7 +77,7 @@ class TestPublication:
         assert published.size_bytes == FIXTURE_AUDIO.stat().st_size
         assert len(published.content_sha256) == 64
 
-    def test_republishing_the_identical_file_is_refused_as_a_duplicate(
+    def test_republishing_the_identical_file_reuses_the_existing_managed_file(
         self, disposable_root: Path
     ) -> None:
         music_root = disposable_root / "music"
@@ -86,13 +85,17 @@ class TestPublication:
         relative = "Music/Artist/Album/01 - Song.mp3"
         first = job_workspace(music_root, "job-1") / "acquired.mp3"
         first.write_bytes(FIXTURE_AUDIO.read_bytes())
-        publish_audio(music_root, first, relative)
+        first_published = publish_audio(music_root, first, relative)
 
         second = job_workspace(music_root, "job-2") / "acquired.mp3"
         second.write_bytes(FIXTURE_AUDIO.read_bytes())
 
-        with pytest.raises(DuplicateRecordError):
-            publish_audio(music_root, second, relative)
+        reused = publish_audio(music_root, second, relative)
+
+        assert reused.relative_path == first_published.relative_path
+        assert reused.content_sha256 == first_published.content_sha256
+        assert reused.reused_existing_file is True
+        assert second.is_file(), "the caller still owns the workspace copy"
 
     def test_a_different_file_with_the_same_name_never_overwrites(
         self, disposable_root: Path

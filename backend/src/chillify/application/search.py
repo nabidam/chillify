@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from chillify.domain.errors import ChillifyError
 from chillify.domain.models import TrackId, normalize_metadata
 from chillify.domain.protocols import (
     DISCOVERY_LIMIT_DEFAULT,
@@ -27,6 +28,7 @@ from chillify.infrastructure.providers.registry import ProviderRegistry
 logger = logging.getLogger(__name__)
 
 DEEZER_PROVIDER = "deezer"
+CATALOG_PROVIDERS = ("musicbrainz", "apple", DEEZER_PROVIDER)
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,12 +79,52 @@ class SearchService:
         request that hangs must not hold a write lock on the shared SQLite file
         while the household is trying to play music.
         """
+        return self.search_catalog(query, provider=DEEZER_PROVIDER, limit=limit)
+
+    def search_catalog(
+        self,
+        query: str,
+        *,
+        provider: str = "all",
+        limit: int = DISCOVERY_LIMIT_DEFAULT,
+    ) -> tuple[RemoteResult, ...]:
+        """Search one catalog or all available catalogs.
+
+        The ``all`` view is deliberately best-effort: a temporary failure in one
+        remote catalog must not hide usable results from another. Selecting one
+        provider remains strict and surfaces that provider's typed failure.
+        """
         bounded = max(1, min(limit, DISCOVERY_LIMIT_MAX))
-        provider = self.registry.require_discovery(DEEZER_PROVIDER)
-        candidates = provider.search(query, bounded, self.proxy_provider())
+        names = CATALOG_PROVIDERS if provider == "all" else (provider,)
+        candidates: list[TrackCandidate] = []
+        failures: list[ChillifyError] = []
+        successes = 0
+        proxy = self.proxy_provider()
+
+        for name in names:
+            try:
+                adapter = self.registry.require_discovery(name)
+                candidates.extend(adapter.search(query, bounded, proxy))
+                successes += 1
+            except ChillifyError as exc:
+                failures.append(exc)
+                if provider != "all":
+                    raise
+                logger.warning(
+                    "catalog search provider failed",
+                    extra={"provider": name, "error_code": exc.code},
+                )
+
+        if successes == 0 and failures:
+            raise failures[0]
         logger.info(
-            "deezer search completed",
-            extra={"result_count": len(candidates), "requested_limit": bounded},
+            "catalog search completed",
+            extra={
+                "provider": provider,
+                "result_count": len(candidates),
+                "requested_limit": bounded,
+                "failed_provider_count": len(failures),
+            },
         )
 
         with self._transaction() as session:

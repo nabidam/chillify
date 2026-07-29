@@ -111,8 +111,10 @@ def build_registry(
             spotify_api=FixtureSpotifyApiInspector(fixture_root=fixture_root),
         )
 
+    from chillify.infrastructure.providers.apple_music import AppleMusicDiscoveryProvider
     from chillify.infrastructure.providers.artwork_http import HttpArtworkFetcher
     from chillify.infrastructure.providers.deezer import DeezerDiscoveryProvider
+    from chillify.infrastructure.providers.musicbrainz import MusicBrainzDiscoveryProvider
     from chillify.infrastructure.providers.spotdl import (
         SpotdlAcquisitionProvider,
         SpotdlInspector,
@@ -129,7 +131,11 @@ def build_registry(
     spotdl_bin = os.environ.get("CHILLIFY_SPOTDL_BIN", "").strip() or "spotdl"
     logger.info("binding production provider adapters", extra={"environment": "production"})
     return ProviderRegistry(
-        discovery={"deezer": DeezerDiscoveryProvider()},
+        discovery={
+            "apple": AppleMusicDiscoveryProvider(),
+            "deezer": DeezerDiscoveryProvider(),
+            "musicbrainz": MusicBrainzDiscoveryProvider(),
+        },
         acquisition={
             JobProvider.YT_DLP: YtDlpAcquisitionProvider(),
             JobProvider.SPOTDL: SpotdlAcquisitionProvider(executable=spotdl_bin),

@@ -14,7 +14,7 @@ export type TrackCandidate = components["schemas"]["TrackCandidateModel"];
 export type RemoteResult = components["schemas"]["RemoteResultModel"];
 export type DownloadJob = components["schemas"]["JobModel"];
 
-export const DEEZER_RESULT_LIMIT = 25;
+export const CATALOG_RESULT_LIMIT = 15;
 
 /**
  * Online discovery, held behind an explicit submission.
@@ -23,9 +23,9 @@ export const DEEZER_RESULT_LIMIT = 25;
  * disabled until then, which is the local-first rule expressed as state rather
  * than as a comment.
  */
-export function useDeezerSearch(submission: string) {
+export function useCatalogSearch(submission: string) {
   return useQuery({
-    queryKey: queryKeys.deezerSearch(submission),
+    queryKey: queryKeys.catalogSearch(submission),
     enabled: submission.length > 0,
     // A remote result is a snapshot of someone else's catalogue; refetching it
     // behind the person's back would silently change what they are looking at.
@@ -33,8 +33,10 @@ export function useDeezerSearch(submission: string) {
     retry: false,
     queryFn: async () =>
       unwrap(
-        await api.GET("/api/v1/search/deezer", {
-          params: { query: { q: submission, limit: DEEZER_RESULT_LIMIT } },
+        await api.GET("/api/v1/search/catalog", {
+          params: {
+            query: { q: submission, provider: "all", limit: CATALOG_RESULT_LIMIT },
+          },
         }),
       ),
   });
@@ -48,6 +50,9 @@ export function useQueueDownload() {
     mutationFn: async (candidate: TrackCandidate): Promise<DownloadJob> =>
       unwrap(
         await api.POST("/api/v1/downloads", {
+          // The durable v1 wire value predates multi-catalog search. The
+          // candidate's provider remains the authoritative source identity;
+          // yt-dlp acquires every catalog result through the same path.
           body: { source_type: "deezer_result", candidate },
         }),
       ),

@@ -52,8 +52,8 @@ S1 Profile chooser
        │                         ├─ S8 Year
        │                         └─ S13 Track editor ── S15 Delete confirmation
        ├─ S3 Search ─────────────┬─ local track → play / S13
-       │                         └─ Deezer result → S11 Downloads
-       ├─ S4 Add by Link ────────┬─ Spotify → S11 Downloads
+       │                         └─ catalog result → S11 Downloads
+       ├─ S4 Add by Link ────────┬─ Spotify reference → choose catalog match → S11
        │                         └─ YouTube → S5 Review → S11 Downloads
        ├─ S9 Playlists ──────────┬─ S16 Create
        │                         └─ S10 Playlist detail ── S16 Rename
@@ -96,25 +96,26 @@ Browser back/forward restores the previous content view without remounting the p
 
 ### S3 — Search
 
-**Regions:** track query field; local-results heading and rows; explicit Search Deezer action; remote status line; separate Deezer-results region with source, metadata, availability, and Download action.  
-**Primary action:** play a local match; if none is suitable, explicitly search Deezer.  
+**Regions:** track query field; local-results heading and rows; explicit Search online action; remote status line; separate catalog-results region with provider, metadata, availability, and Download action.
+**Primary action:** play a local match; if none is suitable, explicitly search MusicBrainz, Apple, and Deezer.
 **Eye first:** query and local results.
 
 - **Empty query:** explain local-first behavior and place online search behind the button.
-- **No local matches:** preserve the query and make Search Deezer the next clear action.
-- **Online loading:** keep local results usable; show that Deezer is being contacted and prevent duplicate submits.
+- **No local matches:** preserve the query and make Search online the next clear action.
+- **Online loading:** keep local results usable; name the catalogs being contacted and prevent duplicate submits.
 - **Online result:** never shows Play; Download is the only primary action. An existing duplicate links to the local track instead.
 - **Online error:** identify provider disabled, proxy failure, timeout, or unavailable queue; local results remain usable. Redis degradation may allow discovery but disables Download.
 - **Density/hierarchy:** local and internet content never intermix. Detailed provider diagnostics remain in S12; job details move to S11 after queueing.
 
 ### S4 — Add Track by Link
 
-**Regions:** URL field; supported-input note (“one Spotify track or one YouTube video”); detected-source preview; Cancel and Continue/Download actions.  
+**Regions:** URL field; supported-input note (“one Spotify track or one YouTube video”); detected-source preview; Spotify catalog choices when applicable; Cancel and Continue/Download actions.
 **Primary action:** paste a supported link and continue.  
 **Eye first:** URL field.
 
 - **Empty:** show two concise supported examples without suggesting albums or playlists.
-- **Loading:** show link inspection and disable repeated submission. Inspection
+- **Spotify track:** resolve the public oEmbed reference without credentials, then show independent catalog matches. Because Spotify supplies no artist or album in this path, the person chooses the correct match before queueing; Chillify never guesses.
+- **YouTube loading:** show link inspection and disable repeated submission. Inspection
   reports its **named phase** and **elapsed seconds**, and offers **Cancel**
   throughout. Phase names state real work ("Reading Spotify details", "Matching
   with SpotDL"); no percentage is shown, because inspection has no honest one.

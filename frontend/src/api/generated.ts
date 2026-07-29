@@ -341,6 +341,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/links/spotify/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve one Spotify track and find independent catalog matches
+         * @description Resolve public oEmbed data, then search keyless catalogs by title.
+         */
+        post: operations["match_spotify_link_api_v1_links_spotify_matches_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/playlists/{playlist_id}": {
         parameters: {
             query?: never;
@@ -464,6 +484,26 @@ export interface paths {
         put?: never;
         /** Create a playlist for one profile */
         post: operations["create_playlist_api_v1_profiles__profile_id__playlists_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search the configured remote music catalogs
+         * @description Return normalized candidates from keyless remote catalogs.
+         */
+        get: operations["search_catalog_api_v1_search_catalog_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1483,6 +1523,29 @@ export interface components {
             revision: number;
         };
         /**
+         * SpotifyLinkMatchesModel
+         * @description A Spotify reference and independent catalog candidates for selection.
+         */
+        SpotifyLinkMatchesModel: {
+            /** Items */
+            items: components["schemas"]["RemoteResultModel"][];
+            reference: components["schemas"]["SpotifyTrackReferenceModel"];
+        };
+        /**
+         * SpotifyTrackReferenceModel
+         * @description The public fields Spotify exposes without an account.
+         */
+        SpotifyTrackReferenceModel: {
+            /** Canonical Url */
+            canonical_url: string;
+            /** Spotify Id */
+            spotify_id: string;
+            /** Thumbnail Url */
+            thumbnail_url: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
          * SystemStatusModel
          * @description The documented `GET /system/status` success envelope.
          */
@@ -2428,6 +2491,39 @@ export interface operations {
             };
         };
     };
+    match_spotify_link_api_v1_links_spotify_matches_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkInspectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpotifyLinkMatchesModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     read_playlist_api_v1_playlists__playlist_id__get: {
         parameters: {
             query?: never;
@@ -2722,6 +2818,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlaylistModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    search_catalog_api_v1_search_catalog_get: {
+        parameters: {
+            query: {
+                /** @description The submitted query. */
+                q: string;
+                /** @description Search every available catalog or one named catalog. */
+                provider?: "all" | "musicbrainz" | "apple" | "deezer";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageModel_RemoteResultModel_"];
                 };
             };
             /** @description Error envelope */

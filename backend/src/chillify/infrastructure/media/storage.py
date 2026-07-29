@@ -22,7 +22,6 @@ from pathlib import Path, PurePosixPath
 from pathvalidate import sanitize_filename
 
 from chillify.domain.errors import (
-    DuplicateRecordError,
     StorageUnwritableError,
     UnsafeMediaPathError,
 )
@@ -124,6 +123,7 @@ class PublishedFile:
     relative_path: str
     size_bytes: int
     content_sha256: str
+    reused_existing_file: bool = False
 
 
 def organized_relpath(
@@ -150,10 +150,10 @@ def organized_relpath(
 def publish_audio(music_root: Path, source: Path, relative_path: str) -> PublishedFile:
     """Move one acquired file into the library at `relative_path`.
 
-    A collision never overwrites. An identical file is refused as the duplicate
-    it is; a different file with the same sanitized name gets a short suffix
-    derived from its own content, so the same input always lands in the same
-    place.
+    A collision never overwrites. An identical file is reused so a previous
+    interrupted publication can be indexed on a retry; a different file with
+    the same sanitized name gets a short suffix derived from its own content,
+    so the same input always lands in the same place.
     """
     digest = _sha256(source)
     size = source.stat().st_size
@@ -161,7 +161,12 @@ def publish_audio(music_root: Path, source: Path, relative_path: str) -> Publish
 
     if target.exists():
         if _sha256(target) == digest:
-            raise DuplicateRecordError("That exact file is already in this library.")
+            return PublishedFile(
+                relative_path=relative_path,
+                size_bytes=size,
+                content_sha256=digest,
+                reused_existing_file=True,
+            )
         relative_path = _suffixed(relative_path, digest[:8])
         target = resolve_managed_path(music_root, relative_path)
 

@@ -39,6 +39,7 @@ from chillify.application.playlists import PlaylistService
 from chillify.application.reconciliation import ReconciliationService
 from chillify.application.search import SearchService
 from chillify.application.settings import SettingsService
+from chillify.application.spotify_links import SpotifyLinkService
 from chillify.config import Settings, preflight_mounted_roots
 from chillify.domain.errors import ProviderDisabledError
 from chillify.domain.jobs import JobProvider
@@ -46,6 +47,7 @@ from chillify.infrastructure.db.engine import create_database_engine, create_ses
 from chillify.infrastructure.logging.setup import redactor
 from chillify.infrastructure.media.recovery import MediaRecoveryService
 from chillify.infrastructure.providers.registry import ProviderRegistry, build_registry
+from chillify.infrastructure.providers.spotify_oembed import SpotifyOEmbedReferenceResolver
 from chillify.infrastructure.queue.celery_app import create_celery_app, make_dispatcher
 from chillify.infrastructure.security.secrets import SecretCipher
 
@@ -180,6 +182,13 @@ class Composition:
             session_factory=self.session_factory,
             registry=self.registry,
             proxy_provider=self.settings_service().current_proxy_url,
+        )
+
+    def spotify_link_service(self) -> SpotifyLinkService:
+        """Bind credential-free Spotify references to independent catalog search."""
+        return SpotifyLinkService(
+            resolver=SpotifyOEmbedReferenceResolver(),
+            search=self.search_service(),
         )
 
     def settings_service(self) -> SettingsService:

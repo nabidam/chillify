@@ -17,7 +17,6 @@ import {
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { InspectionSettingsCard } from "@/features/settings/InspectionSettingsCard";
 import { ProviderCard } from "@/features/settings/ProviderCard";
 import { StorageDiagnostics } from "@/features/settings/StorageDiagnostics";
 
@@ -68,14 +67,34 @@ export function SettingsPage() {
               <ProviderCard key={provider.name} provider={provider} />
             ))}
           </section>
-          <InspectionSettingsCard
-            inspection={settings.data.inspection}
-            spotifyApi={settings.data.spotify_api}
-          />
+          <DiscoveryCard />
           <StorageDiagnostics />
         </>
       )}
     </div>
+  );
+}
+
+function DiscoveryCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Music discovery</CardTitle>
+        <CardDescription>
+          No Spotify Premium account, developer credentials, or Apple account is required.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
+        <p>
+          Online search combines MusicBrainz, Apple, and Deezer metadata. Apple previews and
+          artwork are not downloaded or stored.
+        </p>
+        <p>
+          Spotify track links use the public oEmbed reference, then ask you to choose an
+          independent catalog match before downloading.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 

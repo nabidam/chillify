@@ -197,8 +197,11 @@ The initial registry is:
 | Adapter | Interfaces | Responsibility |
 |---|---|---|
 | Deezer | `DiscoveryProvider` | keyless matching-track search and metadata; never audio |
-| SpotDL | `LinkInspector`, `AcquisitionProvider` | one Spotify track link; metadata and best-quality MP3, through the isolated CLI boundary |
-| yt-dlp | `LinkInspector`, `AcquisitionProvider` | one YouTube video, or one audio match for a Deezer candidate |
+| MusicBrainz | `DiscoveryProvider` | primary keyless/open recording search; never audio |
+| Apple iTunes Search | `DiscoveryProvider` | fast keyless song metadata and store provenance; never previews, artwork persistence, or audio |
+| Spotify oEmbed | reference resolver | one public Spotify track title/reference without credentials; never a complete candidate or audio |
+| SpotDL | `LinkInspector`, `AcquisitionProvider` | historical/advanced Spotify compatibility behind the isolated CLI boundary; not the supported UI path |
+| yt-dlp | `LinkInspector`, `AcquisitionProvider` | one YouTube video, or one audio match for a catalog candidate |
 | Last.fm | `MetadataEnricher` | optional missing metadata/artwork only |
 | HTTP artwork | `ArtworkFetcher` | provider/user URL retrieval through validated outbound policy |
 
@@ -254,7 +257,9 @@ CREATE INDEX ix_tracks_created ON tracks(created_at DESC);
 CREATE TABLE track_sources (
     id TEXT PRIMARY KEY,
     track_id TEXT NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
-    provider TEXT NOT NULL CHECK (provider IN ('deezer', 'spotify', 'youtube')),
+    provider TEXT NOT NULL CHECK (
+        provider IN ('deezer', 'spotify', 'youtube', 'apple', 'musicbrainz')
+    ),
     source_id TEXT,
     source_url TEXT NOT NULL,
     raw_fingerprint TEXT,
@@ -487,6 +492,8 @@ Idempotency responses are retained for 24 hours in `api_idempotency` and pruned 
 | `GET /tracks/{id}/delete-impact` | — → server-owned playlist count | S15 |
 | `DELETE /tracks/{id}` | `If-Match` → `204` | S15 |
 | `GET /search/deezer` | `q, limit<=50` → normalized remote candidates + duplicate link | S3 |
+| `GET /search/catalog` | `q, provider=all|musicbrainz|apple|deezer, limit<=50` → normalized remote candidates + duplicate link | S3 |
+| `POST /links/spotify/matches` | `{url}` → limited oEmbed reference + independent catalog candidates | S4 |
 | `POST /links/inspect` | `{url}` → detected candidate/review requirement | S4, S5 |
 | `POST /downloads` | source/candidate/review + optional `artwork_stage_id` + idempotency → job | S3, S4, S5 |
 | `GET /downloads` | `state, cursor` → jobs newest/queue order | S11 |
@@ -529,6 +536,26 @@ All outbound HTTP uses one `httpx.Client` factory. If a proxy is saved, it is su
 - Pagination beyond the requested first page is ignored in v1.
 - `error` objects, invalid JSON, absent `data`, and HTTP failures map to typed provider errors.
 - Audio acquisition uses yt-dlp search target `ytsearch1:{artist} {title}`. Deezer never supplies audio.
+
+### MusicBrainz
+
+- Request: `GET https://musicbrainz.org/ws/2/recording/?query={query}&limit={1..50}&fmt=json`.
+- Sends a meaningful Chillify User-Agent and throttles the production adapter to one request per second.
+- Accepted recording fields include MBID, title, artist credit, duration, ISRC, earliest release date, and an unambiguous release title.
+- MusicBrainz supplies metadata only; acquisition uses `ytsearch1:{artist} {title}`.
+
+### Apple iTunes Search
+
+- Request: `GET https://itunes.apple.com/search?term={query}&media=music&entity=song&country=US&limit={1..50}`.
+- Accepted song fields include Apple IDs/store URL, title, artist, collection, release date, disc/track number, and duration.
+- Preview URLs are ignored and Apple artwork is not persisted. Apple supplies metadata/store provenance only; acquisition uses `ytsearch1:{artist} {title}`.
+
+### Spotify oEmbed
+
+- Request: `GET https://open.spotify.com/oembed?url={canonical_track_url}`.
+- Only individual HTTPS `open.spotify.com`/`play.spotify.com` track URLs are accepted and canonicalized; tracking query/fragment data is discarded.
+- The response is capped at 64 KiB and reduced to Spotify ID, canonical URL, public title, and thumbnail reference.
+- oEmbed is not a `LinkInspector`: it cannot truthfully populate artist, album, duration, or ISRC. S4 searches independent catalogs by the title and requires the person to select a candidate.
 
 ### Last.fm
 
@@ -603,7 +630,7 @@ ${CHILLIFY_DATA_ROOT}/
 └── db/chillify.sqlite3
 ```
 
-Artist/album/title components are Unicode-normalized, stripped of control/traversal/reserved characters with Pathvalidate, trimmed, capped by UTF-8 byte length, and replaced by deterministic Unknown values if empty. Track prefixes use two digits through 99 and the full number above that. Path collision never overwrites: exact duplicates are rejected; nonduplicate sanitized collisions append a short track-ID suffix.
+Artist/album/title components are Unicode-normalized, stripped of control/traversal/reserved characters with Pathvalidate, trimmed, capped by UTF-8 byte length, and replaced by deterministic Unknown values if empty. Track prefixes use two digits through 99 and the full number above that. Path collision never overwrites: a retry that finds the same content at its intended path reuses that managed file so the interrupted publication can finish indexing it; nonidentical sanitized collisions append a deterministic content suffix. Library-level duplicate checks still reject an already-indexed track.
 
 Every publish, edit, or deletion that calculates or changes a managed path acquires the cross-process `library.lock`. Edit/delete then acquire the target track lock; the fixed order is always library then track, and no code may invert it. The locks cover final duplicate/path rechecks through filesystem and database commit/recovery-state update. They are advisory `filelock` locks on the shared mounted filesystem with bounded wait; timeout maps to `423 mutation_locked`.
 
@@ -689,7 +716,7 @@ AppProviders
 
 - Query keys include active `profile_id` only for playlists; library/jobs/settings are global.
 - Profile switch pauses and clears the audio source/queue before invalidating profile queries.
-- Local and Deezer search are separate queries. Local search reacts to input; Deezer query is disabled until the explicit button supplies a submission token.
+- Local and remote-catalog search are separate queries. Local search reacts to input; MusicBrainz/Apple/Deezer queries are disabled until the explicit button supplies a submission token.
 - Remote candidates carry `playable=false`; no component renders a Play action for them.
 - S13 artwork selection creates a temporary stage only; its single Save sends complete metadata and the optional stage ID in one atomic `PATCH`. S15 merges API playlist impact with current-track/queue impact selected from the browser player store.
 - Completed download rows whose tracks were permanently deleted render the anonymous identity “Deleted track”; their provider, phase, state, and timestamps remain inspectable.
@@ -706,7 +733,7 @@ AppProviders
 |---|---|
 | S1 select/create | `GET/POST /profiles`; client sets session profile and loads profile playlists |
 | S3 local search | `GET /library/tracks?q=` only; no outbound adapter |
-| S3 explicit Deezer | `GET /search/deezer`; Deezer adapter returns normalized non-playable candidates |
+| S3 explicit online search | `GET /search/catalog`; available catalog adapters return normalized non-playable candidates |
 | Download result | `POST /downloads`; duplicate chain runs, durable `queued` job/event is committed and dispatched |
 | S11 progress | `/events` replays queued → downloading → converting → enriching → tagging → organizing → completed |
 | S2 new track | `library.changed` invalidates local queries; stream endpoint is now available |
@@ -814,6 +841,10 @@ The release script seeds 500 tracks and maps every PRD budget to a named check:
 ## 15. Operational behavior
 
 - `docker compose up -d` runs Alembic upgrade as a one-shot dependency before API/worker health becomes ready.
+- API, worker, and the one-shot migration service receive the Linux
+  `host.docker.internal:host-gateway` alias. This keeps Redis/proxy host access
+  consistent across backend containers; the web container makes no such
+  outbound calls.
 - API readiness requires valid config, migrated SQLite, and writable mounted paths. Redis/provider failure affects degraded status, not API readiness.
 - Worker readiness requires valid paths/tools and Redis; its loss disables acquisition only.
 - Health endpoints are local process checks; provider tests occur only on user action or bounded periodic status refresh.
@@ -1059,6 +1090,18 @@ replacement provider can report per-item phases through the same stream without
 a second idiom. Do not make later work depend on this cancelled API path.
 
 ## Decision log
+
+### 2026-07-29 — Cycle 003 released with durable catalog provenance
+
+MusicBrainz and Apple Music discovery identities are stored as first-class
+`track_sources.provider` values instead of being rewritten as the acquisition
+adapter. Migration `0004_catalog_track_sources` rebuilds SQLite's constrained
+provenance table to admit `apple` and `musicbrainz` while preserving existing
+rows and indexes; downgrade refuses to discard records using either new value.
+Compose gives the migration container the same host-gateway alias as API and
+worker, matching the documented backend networking contract. Publication also
+reuses an identical managed file found after an interrupted move, allowing the
+durable database transaction to complete without overwriting media.
 
 ### 2026-07-29 — Cycle 002 cancelled: Spotify API is not an acceptable dependency
 

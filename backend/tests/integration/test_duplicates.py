@@ -86,6 +86,24 @@ class TestDuplicateRequests:
         assert len(gate_api.get("/api/v1/library/tracks").json()["items"]) == 1
         assert len(_mounted_mp3s(gate_composition)) == 1
 
+    def test_a_musicbrainz_result_completes_and_keeps_its_catalog_provenance(
+        self, gate_api: TestClient, gate_downloads: DownloadService
+    ) -> None:
+        """Catalog discovery identities must survive the download transaction."""
+        candidate = deezer_candidate(gate_api, "daft punk")
+        candidate.update(
+            provider="musicbrainz",
+            source_id="musicbrainz-recording-1",
+            source_url="https://musicbrainz.org/recording/musicbrainz-recording-1",
+        )
+
+        job_id = queue_download(gate_api, candidate)
+        gate_downloads.run_job(JobId(job_id))
+
+        detail = read_job(gate_api, job_id)
+        assert detail["state"] == "completed"
+        assert detail["result_track_id"] is not None
+
 
 class TestCancel:
     def test_cancelling_a_queued_job_finishes_it_and_frees_the_queue(

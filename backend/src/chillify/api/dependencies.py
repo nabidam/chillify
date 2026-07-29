@@ -21,6 +21,7 @@ from chillify.application.metadata import MetadataService
 from chillify.application.playlists import PlaylistService
 from chillify.application.search import SearchService
 from chillify.application.settings import SettingsService
+from chillify.application.spotify_links import SpotifyLinkService
 from chillify.composition import Composition
 
 
@@ -39,6 +40,12 @@ def get_search_service(
     composition: Annotated[Composition, Depends(get_composition)],
 ) -> SearchService:
     return composition.search_service()
+
+
+def get_spotify_link_service(
+    composition: Annotated[Composition, Depends(get_composition)],
+) -> SpotifyLinkService:
+    return composition.spotify_link_service()
 
 
 def get_link_inspection_service(

@@ -22,7 +22,7 @@ import { usePlayerStore } from "@/features/player/playerStore";
 import { ResultCards, ResultCardsPlaceholder } from "@/features/search/ResultCards";
 import {
   type RemoteResult,
-  useDeezerSearch,
+  useCatalogSearch,
   useQueueDownload,
 } from "@/features/search/remoteSearch";
 
@@ -30,7 +30,7 @@ import {
  * S3 — Search.
  *
  * Local first, and structurally so: typing queries the library, and only the
- * Search Deezer button reaches the internet. Local and internet content never
+ * Search online button reaches the internet. Local and internet content never
  * intermix — they are separate regions with a separator between them.
  */
 export function SearchPage() {
@@ -40,7 +40,7 @@ export function SearchPage() {
 
   const status = useSystemStatus();
   const local = useLocalSearch(query);
-  const remote = useDeezerSearch(submission);
+  const remote = useCatalogSearch(submission);
   const queueDownload = useQueueDownload();
 
   const localItems = local.data?.items ?? [];
@@ -89,7 +89,7 @@ export function SearchPage() {
         </Field>
         <Button type="submit" variant="outline" disabled={query.trim().length === 0}>
           <GlobeIcon className="size-4" aria-hidden="true" />
-          Search Deezer
+          Search online
         </Button>
       </form>
 
@@ -124,8 +124,8 @@ export function SearchPage() {
               </EmptyTitle>
               <EmptyDescription>
                 {query.trim().length === 0
-                  ? "Type to filter the tracks Chillify already manages. Searching Deezer is a separate button."
-                  : "Nothing in your library matches that. Search Deezer to find it online."}
+                  ? "Type to filter the tracks Chillify already manages. Searching online is a separate button."
+                  : "Nothing in your library matches that. Search online to find it remotely."}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -175,7 +175,7 @@ export function SearchPage() {
 
         {remote.isError ? (
           <Alert variant="destructive">
-            <AlertTitle>Deezer could not be searched</AlertTitle>
+            <AlertTitle>Online catalogs could not be searched</AlertTitle>
             <AlertDescription>
               <span className="type-meta">
                 {remote.error instanceof ApiRequestError
@@ -224,19 +224,19 @@ function OnlineStatusLine({
   isSuccess: boolean;
 }) {
   if (submission.length === 0) {
-    return <>Nothing has been sent to Deezer. Press Search Deezer to look online.</>;
+    return <>Nothing has been sent online. Press Search online to contact the catalogs.</>;
   }
   if (isPending) {
-    return <>Contacting Deezer…</>;
+    return <>Contacting MusicBrainz, Apple, and Deezer…</>;
   }
   if (isSuccess) {
     return (
       <>
-        {resultCount} {resultCount === 1 ? "result" : "results"} from Deezer for “{submission}”.
+        {resultCount} {resultCount === 1 ? "result" : "results"} for “{submission}”.
       </>
     );
   }
-  return <>Deezer did not answer this search.</>;
+  return <>The online catalogs did not answer this search.</>;
 }
 
 /** The local half of S3: the library query, reacting to every keystroke. */

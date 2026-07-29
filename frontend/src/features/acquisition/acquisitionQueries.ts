@@ -22,6 +22,7 @@ export type LinkInspection = {
 };
 export type DownloadSourceType = components["schemas"]["DownloadRequestModel"]["source_type"];
 export type DownloadJob = components["schemas"]["JobModel"];
+export type SpotifyLinkMatches = components["schemas"]["SpotifyLinkMatchesModel"];
 
 /** Queue one reviewed acquisition. The durable job is the response, not a promise. */
 export function useQueueReviewedDownload() {
@@ -40,5 +41,17 @@ export function useQueueReviewedDownload() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: DOWNLOADS_QUERY_PREFIX });
     },
+  });
+}
+
+/** Resolve a Spotify reference and search independent catalogs for choices. */
+export function useSpotifyLinkMatches() {
+  return useMutation({
+    mutationFn: async (url: string): Promise<SpotifyLinkMatches> =>
+      unwrap(
+        await api.POST("/api/v1/links/spotify/matches", {
+          body: { url },
+        }),
+      ),
   });
 }
