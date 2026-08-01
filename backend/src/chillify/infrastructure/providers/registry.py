@@ -27,6 +27,7 @@ from chillify.domain.jobs import JobProvider
 from chillify.domain.protocols import (
     AcquisitionProvider,
     ArtworkFetcher,
+    BrowseProvider,
     DiscoveryProvider,
     LinkInspector,
     MetadataEnricher,
@@ -40,6 +41,7 @@ class ProviderRegistry:
     """Every bound adapter, keyed by the capability it satisfies."""
 
     discovery: dict[str, DiscoveryProvider] = field(default_factory=dict)
+    browse: dict[str, BrowseProvider] = field(default_factory=dict)
     acquisition: dict[JobProvider, AcquisitionProvider] = field(default_factory=dict)
     # Keyed by the acquisition provider that later fulfils an inspected link, so
     # the inspection use case routes by capability rather than naming yt-dlp or
@@ -63,6 +65,15 @@ class ProviderRegistry:
         if provider is None:
             raise ProviderDisabledError(
                 "Online search is unavailable in this deployment.",
+                context={"provider": name},
+            )
+        return provider
+
+    def require_browse(self, name: str) -> BrowseProvider:
+        provider = self.browse.get(name)
+        if provider is None:
+            raise ProviderDisabledError(
+                "Online discovery is unavailable in this deployment.",
                 context={"provider": name},
             )
         return provider
@@ -106,12 +117,16 @@ def build_registry(
         fixture_root = settings.fixture_root
         acquisition = FixtureAcquisitionProvider(fixture_root=fixture_root)
         radio_javan_acquisition = FixtureRadioJavanAcquisitionProvider(fixture_root=fixture_root)
+        radio_javan_fixture_discovery = FixtureRadioJavanDiscoveryProvider(
+            fixture_root=fixture_root
+        )
         logger.info("binding fixture provider adapters", extra={"environment": "gate"})
         return ProviderRegistry(
             discovery={
                 "deezer": FixtureDiscoveryProvider(fixture_root=fixture_root),
-                "radiojavan": FixtureRadioJavanDiscoveryProvider(fixture_root=fixture_root),
+                "radiojavan": radio_javan_fixture_discovery,
             },
+            browse={"radiojavan": radio_javan_fixture_discovery},
             acquisition={
                 JobProvider.YT_DLP: acquisition,
                 JobProvider.SPOTDL: acquisition,
@@ -147,14 +162,16 @@ def build_registry(
     # its pinned absolute path; the resolver falls back to the name for local
     # development where it is on PATH.
     spotdl_bin = os.environ.get("CHILLIFY_SPOTDL_BIN", "").strip() or "spotdl"
+    radio_javan_production_discovery = RadioJavanDiscoveryProvider()
     logger.info("binding production provider adapters", extra={"environment": "production"})
     return ProviderRegistry(
         discovery={
             "apple": AppleMusicDiscoveryProvider(),
             "deezer": DeezerDiscoveryProvider(),
             "musicbrainz": MusicBrainzDiscoveryProvider(),
-            "radiojavan": RadioJavanDiscoveryProvider(),
+            "radiojavan": radio_javan_production_discovery,
         },
+        browse={"radiojavan": radio_javan_production_discovery},
         acquisition={
             JobProvider.YT_DLP: YtDlpAcquisitionProvider(),
             JobProvider.SPOTDL: SpotdlAcquisitionProvider(executable=spotdl_bin),

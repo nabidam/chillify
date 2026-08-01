@@ -169,6 +169,26 @@ export const handlers = [
   http.get("/api/v1/search/catalog", () =>
     HttpResponse.json({ items: [remoteResultFixture()], next_cursor: null }),
   ),
+  http.get("/api/v1/radio-javan/tracks", ({ request }) => {
+    const section = new URL(request.url).searchParams.get("section") ?? "featured";
+    const id = section === "featured" ? "900002" : "900004";
+    return HttpResponse.json({
+      items: [
+        remoteResultFixture(
+          {},
+          {
+            provider: "radiojavan",
+            source_id: id,
+            source_url: `https://play.radiojavan.com/song/${id}`,
+            title: section === "featured" ? "Featured Fixture" : "Trending Fixture",
+            artist: "Radio Javan Ensemble",
+            acquisition_locator: id,
+          },
+        ),
+      ],
+      next_cursor: null,
+    });
+  }),
   http.post("/api/v1/links/spotify/matches", () =>
     HttpResponse.json({
       reference: {

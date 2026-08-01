@@ -1,0 +1,10 @@
+[
+  {
+    "id": 900004,
+    "artist": "Radio Javan Ensemble",
+    "title": "Trending Fixture",
+    "album": {"name": "Chillify Fixtures"},
+    "duration": 202,
+    "thumbnail": "https://images.radiojavan.test/trending.jpg"
+  }
+]

@@ -33,6 +33,9 @@ from chillify.domain.protocols import (
 )
 from chillify.infrastructure.providers.deezer_wire import candidates_from_search
 from chillify.infrastructure.providers.radio_javan_wire import (
+    candidates_from_browse as radio_javan_candidates_from_browse,
+)
+from chillify.infrastructure.providers.radio_javan_wire import (
     candidates_from_search as radio_javan_candidates_from_search,
 )
 from chillify.infrastructure.providers.radio_javan_wire import (
@@ -45,6 +48,10 @@ logger = logging.getLogger(__name__)
 SEARCH_FIXTURE = "providers/deezer_search.json"
 AUDIO_FIXTURE = "media/gate-tone.mp3"
 RADIO_JAVAN_SEARCH_FIXTURE = "providers/radiojavan_search.json"
+RADIO_JAVAN_BROWSE_FIXTURES: Final = {
+    "featured": "providers/radiojavan_featured.json",
+    "trending": "providers/radiojavan_trending.json",
+}
 RADIO_JAVAN_DETAIL_FIXTURE = "providers/radiojavan_detail.json"
 
 # The fixture acquisition reports these percentages in order, so a gate
@@ -157,6 +164,19 @@ class FixtureRadioJavanDiscoveryProvider:
             for candidate in candidates
             if needle in normalize_key(f"{candidate.artist} {candidate.title}", fallback="")
         )[:limit]
+
+    def browse(
+        self,
+        section: str,
+        proxy: str | None,  # noqa: ARG002
+    ) -> tuple[TrackCandidate, ...]:
+        fixture = RADIO_JAVAN_BROWSE_FIXTURES.get(section)
+        if fixture is None:
+            raise ProviderResponseError(
+                "The Radio Javan browse section is unavailable.", context={"provider": self.name}
+            )
+        payload = _read_json(self.fixture_root / fixture, self.name)
+        return radio_javan_candidates_from_browse(payload)
 
 
 @dataclass(frozen=True, slots=True)

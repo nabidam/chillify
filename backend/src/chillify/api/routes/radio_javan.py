@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 
@@ -26,4 +26,20 @@ def search_radio_javan(
     limit: Annotated[int, Query(ge=1, le=DISCOVERY_LIMIT_MAX)] = DISCOVERY_LIMIT_DEFAULT,
 ) -> PageModel[RemoteResultModel]:
     results = search.search_radio_javan(q, limit=limit)
+    return PageModel(items=[RemoteResultModel.of(result) for result in results], next_cursor=None)
+
+
+@router.get(
+    "/tracks",
+    response_model=PageModel[RemoteResultModel],
+    summary="Browse first-page Radio Javan tracks",
+)
+def browse_radio_javan(
+    search: Annotated[SearchService, Depends(get_search_service)],
+    section: Annotated[
+        Literal["featured", "trending"],
+        Query(description="The Radio Javan section to browse."),
+    ],
+) -> PageModel[RemoteResultModel]:
+    results = search.browse_radio_javan(section)
     return PageModel(items=[RemoteResultModel.of(result) for result in results], next_cursor=None)

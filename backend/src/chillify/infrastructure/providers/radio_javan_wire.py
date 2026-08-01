@@ -25,6 +25,13 @@ def candidates_from_search(payload: object) -> tuple[TrackCandidate, ...]:
     return tuple(candidate for row in rows if (candidate := _candidate_or_none(row)) is not None)
 
 
+def candidates_from_browse(payload: object) -> tuple[TrackCandidate, ...]:
+    """Read one Radio Javan Featured or Trending MP3 browse response."""
+    if not isinstance(payload, list):
+        raise _response_error()
+    return tuple(candidate for row in payload if (candidate := _candidate_or_none(row)) is not None)
+
+
 def candidate_from_row(row: object) -> TrackCandidate:
     candidate = _candidate_or_none(row)
     if candidate is None:

@@ -107,6 +107,16 @@ class DiscoveryProvider(Protocol):
 
 
 @runtime_checkable
+class BrowseProvider(Protocol):
+    """One named, first-page remote browse capability."""
+
+    @property
+    def name(self) -> str: ...
+
+    def browse(self, section: str, proxy: str | None) -> Sequence[TrackCandidate]: ...
+
+
+@runtime_checkable
 class LinkInspector(Protocol):
     """Recognition and metadata-only inspection of one submitted URL."""
 

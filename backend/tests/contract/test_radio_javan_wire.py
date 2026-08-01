@@ -9,6 +9,7 @@ import pytest
 
 from chillify.domain.errors import ProviderResponseError
 from chillify.infrastructure.providers.radio_javan_wire import (
+    candidates_from_browse,
     candidates_from_search,
     media_url_from_detail,
 )
@@ -40,8 +41,17 @@ def test_detail_requires_the_requested_id_and_uses_hq_first() -> None:
     )
 
 
+def test_browse_normalizes_a_first_page_and_skips_malformed_rows() -> None:
+    candidates = candidates_from_browse(_fixture("radiojavan_featured.json"))
+
+    assert [candidate.title for candidate in candidates] == ["Featured Fixture"]
+    assert candidates[0].source_id == "900002"
+
+
 def test_invalid_envelope_or_detail_is_a_safe_provider_error() -> None:
     with pytest.raises(ProviderResponseError):
         candidates_from_search({"mp3s": "not-an-array"})
+    with pytest.raises(ProviderResponseError):
+        candidates_from_browse({"mp3s": []})
     with pytest.raises(ProviderResponseError):
         media_url_from_detail({"id": 900002, "hq_link": "https://cdn.invalid/a.mp3"}, "900001")

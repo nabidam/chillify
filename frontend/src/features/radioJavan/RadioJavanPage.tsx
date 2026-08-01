@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Download, Music2, Radio, Search } from "lucide-react";
+import { Download, Music2, Search } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -22,15 +22,21 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { type RemoteResult, useQueueDownload } from "@/features/search/remoteSearch";
 
-/** U1 — the smallest dedicated Radio Javan surface: search, queue, listen. */
+type RadioJavanSection = "featured" | "trending";
+
+/** Dedicated Radio Javan search and first-page exploration. */
 export function RadioJavanPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryFromUrl = new URLSearchParams(location.search).get("q")?.trim() ?? "";
   const [query, setQuery] = useState(queryFromUrl);
-  const results = useRadioJavanSearch(queryFromUrl);
+  const [section, setSection] = useState<RadioJavanSection>("featured");
+  const searchResults = useRadioJavanSearch(queryFromUrl);
+  const browseResults = useRadioJavanBrowse(section, queryFromUrl.length === 0);
+  const results = queryFromUrl.length > 0 ? searchResults : browseResults;
   const queueDownload = useQueueDownload("radiojavan_track");
   const status = useSystemStatus();
   const isQueueUnavailable = status.data?.redis.health !== "ok" && status.isSuccess;
@@ -107,11 +113,20 @@ export function RadioJavanPage() {
         </Alert>
       ) : null}
 
-      {queryFromUrl.length === 0 ? <RadioJavanEmpty /> : null}
-      {queryFromUrl.length > 0 && results.isPending ? <RadioJavanLoading /> : null}
-      {queryFromUrl.length > 0 && results.isError ? (
+      {queryFromUrl.length === 0 ? (
+        <Tabs value={section} onValueChange={(value) => setSection(value as RadioJavanSection)}>
+          <TabsList aria-label="Radio Javan sections">
+            <TabsTrigger value="featured">Featured</TabsTrigger>
+            <TabsTrigger value="trending">Trending</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      ) : null}
+      {results.isPending ? <RadioJavanLoading /> : null}
+      {results.isError ? (
         <Alert variant="destructive">
-          <AlertTitle>Radio Javan could not be searched</AlertTitle>
+          <AlertTitle>
+            Radio Javan could not be {queryFromUrl.length > 0 ? "searched" : "loaded"}
+          </AlertTitle>
           <AlertDescription className="flex flex-col items-start gap-2">
             <span>
               {results.error instanceof ApiRequestError
@@ -124,26 +139,38 @@ export function RadioJavanPage() {
           </AlertDescription>
         </Alert>
       ) : null}
-      {queryFromUrl.length > 0 && results.isSuccess && items.length === 0 ? (
+      {results.isSuccess && items.length === 0 ? (
         <Empty>
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <Music2 />
             </EmptyMedia>
-            <EmptyTitle>No Radio Javan tracks found</EmptyTitle>
-            <EmptyDescription>Try a different title or artist.</EmptyDescription>
+            <EmptyTitle>
+              No {queryFromUrl.length > 0 ? "Radio Javan tracks" : `${section} tracks`} found
+            </EmptyTitle>
+            <EmptyDescription>
+              {queryFromUrl.length > 0
+                ? "Try a different title or artist."
+                : "Try the other Radio Javan section."}
+            </EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : null}
-      {queryFromUrl.length > 0 && results.isSuccess && items.length > 0 ? (
+      {results.isSuccess && items.length > 0 ? (
         <section aria-labelledby="radio-javan-results" className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between gap-4">
             <div>
               <h2 id="radio-javan-results" className="type-section text-foreground">
-                Search results
+                {queryFromUrl.length > 0
+                  ? "Search results"
+                  : section === "featured"
+                    ? "Featured"
+                    : "Trending"}
               </h2>
               <p className="type-meta text-foreground-muted">
-                {items.length} {items.length === 1 ? "track" : "tracks"} for “{queryFromUrl}”
+                {queryFromUrl.length > 0
+                  ? `${items.length} ${items.length === 1 ? "track" : "tracks"} for “${queryFromUrl}”`
+                  : `First page · ${items.length} ${items.length === 1 ? "track" : "tracks"}`}
               </p>
             </div>
             <Badge variant="secondary">Radio Javan</Badge>
@@ -183,20 +210,19 @@ function useRadioJavanSearch(query: string) {
   });
 }
 
-function RadioJavanEmpty() {
-  return (
-    <Empty>
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <Radio />
-        </EmptyMedia>
-        <EmptyTitle>Search the Radio Javan catalog</EmptyTitle>
-        <EmptyDescription>
-          Results stay separate from Chillify’s library until you choose Download.
-        </EmptyDescription>
-      </EmptyHeader>
-    </Empty>
-  );
+function useRadioJavanBrowse(section: RadioJavanSection, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.radioJavanBrowse(section),
+    enabled,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/v1/radio-javan/tracks", {
+          params: { query: { section } },
+        }),
+      ),
+  });
 }
 
 function RadioJavanLoading() {

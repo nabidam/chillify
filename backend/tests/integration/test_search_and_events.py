@@ -146,6 +146,21 @@ class TestRadioJavanWalkingSkeleton:
         assert library.json()["items"][0]["title"] == "Radio Javan Walking Skeleton"
 
 
+class TestRadioJavanExplore:
+    def test_featured_and_trending_use_the_dedicated_first_page_endpoint(
+        self, gate_api: TestClient
+    ) -> None:
+        featured = gate_api.get("/api/v1/radio-javan/tracks", params={"section": "featured"})
+        trending = gate_api.get("/api/v1/radio-javan/tracks", params={"section": "trending"})
+
+        assert featured.status_code == 200
+        assert featured.json()["next_cursor"] is None
+        assert featured.json()["items"][0]["candidate"]["title"] == "Featured Fixture"
+        assert trending.status_code == 200
+        assert trending.json()["next_cursor"] is None
+        assert trending.json()["items"][0]["candidate"]["title"] == "Trending Fixture"
+
+
 class TestCatalogSearch:
     def test_all_catalog_search_uses_available_providers(self, gate_api: TestClient) -> None:
         response = gate_api.get(

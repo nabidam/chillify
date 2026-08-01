@@ -18,6 +18,7 @@ from chillify.domain.protocols import (
 )
 from chillify.infrastructure.providers.radio_javan_wire import (
     PROVIDER_NAME,
+    candidates_from_browse,
     candidates_from_search,
     media_url_from_detail,
 )
@@ -42,6 +43,21 @@ class RadioJavanDiscoveryProvider:
         )
         payload = _json_response(response)
         return candidates_from_search(payload)[:limit]
+
+    def browse(self, section: str, proxy: str | None) -> tuple[TrackCandidate, ...]:
+        """Return the deliberately unpaginated Featured or Trending MP3 page."""
+        if section not in {"featured", "trending"}:
+            raise ProviderResponseError(
+                "Radio Javan could not complete that request.",
+                context={"provider": self.name},
+            )
+        response = OutboundHttp(proxy=proxy).request(
+            "GET",
+            f"{_BASE_URL}/mp3s",
+            params={"url": "mp3s", "type": section, "page": "1"},
+            headers={"Accept": "application/json", "User-Agent": _USER_AGENT},
+        )
+        return candidates_from_browse(_json_response(response))
 
 
 @dataclass(frozen=True, slots=True)
