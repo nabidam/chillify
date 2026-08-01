@@ -72,7 +72,7 @@ export function RadioJavanPage() {
   const items = results.data?.items ?? [];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <header className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <Badge variant="outline">Dedicated source</Badge>
@@ -86,7 +86,7 @@ export function RadioJavanPage() {
 
       <form
         onSubmit={submit}
-        className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end"
+        className="flex min-w-0 flex-col items-stretch gap-3 sm:flex-row sm:items-end"
       >
         <Field className="min-w-0 flex-1">
           <FieldLabel htmlFor="radio-javan-query">Search Radio Javan</FieldLabel>
@@ -98,7 +98,7 @@ export function RadioJavanPage() {
             onChange={(event) => setQuery(event.target.value)}
           />
         </Field>
-        <Button type="submit" disabled={query.trim().length === 0}>
+        <Button className="w-full sm:w-auto" type="submit" disabled={query.trim().length === 0}>
           <Search data-icon="inline-start" aria-hidden="true" />
           Search
         </Button>
@@ -114,8 +114,15 @@ export function RadioJavanPage() {
       ) : null}
 
       {queryFromUrl.length === 0 ? (
-        <Tabs value={section} onValueChange={(value) => setSection(value as RadioJavanSection)}>
-          <TabsList aria-label="Radio Javan sections">
+        <Tabs
+          className="min-w-0"
+          value={section}
+          onValueChange={(value) => setSection(value as RadioJavanSection)}
+        >
+          <TabsList
+            aria-label="Radio Javan sections"
+            className="grid w-full max-w-copy grid-cols-2"
+          >
             <TabsTrigger value="featured">Featured</TabsTrigger>
             <TabsTrigger value="trending">Trending</TabsTrigger>
           </TabsList>
@@ -157,9 +164,9 @@ export function RadioJavanPage() {
         </Empty>
       ) : null}
       {results.isSuccess && items.length > 0 ? (
-        <section aria-labelledby="radio-javan-results" className="flex flex-col gap-3">
-          <div className="flex items-baseline justify-between gap-4">
-            <div>
+        <section aria-labelledby="radio-javan-results" className="flex min-w-0 flex-col gap-3">
+          <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-baseline sm:justify-between">
+            <div className="min-w-0">
               <h2 id="radio-javan-results" className="type-section text-foreground">
                 {queryFromUrl.length > 0
                   ? "Search results"
@@ -175,7 +182,7 @@ export function RadioJavanPage() {
             </div>
             <Badge variant="secondary">Radio Javan</Badge>
           </div>
-          <ul className="grid gap-3 lg:grid-cols-2">
+          <ul className="grid min-w-0 grid-cols-1 gap-3 desktop:grid-cols-2 wide:grid-cols-3">
             {items.map((result) => (
               <RadioJavanResultCard
                 key={result.candidate.source_url}
@@ -233,7 +240,10 @@ function RadioJavanLoading() {
   return (
     <div className="flex flex-col gap-3" role="status">
       <span className="type-meta text-foreground-muted">Searching Radio Javan…</span>
-      <ul className="grid gap-3 lg:grid-cols-2" aria-label="Loading Radio Javan results">
+      <ul
+        className="grid min-w-0 grid-cols-1 gap-3 desktop:grid-cols-2 wide:grid-cols-3"
+        aria-label="Loading Radio Javan results"
+      >
         {[0, 1].map((item) => (
           <li key={item}>
             <Skeleton className="h-44 w-full" />
@@ -257,18 +267,20 @@ function RadioJavanResultCard({
 }) {
   const { candidate } = result;
   return (
-    <li>
-      <Card className="h-full overflow-hidden bg-surface-raised">
+    <li className="min-w-0">
+      <Card className="h-full min-w-0 overflow-hidden bg-surface-raised">
         <CardHeader className="gap-4 pb-0">
           <div className="flex gap-4">
             <AspectRatio
               ratio={1}
-              className="w-24 shrink-0 overflow-hidden rounded-lg bg-muted"
+              className="w-cover-md shrink-0 overflow-hidden rounded-lg bg-muted"
             >
               {candidate.artwork_url ? (
                 <img
                   src={candidate.artwork_url}
-                  alt={`${candidate.title} by ${candidate.artist}`}
+                  alt={`${candidate.title} artwork by ${candidate.artist}`}
+                  loading="lazy"
+                  decoding="async"
                   className="size-full object-cover"
                 />
               ) : (
@@ -293,13 +305,14 @@ function RadioJavanResultCard({
             Radio Javan source · {formatDuration(candidate.duration_ms)}
           </p>
         </CardContent>
-        <CardFooter className="justify-between gap-3">
+        <CardFooter className="flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
           <span className="type-meta text-foreground-muted" role="status">
             {isPending ? "Adding to Downloads…" : "MP3 · not playable remotely"}
           </span>
           {result.existing_track_id === null ? (
             <Button
               disabled={isDisabled || isPending}
+              className="w-full sm:w-auto"
               aria-label={`Download ${candidate.title}`}
               onClick={() => onDownload(result)}
             >
@@ -307,7 +320,7 @@ function RadioJavanResultCard({
               {isPending ? "Queueing…" : "Download"}
             </Button>
           ) : (
-            <Button variant="outline" asChild>
+            <Button className="w-full sm:w-auto" variant="outline" asChild>
               <Link
                 to={routes.library}
                 aria-label={`Already in your library: ${candidate.title}`}

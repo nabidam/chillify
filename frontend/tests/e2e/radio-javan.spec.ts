@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { chooseHousehold } from "./fixtures";
 
+const responsiveViewports = [
+  { width: 375, height: 812 },
+  { width: 768, height: 1024 },
+  { width: 1024, height: 768 },
+  { width: 1440, height: 900 },
+] as const;
+
 /**
  * U1 kernel journey: the dedicated source stays separate, yet its native MP3
  * travels through the shipped queue and becomes ordinary local playback.
@@ -43,4 +50,20 @@ test("Radio Javan walking skeleton — discover, download, and play locally", as
       "Radio Javan Walking Skeleton",
     );
   });
+});
+
+test("Radio Javan Explore stays readable without horizontal overflow", async ({ page }) => {
+  await chooseHousehold(page);
+
+  for (const viewport of responsiveViewports) {
+    await page.setViewportSize(viewport);
+    await page.goto("/radio-javan");
+    await expect(page.getByRole("heading", { name: "Radio Javan" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Download Featured Fixture" })).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
+  }
 });

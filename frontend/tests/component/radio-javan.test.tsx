@@ -27,6 +27,23 @@ function renderRadioJavan(path: string = routes.radioJavan) {
 }
 
 describe("Radio Javan Explore", () => {
+  it("keeps search, section, and download controls in a keyboard reading order", async () => {
+    const user = userEvent.setup();
+    renderRadioJavan();
+
+    const query = screen.getByLabelText("Search Radio Javan");
+    query.focus();
+    await user.type(query, "fixture");
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Search" }));
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Featured" }));
+    await user.tab();
+    expect(document.activeElement).toBe(
+      await screen.findByRole("button", { name: "Download Featured Fixture" }),
+    );
+  });
+
   it("switches between dedicated Featured and Trending first-page results", async () => {
     const catalog = vi.fn(() => HttpResponse.json({ items: [], next_cursor: null }));
     server.use(http.get("/api/v1/search/catalog", catalog));

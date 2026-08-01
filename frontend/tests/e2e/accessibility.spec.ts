@@ -105,6 +105,11 @@ test("Gate 3 — axe is clean across the reachable screen states", async ({ page
       open: () => page.getByRole("link", { name: "Settings", exact: true }).click(),
       ready: () => expect(page.getByRole("heading", { name: "Settings" })).toBeVisible(),
     },
+    {
+      name: "Radio Javan Explore",
+      open: () => page.getByRole("link", { name: "Radio Javan", exact: true }).click(),
+      ready: () => expect(page.getByRole("heading", { name: "Radio Javan" })).toBeVisible(),
+    },
   ];
 
   for (const screen of screens) {
