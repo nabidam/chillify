@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { Download, Music2, Search } from "lucide-react";
+import { Download, Library, Music2, Search } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { ApiRequestError, api, unwrap } from "@/api/client";
 import { queryKeys } from "@/api/queryKeys";
@@ -150,7 +150,7 @@ export function RadioJavanPage() {
             </EmptyTitle>
             <EmptyDescription>
               {queryFromUrl.length > 0
-                ? "Try a different title or artist."
+                ? `0 tracks for “${queryFromUrl}”. Try a different title or artist.`
                 : "Try the other Radio Javan section."}
             </EmptyDescription>
           </EmptyHeader>
@@ -199,6 +199,10 @@ function useRadioJavanSearch(query: string) {
   return useQuery({
     queryKey: queryKeys.radioJavanSearch(query),
     enabled: query.length > 0,
+    // The server resolves duplicate ownership. Re-entering a deep link after
+    // acquisition must therefore fetch that fresh local state rather than
+    // reuse an immutable discovery snapshot.
+    refetchOnMount: "always",
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,
     queryFn: async () =>
@@ -227,13 +231,16 @@ function useRadioJavanBrowse(section: RadioJavanSection, enabled: boolean) {
 
 function RadioJavanLoading() {
   return (
-    <ul className="grid gap-3 lg:grid-cols-2" aria-label="Loading Radio Javan results">
-      {[0, 1].map((item) => (
-        <li key={item}>
-          <Skeleton className="h-44 w-full" />
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col gap-3" role="status">
+      <span className="type-meta text-foreground-muted">Searching Radio Javan…</span>
+      <ul className="grid gap-3 lg:grid-cols-2" aria-label="Loading Radio Javan results">
+        {[0, 1].map((item) => (
+          <li key={item}>
+            <Skeleton className="h-44 w-full" />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -300,8 +307,14 @@ function RadioJavanResultCard({
               {isPending ? "Queueing…" : "Download"}
             </Button>
           ) : (
-            <Button variant="outline" disabled>
-              In your library
+            <Button variant="outline" asChild>
+              <Link
+                to={routes.library}
+                aria-label={`Already in your library: ${candidate.title}`}
+              >
+                <Library data-icon="inline-start" aria-hidden="true" />
+                Already in your library
+              </Link>
             </Button>
           )}
         </CardFooter>

@@ -145,6 +145,26 @@ class TestRadioJavanWalkingSkeleton:
         assert library.status_code == 200
         assert library.json()["items"][0]["title"] == "Radio Javan Walking Skeleton"
 
+    def test_an_acquired_search_result_links_to_its_local_duplicate(
+        self, gate_api: TestClient, gate_downloads: DownloadService
+    ) -> None:
+        """A revisited Radio Javan result offers the published local track, never another job."""
+        candidate = gate_api.get("/api/v1/radio-javan/search", params={"q": "walking"}).json()[
+            "items"
+        ][0]["candidate"]
+        created = gate_api.post(
+            "/api/v1/downloads", json={"source_type": "radiojavan_track", "candidate": candidate}
+        ).json()
+        gate_downloads.run_job(JobId(str(created["id"])))
+
+        revisited = gate_api.get("/api/v1/radio-javan/search", params={"q": "walking"}).json()[
+            "items"
+        ][0]
+
+        assert revisited["existing_track_id"] is not None
+        library = gate_api.get("/api/v1/library/tracks").json()["items"]
+        assert [track["id"] for track in library] == [revisited["existing_track_id"]]
+
 
 class TestRadioJavanExplore:
     def test_featured_and_trending_use_the_dedicated_first_page_endpoint(
