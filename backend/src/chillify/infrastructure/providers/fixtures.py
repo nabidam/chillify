@@ -24,6 +24,7 @@ from chillify.domain.errors import (
     AcquisitionFailedError,
     ProviderResponseError,
 )
+from chillify.domain.jobs import JobPhase
 from chillify.domain.normalization import normalize_key
 from chillify.domain.protocols import (
     AudioArtifact,
@@ -123,7 +124,7 @@ class FixtureAcquisitionProvider:
             if cancelled():
                 target.unlink(missing_ok=True)
                 raise AcquisitionCancelledError("That download was cancelled.")
-            progress(percent)
+            progress(JobPhase.DOWNLOADING, percent)
             time.sleep(_STEP_SECONDS)
 
         shutil.copyfile(source, target)
@@ -205,9 +206,9 @@ class FixtureRadioJavanAcquisitionProvider:
                 "The Radio Javan audio fixture is missing.", context={"provider": self.name}
             )
         target = Path(workspace) / "radio-javan.mp3"
-        progress(0.0)
+        progress(JobPhase.DOWNLOADING, 0.0)
         shutil.copyfile(source, target)
-        progress(100.0)
+        progress(JobPhase.DOWNLOADING, 100.0)
         size = target.stat().st_size
         if size == 0:
             raise AcquisitionFailedError(

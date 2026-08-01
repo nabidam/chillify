@@ -9,13 +9,19 @@ from typing import Final
 
 import httpx
 
-from chillify.domain.errors import AcquisitionFailedError, ProviderResponseError
+from chillify.domain.errors import (
+    AcquisitionCancelledError,
+    AcquisitionFailedError,
+    ProviderResponseError,
+)
+from chillify.domain.jobs import JobPhase
 from chillify.domain.protocols import (
     AudioArtifact,
     CancelledCallback,
     ProgressCallback,
     TrackCandidate,
 )
+from chillify.infrastructure.providers.mp3 import single_valid_mp3
 from chillify.infrastructure.providers.radio_javan_wire import (
     PROVIDER_NAME,
     candidates_from_browse,
@@ -26,6 +32,7 @@ from chillify.infrastructure.security.outbound import OutboundHttp
 
 _BASE_URL: Final = "https://rj-deskcloud.com/api2"
 _USER_AGENT: Final = "Chillify/1.0 (Radio Javan integration)"
+_JSON_MAX_BYTES: Final = 4 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,25 +89,25 @@ class RadioJavanAcquisitionProvider:
             headers={"Accept": "application/json", "User-Agent": _USER_AGENT},
         )
         media_url = media_url_from_detail(_json_response(detail), source_id)
-        if cancelled():
-            raise AcquisitionFailedError(
-                "That download was cancelled.", context={"provider": self.name}
-            )
-        media = OutboundHttp(proxy=proxy, follow_redirects=True).request(
-            "GET",
-            media_url,
-            headers={"Accept": "audio/mpeg", "User-Agent": _USER_AGENT},
-        )
-        body = media.content
-        if not body:
-            raise AcquisitionFailedError(
-                "Radio Javan returned an empty audio file.", context={"provider": self.name}
-            )
         target = Path(workspace) / "radio-javan.mp3"
-        target.write_bytes(body)
-        progress(100.0)
+        if cancelled():
+            raise AcquisitionCancelledError("That download was cancelled.")
+        OutboundHttp(proxy=proxy, follow_redirects=True).stream_to_file(
+            media_url,
+            target,
+            headers={"Accept": "audio/mpeg", "User-Agent": _USER_AGENT},
+            cancelled=cancelled,
+            progress=lambda percent: progress(JobPhase.DOWNLOADING, percent),
+        )
+        try:
+            audio_path, duration_ms = single_valid_mp3(Path(workspace), provider=self.name)
+        except AcquisitionFailedError:
+            target.unlink(missing_ok=True)
+            raise
         return AudioArtifact(
-            location=str(target), duration_ms=candidate.duration_ms, byte_size=len(body)
+            location=str(audio_path),
+            duration_ms=duration_ms,
+            byte_size=audio_path.stat().st_size,
         )
 
 
@@ -108,6 +115,11 @@ def _json_response(response: httpx.Response) -> object:
     if response.status_code >= 400:
         raise ProviderResponseError(
             "Radio Javan could not complete that request.", context={"provider": PROVIDER_NAME}
+        )
+    if len(response.content) > _JSON_MAX_BYTES:
+        raise ProviderResponseError(
+            "Radio Javan returned a response Chillify could not read.",
+            context={"provider": PROVIDER_NAME},
         )
     try:
         return json.loads(response.content)

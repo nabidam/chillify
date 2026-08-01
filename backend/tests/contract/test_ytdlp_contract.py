@@ -268,7 +268,7 @@ def _acquisition(
 class TestYtDlpAcquisitionContract:
     def test_a_direct_video_yields_one_valid_mp3(self, tmp_path: Path) -> None:
         artifact = _acquisition().acquire(
-            _youtube_candidate(), str(tmp_path), None, lambda _p: None, lambda: False
+            _youtube_candidate(), str(tmp_path), None, lambda _phase, _p: None, lambda: False
         )
 
         acquired = Path(artifact.location)
@@ -280,7 +280,11 @@ class TestYtDlpAcquisitionContract:
     def test_progress_is_reported_monotonically_and_never_invented(self, tmp_path: Path) -> None:
         reported: list[float | None] = []
         _acquisition().acquire(
-            _youtube_candidate(), str(tmp_path), None, reported.append, lambda: False
+            _youtube_candidate(),
+            str(tmp_path),
+            None,
+            lambda _phase, percent: reported.append(percent),
+            lambda: False,
         )
 
         known = [value for value in reported if value is not None]
@@ -290,7 +294,7 @@ class TestYtDlpAcquisitionContract:
     def test_a_cancellation_before_work_leaves_the_workspace_empty(self, tmp_path: Path) -> None:
         with pytest.raises(AcquisitionCancelledError):
             _acquisition().acquire(
-                _youtube_candidate(), str(tmp_path), None, lambda _p: None, lambda: True
+                _youtube_candidate(), str(tmp_path), None, lambda _phase, _p: None, lambda: True
             )
 
         assert list(tmp_path.iterdir()) == []
@@ -303,7 +307,7 @@ class TestYtDlpAcquisitionContract:
                 _youtube_candidate(),
                 str(tmp_path),
                 None,
-                lambda _p: None,
+                lambda _phase, _p: None,
                 lambda: next(checks, True),
             )
 
@@ -314,7 +318,11 @@ class TestYtDlpAcquisitionContract:
         info = {"entries": [{"title": "Harder Better Faster Stronger", "uploader": "Daft Punk"}]}
         with pytest.raises(AcquisitionFailedError):
             _acquisition(info=info).acquire(
-                _deezer_candidate(224_000), str(tmp_path), None, lambda _p: None, lambda: False
+                _deezer_candidate(224_000),
+                str(tmp_path),
+                None,
+                lambda _phase, _p: None,
+                lambda: False,
             )
 
         assert list(tmp_path.iterdir()) == []
@@ -323,11 +331,11 @@ class TestYtDlpAcquisitionContract:
         info = {"entries": [{"title": "Something Entirely Different", "uploader": "Nobody"}]}
         with pytest.raises(AcquisitionFailedError):
             _acquisition(info=info).acquire(
-                _deezer_candidate(None), str(tmp_path), None, lambda _p: None, lambda: False
+                _deezer_candidate(None), str(tmp_path), None, lambda _phase, _p: None, lambda: False
             )
 
     def test_a_download_that_produces_no_mp3_fails(self, tmp_path: Path) -> None:
         with pytest.raises(AcquisitionFailedError):
             _acquisition(produce_mp3=False).acquire(
-                _youtube_candidate(), str(tmp_path), None, lambda _p: None, lambda: False
+                _youtube_candidate(), str(tmp_path), None, lambda _phase, _p: None, lambda: False
             )

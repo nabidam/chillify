@@ -82,8 +82,9 @@ class TestDurableCompletion:
         phases = [event["phase"] for event in events]
         assert phases[0] == "accepted"
         assert phases[-1] == "completed"
-        for phase in ("downloading", "converting", "enriching", "tagging", "organizing"):
+        for phase in ("downloading", "enriching", "tagging", "organizing"):
             assert phase in phases
+        assert "converting" not in phases  # fixture already provides native MP3
         assert [event["sequence"] for event in events] == list(range(1, len(events) + 1))
 
     def test_the_workspace_is_removed_once_the_track_is_published(

@@ -18,13 +18,17 @@ import httpx
 import pytest
 import respx
 
-from chillify.domain.errors import ProviderResponseError
+from chillify.domain.errors import (
+    AcquisitionCancelledError,
+    AcquisitionLimitExceededError,
+    ProviderResponseError,
+)
 from chillify.domain.protocols import MetadataPatch, TrackCandidate
 from chillify.infrastructure.providers.deezer import DeezerDiscoveryProvider
 from chillify.infrastructure.providers.fixtures import FixtureDiscoveryProvider
 from chillify.infrastructure.providers.lastfm import LastfmEnricher
 from chillify.infrastructure.security import outbound
-from chillify.infrastructure.security.outbound import _MAX_ATTEMPTS
+from chillify.infrastructure.security.outbound import _MAX_ATTEMPTS, MEDIA_MAX_BYTES, OutboundHttp
 
 pytestmark = pytest.mark.contract
 
@@ -144,6 +148,59 @@ class TestFixtureAdapterMakesNoRequest:
             FixtureDiscoveryProvider(fixture_root=root).search("daft punk", 5, _PROXY)
 
         assert route.call_count == 0
+
+
+class TestBoundedMediaTransfer:
+    def test_streams_without_buffering_and_reports_real_byte_progress(self, tmp_path: Path) -> None:
+        target = tmp_path / "audio.mp3"
+        reported: list[float | None] = []
+        with respx.mock(assert_all_called=True) as router:
+            router.get("https://cdn.radiojavan.test/audio.mp3").mock(
+                return_value=httpx.Response(200, headers={"content-length": "4"}, content=b"mp3!")
+            )
+            written = OutboundHttp().stream_to_file(
+                "https://cdn.radiojavan.test/audio.mp3",
+                target,
+                headers={"Accept": "audio/mpeg"},
+                cancelled=lambda: False,
+                progress=reported.append,
+            )
+
+        assert written == 4
+        assert target.read_bytes() == b"mp3!"
+        assert reported[-1] == 100.0
+
+    def test_removes_a_partial_file_on_cancellation_or_size_limit(self, tmp_path: Path) -> None:
+        target = tmp_path / "audio.mp3"
+        with respx.mock(assert_all_called=True) as router:
+            router.get("https://cdn.radiojavan.test/cancel.mp3").mock(
+                return_value=httpx.Response(200, content=b"partial")
+            )
+            with pytest.raises(AcquisitionCancelledError):
+                OutboundHttp().stream_to_file(
+                    "https://cdn.radiojavan.test/cancel.mp3",
+                    target,
+                    headers={"Accept": "audio/mpeg"},
+                    cancelled=lambda: True,
+                    progress=lambda _percent: None,
+                )
+        assert not target.exists()
+
+        with respx.mock(assert_all_called=True) as router:
+            router.get("https://cdn.radiojavan.test/large.mp3").mock(
+                return_value=httpx.Response(
+                    200, headers={"content-length": str(MEDIA_MAX_BYTES + 1)}
+                )
+            )
+            with pytest.raises(AcquisitionLimitExceededError):
+                OutboundHttp().stream_to_file(
+                    "https://cdn.radiojavan.test/large.mp3",
+                    target,
+                    headers={"Accept": "audio/mpeg"},
+                    cancelled=lambda: False,
+                    progress=lambda _percent: None,
+                )
+        assert not target.exists()
 
 
 class _CannedClient:

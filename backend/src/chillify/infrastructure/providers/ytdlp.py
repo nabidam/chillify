@@ -30,6 +30,7 @@ from chillify.domain.errors import (
     ProviderResponseError,
     UnsupportedEntityError,
 )
+from chillify.domain.jobs import JobPhase
 from chillify.domain.normalization import collapse_whitespace, normalize_key
 from chillify.domain.protocols import (
     AudioArtifact,
@@ -308,7 +309,7 @@ class YtDlpAcquisitionProvider:
                 aborted["tripped"] = True
                 raise _AcquisitionAbortedError
             if status.get("status") == "downloading":
-                progress(_download_percent(status))
+                progress(JobPhase.DOWNLOADING, _download_percent(status))
 
         options: dict[str, Any] = {
             "format": "bestaudio/best",
@@ -348,7 +349,7 @@ class YtDlpAcquisitionProvider:
             # MP3 — is never kept; the workspace is left clean for the retry.
             _clear(workspace_path)
             raise
-        progress(100.0)
+        progress(JobPhase.DOWNLOADING, 100.0)
         logger.info("youtube acquisition complete", extra={"provider": self.name})
         return AudioArtifact(
             location=str(audio_path),

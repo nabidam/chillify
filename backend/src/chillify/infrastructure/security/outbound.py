@@ -16,10 +16,12 @@ what it wants to fetch and never how the transport behaves under failure.
 from __future__ import annotations
 
 import ipaddress
+import shutil
 import socket
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 from typing import Final
 from urllib.parse import urlsplit
 
@@ -34,6 +36,9 @@ from tenacity import (
 )
 
 from chillify.domain.errors import (
+    AcquisitionCancelledError,
+    AcquisitionFailedError,
+    AcquisitionLimitExceededError,
     OutboundTargetRejectedError,
     ProxyAuthenticationError,
     ProxyConfigurationError,
@@ -68,6 +73,8 @@ _RETRYABLE_EXCEPTIONS: Final = (
 _RETRYABLE_STATUSES: Final = frozenset({408, 429, 500, 502, 503, 504})
 
 _PROXY_AUTH_STATUS: Final = 407
+MEDIA_MAX_BYTES: Final = 256 * 1024 * 1024
+MEDIA_MIN_FREE_BYTES: Final = 512 * 1024 * 1024
 
 # ARCHITECTURE section 13: the SSRF containment boundary. `follow_redirects`
 # is only ever true for the one adapter that fetches an arbitrary provider or
@@ -377,6 +384,94 @@ class OutboundHttp:
             code=ProxyDiagnosisCode.OK,
             message="The proxy accepted a test request.",
         )
+
+    def stream_to_file(
+        self,
+        url: str,
+        target: Path,
+        *,
+        headers: dict[str, str],
+        cancelled: Callable[[], bool],
+        progress: Callable[[float | None], None],
+        max_bytes: int = MEDIA_MAX_BYTES,
+        min_free_bytes: int = MEDIA_MIN_FREE_BYTES,
+    ) -> int:
+        """Stream an HTTPS response into ``target`` under the outbound policy.
+
+        Unlike ``request``, this never materializes the response body.  Each
+        redirect target is checked before it is opened, and every error removes
+        the partial file so a retry starts from a known state.
+        """
+        if shutil.disk_usage(target.parent).free < min_free_bytes:
+            raise AcquisitionLimitExceededError("There is not enough free space to download audio.")
+        target.unlink(missing_ok=True)
+        current = url
+        hops = 0
+        try:
+            with self.open() as client:
+                while True:
+                    _validate_target_https(current, resolver=self.resolver)
+                    with client.stream("GET", current, headers=headers) as response:
+                        if response.status_code in _REDIRECT_STATUSES:
+                            location = response.headers.get("location")
+                            if location is None or hops >= self.max_redirects:
+                                raise AcquisitionFailedError(
+                                    "Radio Javan could not download that audio."
+                                )
+                            current = str(httpx.URL(current).join(location))
+                            hops += 1
+                            continue
+                        if response.status_code >= 400:
+                            raise AcquisitionFailedError(
+                                "Radio Javan could not download that audio."
+                            )
+                        declared = _content_length(response.headers.get("content-length"))
+                        if declared is not None and declared > max_bytes:
+                            raise AcquisitionLimitExceededError(
+                                "The audio file is larger than Chillify can download."
+                            )
+                        written = 0
+                        with target.open("wb") as output:
+                            for chunk in response.iter_bytes():
+                                if cancelled():
+                                    raise AcquisitionCancelledError("That download was cancelled.")
+                                written += len(chunk)
+                                if written > max_bytes:
+                                    raise AcquisitionLimitExceededError(
+                                        "The audio file is larger than Chillify can download."
+                                    )
+                                output.write(chunk)
+                                progress(None if declared is None else written / declared * 100.0)
+                        if written == 0:
+                            raise AcquisitionFailedError(
+                                "Radio Javan returned an empty audio file."
+                            )
+                        return written
+        except AcquisitionCancelledError, AcquisitionFailedError, AcquisitionLimitExceededError:
+            target.unlink(missing_ok=True)
+            raise
+        except httpx.ProxyError as exc:
+            target.unlink(missing_ok=True)
+            raise _proxy_error_for(exc, self.proxy is not None) from exc
+        except httpx.HTTPError as exc:
+            target.unlink(missing_ok=True)
+            raise AcquisitionFailedError("Radio Javan could not download that audio.") from exc
+
+
+def _content_length(value: str | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        parsed = int(value)
+    except ValueError:
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _validate_target_https(url: str, *, resolver: Callable[[str], Sequence[str]]) -> None:
+    if urlsplit(url).scheme.lower() != "https":
+        raise OutboundTargetRejectedError("That URL must use HTTPS.")
+    _validate_target(url, enforce=True, resolver=resolver)
 
 
 def build_httpx_client(

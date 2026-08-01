@@ -221,7 +221,7 @@ class TestSpotdlAcquisitionContract:
     def test_a_track_yields_one_valid_mp3(self, tmp_path: Path) -> None:
         adapter = SpotdlAcquisitionProvider(runner=_download_runner())
         artifact = adapter.acquire(
-            _track_candidate(), str(tmp_path), None, lambda _p: None, lambda: False
+            _track_candidate(), str(tmp_path), None, lambda _phase, _p: None, lambda: False
         )
 
         acquired = Path(artifact.location)
@@ -233,21 +233,27 @@ class TestSpotdlAcquisitionContract:
     def test_a_cancellation_before_work_leaves_the_workspace_empty(self, tmp_path: Path) -> None:
         adapter = SpotdlAcquisitionProvider(runner=_download_runner())
         with pytest.raises(AcquisitionCancelledError):
-            adapter.acquire(_track_candidate(), str(tmp_path), None, lambda _p: None, lambda: True)
+            adapter.acquire(
+                _track_candidate(), str(tmp_path), None, lambda _phase, _p: None, lambda: True
+            )
 
         assert list(tmp_path.iterdir()) == []
 
     def test_a_nonzero_exit_fails_and_cleans_up(self, tmp_path: Path) -> None:
         adapter = SpotdlAcquisitionProvider(runner=_download_runner(returncode=1))
         with pytest.raises(AcquisitionFailedError):
-            adapter.acquire(_track_candidate(), str(tmp_path), None, lambda _p: None, lambda: False)
+            adapter.acquire(
+                _track_candidate(), str(tmp_path), None, lambda _phase, _p: None, lambda: False
+            )
 
         assert list(tmp_path.iterdir()) == []
 
     def test_exit_zero_without_an_mp3_still_fails(self, tmp_path: Path) -> None:
         adapter = SpotdlAcquisitionProvider(runner=_download_runner(produce_mp3=False))
         with pytest.raises(AcquisitionFailedError):
-            adapter.acquire(_track_candidate(), str(tmp_path), None, lambda _p: None, lambda: False)
+            adapter.acquire(
+                _track_candidate(), str(tmp_path), None, lambda _phase, _p: None, lambda: False
+            )
 
 
 def _save_runner(
@@ -292,7 +298,7 @@ class TestSpotdlCliContract:
             _track_candidate(),
             str(tmp_path),
             "socks5://p.invalid:1080",
-            lambda _p: None,
+            lambda _phase, _p: None,
             lambda: False,
         )
 
@@ -341,7 +347,7 @@ class TestSpotdlProxyEnvironmentContract:
             executable="/opt/spotdl/bin/spotdl", runner=_download_runner(captured=captured)
         )
         adapter.acquire(
-            _track_candidate(), str(tmp_path), self.PROXY, lambda _p: None, lambda: False
+            _track_candidate(), str(tmp_path), self.PROXY, lambda _phase, _p: None, lambda: False
         )
 
         argv = captured[0]
@@ -371,7 +377,7 @@ class TestSpotdlProxyEnvironmentContract:
             runner=_download_runner(captured_env=captured_env),
         )
         adapter.acquire(
-            _track_candidate(), str(tmp_path), self.PROXY, lambda _p: None, lambda: False
+            _track_candidate(), str(tmp_path), self.PROXY, lambda _phase, _p: None, lambda: False
         )
 
         env = captured_env[0]
