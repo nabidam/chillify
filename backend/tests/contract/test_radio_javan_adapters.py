@@ -109,8 +109,20 @@ def test_fixture_discovery_satisfies_the_shared_recorded_wire_contract(tmp_path:
     )
 
 
-def test_production_discovery_satisfies_the_same_recorded_wire_contract() -> None:
+def test_production_discovery_satisfies_the_same_recorded_wire_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     adapter = RadioJavanDiscoveryProvider()
+    proxies: list[str | None] = []
+    from chillify.infrastructure.providers import radio_javan
+
+    real_outbound_http = radio_javan.OutboundHttp
+
+    def record_proxy(*, proxy: str | None = None, **kwargs: object) -> object:
+        proxies.append(proxy)
+        return real_outbound_http(proxy=None, **kwargs)
+
+    monkeypatch.setattr(radio_javan, "OutboundHttp", record_proxy)
     with respx.mock(assert_all_called=True) as router:
         search_route = router.get(f"{_BASE_URL}/search").mock(
             return_value=httpx.Response(200, json=_fixture("radiojavan_search.json"))
@@ -123,9 +135,9 @@ def test_production_discovery_satisfies_the_same_recorded_wire_contract() -> Non
         )
 
         _assert_discovery_contract(
-            lambda: adapter.search("walking", 10, None),
-            lambda: adapter.browse("featured", None),
-            lambda: adapter.browse("trending", None),
+            lambda: adapter.search("walking", 10, PROXY),
+            lambda: adapter.browse("featured", PROXY),
+            lambda: adapter.browse("trending", PROXY),
         )
 
     request = search_route.calls.last.request
@@ -134,6 +146,7 @@ def test_production_discovery_satisfies_the_same_recorded_wire_contract() -> Non
     assert request.headers["user-agent"].startswith("Chillify/")
     assert "cookie" not in request.headers
     assert "authorization" not in request.headers
+    assert proxies == [PROXY, PROXY, PROXY]
 
 
 def test_fixture_acquisition_satisfies_the_shared_detail_cancel_and_progress_contract(
@@ -178,6 +191,7 @@ def test_production_acquisition_satisfies_the_shared_detail_cancel_and_progress_
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     selected_media: list[str] = []
+    proxies: list[str | None] = []
     detail_payload = _fixture("radiojavan_detail.json")
     assert isinstance(detail_payload, dict)
     payload: dict[str, object] = dict(detail_payload)
@@ -197,7 +211,7 @@ def test_production_acquisition_satisfies_the_shared_detail_cancel_and_progress_
 
     monkeypatch.setattr(
         "chillify.infrastructure.providers.radio_javan.OutboundHttp",
-        lambda **_kwargs: _RecordedOutbound(),
+        lambda **kwargs: proxies.append(kwargs["proxy"]) or _RecordedOutbound(),
     )
     adapter = RadioJavanAcquisitionProvider()
 
@@ -222,6 +236,7 @@ def test_production_acquisition_satisfies_the_shared_detail_cancel_and_progress_
             lambda: False,
         )
     )
+    assert proxies == [PROXY, PROXY, PROXY, PROXY]
 
 
 def test_production_transport_failure_is_a_safe_typed_provider_error(
