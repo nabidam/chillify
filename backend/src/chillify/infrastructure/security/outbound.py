@@ -461,6 +461,7 @@ class OutboundHttp:
         target.unlink(missing_ok=True)
         current = url
         hops = 0
+        completed = False
         try:
             with self.open() as client:
                 while True:
@@ -522,6 +523,11 @@ class OutboundHttp:
                                     raise AcquisitionFailedError(
                                         "Radio Javan returned an empty audio file."
                                     )
+                                if total is not None and written != total:
+                                    raise AcquisitionFailedError(
+                                        "Radio Javan could not download that audio."
+                                    )
+                                completed = True
                                 return written
                         except _RETRYABLE_EXCEPTIONS:
                             if attempt + 1 == _MAX_ATTEMPTS:
@@ -556,6 +562,9 @@ class OutboundHttp:
         except httpx.HTTPError as exc:
             target.unlink(missing_ok=True)
             raise AcquisitionFailedError("Radio Javan could not download that audio.") from exc
+        finally:
+            if not completed:
+                target.unlink(missing_ok=True)
 
 
 def _content_length(value: str | None) -> int | None:
