@@ -176,4 +176,13 @@ def _request_json(url: str, *, params: dict[str, str], proxy: str | None) -> obj
             "Radio Javan returned a response Chillify could not read.",
             context={"provider": PROVIDER_NAME},
         ) from exc
+    except httpx.HTTPError as exc:
+        # A direct transport failure is still a failure of this provider
+        # request, not an internal API crash. Proxy failures have already been
+        # translated by OutboundHttp and deliberately retain their distinct
+        # typed semantics for the settings and retry surfaces.
+        raise ProviderResponseError(
+            "Radio Javan could not complete that request.",
+            context={"provider": PROVIDER_NAME},
+        ) from exc
     return _json_response(status, body)
