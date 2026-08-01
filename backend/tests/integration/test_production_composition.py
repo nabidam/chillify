@@ -39,6 +39,10 @@ from chillify.config import load_settings
 from chillify.domain.jobs import JobProvider
 from chillify.infrastructure.providers.artwork_http import HttpArtworkFetcher
 from chillify.infrastructure.providers.deezer import DeezerDiscoveryProvider
+from chillify.infrastructure.providers.radio_javan import (
+    RadioJavanAcquisitionProvider,
+    RadioJavanDiscoveryProvider,
+)
 from chillify.infrastructure.providers.spotdl import SpotdlAcquisitionProvider, SpotdlInspector
 from chillify.infrastructure.providers.spotify_api import SpotifyApiInspector
 from chillify.infrastructure.providers.ytdlp import YouTubeInspector, YtDlpAcquisitionProvider
@@ -201,6 +205,16 @@ class TestReleaseResolvesRealAdaptersNotFixtures:
 
     def test_discovery_is_the_real_deezer_adapter(self, release_composition: Composition) -> None:
         assert isinstance(release_composition.registry.discovery["deezer"], DeezerDiscoveryProvider)
+
+    def test_radio_javan_discovery_is_the_real_adapter(
+        self, release_composition: Composition
+    ) -> None:
+        registry = release_composition.registry
+        assert isinstance(registry.discovery["radiojavan"], RadioJavanDiscoveryProvider)
+        assert registry.browse["radiojavan"] is registry.discovery["radiojavan"]
+        assert isinstance(
+            registry.acquisition[JobProvider.RADIOJAVAN], RadioJavanAcquisitionProvider
+        )
 
     def test_acquisition_adapters_are_the_real_ytdlp_and_spotdl_classes(
         self, release_composition: Composition

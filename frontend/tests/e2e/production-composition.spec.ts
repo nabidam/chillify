@@ -29,19 +29,14 @@ import { compose, GATE, gateScript, REPO_ROOT } from "./gate-stack";
  * rather than reimplementing its checks in TypeScript.
  *
  * Building and starting the real images is slow even from cache, so this
- * spec runs its own three canary invocations (success path, forced network
- * failure, and the `--no-live-success` bypass); `test.slow()` gives each the
- * same generous budget the NFR suite gives its own multi-step journeys.
+ * spec runs the offline-binding path plus the explicit no-fallback behavior;
+ * `test.slow()` gives each the same generous budget the NFR suite gives its
+ * own multi-step journeys.
  */
 
 const NAME = "gate-4-production-canary";
 const ENV_FILE = `.gate/${NAME}/.env`;
 const PORT = "8799";
-// A reserved, non-routable TEST-NET-2 address (RFC 5737): guaranteed to fail a
-// connection attempt without depending on any real host being up or down, so
-// the network-failure assertion is deterministic rather than a bet on the
-// live internet's state at test time.
-const UNREACHABLE_URL = "http://198.51.100.1:65500/";
 
 // Scoped to this one call, not the whole process: `test.afterAll` below
 // restores the *shared* `GATE` environment via the same `prepare.sh`, which
@@ -175,29 +170,31 @@ test.describe
       expect(output).toContain("production_canary: PASS");
     });
 
-    test("a network failure is a clear canary failure with no fallback, unless --no-live-success is passed", async () => {
+    test("a failed Radio Javan API canary has no fallback unless offline-only proof is requested", async () => {
       test.slow();
 
+      // This persists a valid but unreachable proxy in the disposable stack,
+      // so Featured enters SearchService and the real Radio Javan adapter
+      // before the outbound boundary fails. It must never bypass that proxy
+      // with a direct provider request or fixtures.
       const failure = canaryFails(["--env-file", ENV_FILE], {
-        CHILLIFY_CANARY_LIVE_URL: UNREACHABLE_URL,
+        CHILLIFY_CANARY_FAILURE_PROXY: "http://198.51.100.1:65500",
       });
-      expect(failure).toContain("production_canary: live reachability failed");
-      expect(failure).toContain(
-        "production_canary: FAILED — live reachability is required and was not satisfied",
-      );
+      expect(failure).toContain("Radio Javan Featured API failed through the real adapter");
+      expect(failure).toContain("Radio Javan Featured success is required");
 
-      // The teardown trap inside the script already tore its own containers
-      // down on that failure; bring the environment back up fresh rather than
-      // assuming what state it was left in before proving the bypass.
+      // The failure tears down its containers. Recreate the disposable
+      // production composition before proving that offline-only binding can
+      // continue explicitly, never by silently falling back to fixtures.
       gateScript("cleanup.sh", NAME);
       prepareProductionCanaryEnv();
 
       const bypassed = canary(["--env-file", ENV_FILE, "--no-live-success"], {
-        CHILLIFY_CANARY_LIVE_URL: UNREACHABLE_URL,
+        CHILLIFY_CANARY_FAILURE_PROXY: "http://198.51.100.1:65500",
       });
-      expect(bypassed).toContain("production_canary: live reachability failed");
+      expect(bypassed).toContain("Radio Javan Featured API failed through the real adapter");
       expect(bypassed).toContain(
-        "live reachability not required (--no-live-success); continuing",
+        "Radio Javan Featured success not required (--no-live-success); continuing",
       );
       expect(bypassed).toContain("production_canary: PASS");
     });

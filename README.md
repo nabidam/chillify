@@ -72,7 +72,8 @@ household configuration or data:
 
 `production` mode brings up the unchanged production composition with real
 adapters against a disposable root — no fixture overlay, no gate Redis
-namespace. `gate` mode additionally seeds deterministic fixture payloads
+namespace. `release` uses the same real adapters with a contained, disposable
+root; use it for release proof. `gate` mode additionally seeds deterministic fixture payloads
 (`./scripts/gate/seed.sh <name> <scenario>`) and requires
 `deploy/compose.gate.yaml` overlaid on top of `compose.yaml`. Either way,
 `./scripts/gate/cleanup.sh <name>` removes only that environment's own tree.
@@ -83,10 +84,15 @@ namespace. `gate` mode additionally seeds deterministic fixture payloads
 ./scripts/production_canary.sh --env-file .gate/<name>/.env [--no-live-success]
 ```
 
-Brings up the *unchanged* production Compose entry point against a disposable,
-`production`-mode environment and proves it resolves the real provider, tool,
-Redis, SQLite, and media implementations — reporting each one — before any
-deterministic fixture is ever mounted. It refuses an env file that is not
+Brings up the *unchanged* production Compose entry point against a disposable
+`production` or `release` environment and proves it resolves the real provider,
+tool, Redis, SQLite, and media implementations before any deterministic fixture
+is mounted. By default it then calls Chillify's
+`/api/v1/radio-javan/tracks?section=featured` route, so live success proves the
+real Radio Javan adapter through the application API rather than a direct
+provider request. Provider failure is explicit and never falls back to fixtures.
+`--no-live-success` retains the offline binding/composition proof for networks
+without egress. It refuses an env file that is not
 beneath the repository's own `.gate/` tree, refuses one that names a
 household storage root even if the file itself sits under `.gate/`, and
 refuses one that declares gate mode: this canary proves production, not a
