@@ -10,6 +10,7 @@ import { GlobalJobIndicator } from "@/features/downloads/GlobalJobIndicator";
 const titles: Record<string, string> = {
   "/library": "Your Library",
   "/search": "Search",
+  "/radio-javan": "Radio Javan",
   "/playlists": "Playlists",
   "/downloads": "Downloads",
   "/settings": "Settings",

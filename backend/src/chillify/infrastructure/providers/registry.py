@@ -96,6 +96,8 @@ def build_registry(
         from chillify.infrastructure.providers.fixtures import (
             FixtureAcquisitionProvider,
             FixtureDiscoveryProvider,
+            FixtureRadioJavanAcquisitionProvider,
+            FixtureRadioJavanDiscoveryProvider,
         )
         from chillify.infrastructure.providers.spotdl import FixtureSpotdlInspector
         from chillify.infrastructure.providers.spotify_api import FixtureSpotifyApiInspector
@@ -103,12 +105,17 @@ def build_registry(
 
         fixture_root = settings.fixture_root
         acquisition = FixtureAcquisitionProvider(fixture_root=fixture_root)
+        radio_javan_acquisition = FixtureRadioJavanAcquisitionProvider(fixture_root=fixture_root)
         logger.info("binding fixture provider adapters", extra={"environment": "gate"})
         return ProviderRegistry(
-            discovery={"deezer": FixtureDiscoveryProvider(fixture_root=fixture_root)},
+            discovery={
+                "deezer": FixtureDiscoveryProvider(fixture_root=fixture_root),
+                "radiojavan": FixtureRadioJavanDiscoveryProvider(fixture_root=fixture_root),
+            },
             acquisition={
                 JobProvider.YT_DLP: acquisition,
                 JobProvider.SPOTDL: acquisition,
+                JobProvider.RADIOJAVAN: radio_javan_acquisition,
             },
             link_inspectors={
                 JobProvider.YT_DLP: FixtureYouTubeInspector(fixture_root=fixture_root),
@@ -122,6 +129,10 @@ def build_registry(
     from chillify.infrastructure.providers.deezer import DeezerDiscoveryProvider
     from chillify.infrastructure.providers.lastfm import LastfmEnricher
     from chillify.infrastructure.providers.musicbrainz import MusicBrainzDiscoveryProvider
+    from chillify.infrastructure.providers.radio_javan import (
+        RadioJavanAcquisitionProvider,
+        RadioJavanDiscoveryProvider,
+    )
     from chillify.infrastructure.providers.spotdl import (
         SpotdlAcquisitionProvider,
         SpotdlInspector,
@@ -142,10 +153,12 @@ def build_registry(
             "apple": AppleMusicDiscoveryProvider(),
             "deezer": DeezerDiscoveryProvider(),
             "musicbrainz": MusicBrainzDiscoveryProvider(),
+            "radiojavan": RadioJavanDiscoveryProvider(),
         },
         acquisition={
             JobProvider.YT_DLP: YtDlpAcquisitionProvider(),
             JobProvider.SPOTDL: SpotdlAcquisitionProvider(executable=spotdl_bin),
+            JobProvider.RADIOJAVAN: RadioJavanAcquisitionProvider(),
         },
         link_inspectors={
             JobProvider.YT_DLP: YouTubeInspector(),

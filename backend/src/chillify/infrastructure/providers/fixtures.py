@@ -32,12 +32,20 @@ from chillify.domain.protocols import (
     TrackCandidate,
 )
 from chillify.infrastructure.providers.deezer_wire import candidates_from_search
+from chillify.infrastructure.providers.radio_javan_wire import (
+    candidates_from_search as radio_javan_candidates_from_search,
+)
+from chillify.infrastructure.providers.radio_javan_wire import (
+    media_url_from_detail,
+)
 
 logger = logging.getLogger(__name__)
 
 # Layout beneath CHILLIFY_FIXTURE_ROOT.
 SEARCH_FIXTURE = "providers/deezer_search.json"
 AUDIO_FIXTURE = "media/gate-tone.mp3"
+RADIO_JAVAN_SEARCH_FIXTURE = "providers/radiojavan_search.json"
+RADIO_JAVAN_DETAIL_FIXTURE = "providers/radiojavan_detail.json"
 
 # The fixture acquisition reports these percentages in order, so a gate
 # walkthrough sees a real determinate bar advance rather than a frozen one.
@@ -126,14 +134,78 @@ class FixtureAcquisitionProvider:
         )
 
 
-def _read_json(path: Path) -> object:
+@dataclass(frozen=True, slots=True)
+class FixtureRadioJavanDiscoveryProvider:
+    """Radio Javan search served from a sanitized recorded payload."""
+
+    fixture_root: Path
+    name: str = "radiojavan"
+
+    def search(
+        self,
+        query: str,
+        limit: int,
+        proxy: str | None,  # noqa: ARG002
+    ) -> tuple[TrackCandidate, ...]:
+        payload = _read_json(self.fixture_root / RADIO_JAVAN_SEARCH_FIXTURE, self.name)
+        candidates = radio_javan_candidates_from_search(payload)
+        needle = normalize_key(query, fallback="")
+        if not needle:
+            return ()
+        return tuple(
+            candidate
+            for candidate in candidates
+            if needle in normalize_key(f"{candidate.artist} {candidate.title}", fallback="")
+        )[:limit]
+
+
+@dataclass(frozen=True, slots=True)
+class FixtureRadioJavanAcquisitionProvider:
+    """Radio Javan detail resolution backed by a recorded native MP3."""
+
+    fixture_root: Path
+    name: str = "radiojavan"
+
+    def acquire(
+        self,
+        candidate: TrackCandidate,
+        workspace: str,
+        proxy: str | None,  # noqa: ARG002
+        progress: ProgressCallback,
+        cancelled: CancelledCallback,
+    ) -> AudioArtifact:
+        payload = _read_json(self.fixture_root / RADIO_JAVAN_DETAIL_FIXTURE, self.name)
+        source_id = candidate.source_id or candidate.acquisition_locator
+        media_url_from_detail(payload, source_id)
+        if cancelled():
+            raise AcquisitionCancelledError("That download was cancelled.")
+        source = self.fixture_root / AUDIO_FIXTURE
+        if not source.is_file():
+            raise AcquisitionFailedError(
+                "The Radio Javan audio fixture is missing.", context={"provider": self.name}
+            )
+        target = Path(workspace) / "radio-javan.mp3"
+        progress(0.0)
+        shutil.copyfile(source, target)
+        progress(100.0)
+        size = target.stat().st_size
+        if size == 0:
+            raise AcquisitionFailedError(
+                "The acquired file was empty.", context={"provider": self.name}
+            )
+        return AudioArtifact(
+            location=str(target), duration_ms=candidate.duration_ms, byte_size=size
+        )
+
+
+def _read_json(path: Path, provider: str = "deezer") -> object:
     if not path.is_file():
         raise ProviderResponseError(
-            "The gate search fixture is missing.", context={"provider": "deezer"}
+            "The gate search fixture is missing.", context={"provider": provider}
         )
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ProviderResponseError(
-            "The gate search fixture could not be read.", context={"provider": "deezer"}
+            "The gate search fixture could not be read.", context={"provider": provider}
         ) from exc

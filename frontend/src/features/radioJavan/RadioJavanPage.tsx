@@ -1,0 +1,291 @@
+import { useQuery } from "@tanstack/react-query";
+import { Download, Music2, Radio, Search } from "lucide-react";
+import { type FormEvent, useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
+import { toast } from "sonner";
+import { ApiRequestError, api, unwrap } from "@/api/client";
+import { queryKeys } from "@/api/queryKeys";
+import { routes } from "@/app/routes";
+import { useSystemStatus } from "@/app/useSystemStatus";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { type RemoteResult, useQueueDownload } from "@/features/search/remoteSearch";
+
+/** U1 — the smallest dedicated Radio Javan surface: search, queue, listen. */
+export function RadioJavanPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const queryFromUrl = new URLSearchParams(location.search).get("q")?.trim() ?? "";
+  const [query, setQuery] = useState(queryFromUrl);
+  const results = useRadioJavanSearch(queryFromUrl);
+  const queueDownload = useQueueDownload("radiojavan_track");
+  const status = useSystemStatus();
+  const isQueueUnavailable = status.data?.redis.health !== "ok" && status.isSuccess;
+
+  useEffect(() => {
+    setQuery(queryFromUrl);
+  }, [queryFromUrl]);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const submitted = query.trim();
+    if (submitted.length === 0) {
+      navigate(routes.radioJavan);
+      return;
+    }
+    navigate(`${routes.radioJavan}/search?q=${encodeURIComponent(submitted)}`);
+  }
+
+  function download(result: RemoteResult) {
+    queueDownload.mutate(result.candidate, {
+      onSuccess: () =>
+        toast.success("Queued for download", {
+          description: `${result.candidate.title} joins the download queue.`,
+        }),
+      onError: (error) =>
+        toast.error("That download could not be queued", {
+          description:
+            error instanceof ApiRequestError ? error.message : "The server did not respond.",
+        }),
+    });
+  }
+
+  const items = results.data?.items ?? [];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <header className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <Badge variant="outline">Dedicated source</Badge>
+          <span className="type-meta text-foreground-subtle">Anonymous discovery</span>
+        </div>
+        <h1 className="type-title text-foreground">Radio Javan</h1>
+        <p className="max-w-copy type-meta text-foreground-muted">
+          Find a track on Radio Javan, bring the original MP3 into Chillify, and listen locally.
+        </p>
+      </header>
+
+      <form
+        onSubmit={submit}
+        className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end"
+      >
+        <Field className="min-w-0 flex-1">
+          <FieldLabel htmlFor="radio-javan-query">Search Radio Javan</FieldLabel>
+          <Input
+            id="radio-javan-query"
+            value={query}
+            autoComplete="off"
+            placeholder="Track or artist"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </Field>
+        <Button type="submit" disabled={query.trim().length === 0}>
+          <Search data-icon="inline-start" aria-hidden="true" />
+          Search
+        </Button>
+      </form>
+
+      {isQueueUnavailable ? (
+        <Alert>
+          <AlertTitle>Downloads are paused</AlertTitle>
+          <AlertDescription>
+            The queue is unreachable. Your local library still plays.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {queryFromUrl.length === 0 ? <RadioJavanEmpty /> : null}
+      {queryFromUrl.length > 0 && results.isPending ? <RadioJavanLoading /> : null}
+      {queryFromUrl.length > 0 && results.isError ? (
+        <Alert variant="destructive">
+          <AlertTitle>Radio Javan could not be searched</AlertTitle>
+          <AlertDescription className="flex flex-col items-start gap-2">
+            <span>
+              {results.error instanceof ApiRequestError
+                ? results.error.message
+                : "The provider did not respond."}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => void results.refetch()}>
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {queryFromUrl.length > 0 && results.isSuccess && items.length === 0 ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Music2 />
+            </EmptyMedia>
+            <EmptyTitle>No Radio Javan tracks found</EmptyTitle>
+            <EmptyDescription>Try a different title or artist.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : null}
+      {queryFromUrl.length > 0 && results.isSuccess && items.length > 0 ? (
+        <section aria-labelledby="radio-javan-results" className="flex flex-col gap-3">
+          <div className="flex items-baseline justify-between gap-4">
+            <div>
+              <h2 id="radio-javan-results" className="type-section text-foreground">
+                Search results
+              </h2>
+              <p className="type-meta text-foreground-muted">
+                {items.length} {items.length === 1 ? "track" : "tracks"} for “{queryFromUrl}”
+              </p>
+            </div>
+            <Badge variant="secondary">Radio Javan</Badge>
+          </div>
+          <ul className="grid gap-3 lg:grid-cols-2">
+            {items.map((result) => (
+              <RadioJavanResultCard
+                key={result.candidate.source_url}
+                result={result}
+                isPending={
+                  queueDownload.isPending &&
+                  queueDownload.variables?.source_url === result.candidate.source_url
+                }
+                isDisabled={isQueueUnavailable}
+                onDownload={download}
+              />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function useRadioJavanSearch(query: string) {
+  return useQuery({
+    queryKey: queryKeys.radioJavanSearch(query),
+    enabled: query.length > 0,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/v1/radio-javan/search", {
+          params: { query: { q: query, limit: 15 } },
+        }),
+      ),
+  });
+}
+
+function RadioJavanEmpty() {
+  return (
+    <Empty>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Radio />
+        </EmptyMedia>
+        <EmptyTitle>Search the Radio Javan catalog</EmptyTitle>
+        <EmptyDescription>
+          Results stay separate from Chillify’s library until you choose Download.
+        </EmptyDescription>
+      </EmptyHeader>
+    </Empty>
+  );
+}
+
+function RadioJavanLoading() {
+  return (
+    <ul className="grid gap-3 lg:grid-cols-2" aria-label="Loading Radio Javan results">
+      {[0, 1].map((item) => (
+        <li key={item}>
+          <Skeleton className="h-44 w-full" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function RadioJavanResultCard({
+  result,
+  isPending,
+  isDisabled,
+  onDownload,
+}: {
+  result: RemoteResult;
+  isPending: boolean;
+  isDisabled: boolean;
+  onDownload: (result: RemoteResult) => void;
+}) {
+  const { candidate } = result;
+  return (
+    <li>
+      <Card className="h-full overflow-hidden bg-surface-raised">
+        <CardHeader className="gap-4 pb-0">
+          <div className="flex gap-4">
+            <AspectRatio
+              ratio={1}
+              className="w-24 shrink-0 overflow-hidden rounded-lg bg-muted"
+            >
+              {candidate.artwork_url ? (
+                <img
+                  src={candidate.artwork_url}
+                  alt={`${candidate.title} by ${candidate.artist}`}
+                  className="size-full object-cover"
+                />
+              ) : (
+                <div className="flex size-full items-center justify-center text-2xl font-semibold text-muted-foreground">
+                  RJ
+                </div>
+              )}
+            </AspectRatio>
+            <div className="min-w-0 flex-1">
+              <CardTitle className="truncate text-base">{candidate.title}</CardTitle>
+              <p className="mt-2 truncate type-meta text-foreground-muted">
+                {candidate.artist}
+              </p>
+              {candidate.album ? (
+                <p className="truncate type-meta text-foreground-subtle">{candidate.album}</p>
+              ) : null}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-1 items-end pt-5">
+          <p className="type-meta text-foreground-subtle">
+            Radio Javan source · {formatDuration(candidate.duration_ms)}
+          </p>
+        </CardContent>
+        <CardFooter className="justify-between gap-3">
+          <span className="type-meta text-foreground-muted" role="status">
+            {isPending ? "Adding to Downloads…" : "MP3 · not playable remotely"}
+          </span>
+          {result.existing_track_id === null ? (
+            <Button
+              disabled={isDisabled || isPending}
+              aria-label={`Download ${candidate.title}`}
+              onClick={() => onDownload(result)}
+            >
+              <Download data-icon="inline-start" aria-hidden="true" />
+              {isPending ? "Queueing…" : "Download"}
+            </Button>
+          ) : (
+            <Button variant="outline" disabled>
+              In your library
+            </Button>
+          )}
+        </CardFooter>
+      </Card>
+    </li>
+  );
+}
+
+function formatDuration(durationMs: number | null) {
+  if (durationMs === null) return "—";
+  const seconds = Math.round(durationMs / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}

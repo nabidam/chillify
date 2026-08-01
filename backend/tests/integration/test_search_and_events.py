@@ -114,6 +114,38 @@ class TestDeezerSearch:
         assert counted_discovery.calls == []
 
 
+class TestRadioJavanWalkingSkeleton:
+    def test_search_queue_publish_and_local_playback_use_the_dedicated_source(
+        self, gate_api: TestClient, gate_downloads: DownloadService
+    ) -> None:
+        """The dedicated route reaches the direct fixture adapter, never yt-dlp."""
+        searched = gate_api.get("/api/v1/radio-javan/search", params={"q": "walking"})
+
+        assert searched.status_code == 200
+        result = searched.json()["items"][0]
+        candidate = result["candidate"]
+        assert candidate["provider"] == "radiojavan"
+        assert candidate["source_id"] == "900001"
+        assert candidate["acquisition_locator"] == "900001"
+
+        queued = gate_api.post(
+            "/api/v1/downloads",
+            json={"source_type": "radiojavan_track", "candidate": candidate},
+        )
+
+        assert queued.status_code == 201
+        job = queued.json()
+        assert job["provider"] == "radiojavan"
+        assert job["source_type"] == "radiojavan_track"
+        gate_downloads.run_job(JobId(str(job["id"])))
+
+        completed = gate_api.get(f"/api/v1/downloads/{job['id']}").json()
+        assert completed["job"]["state"] == "completed"
+        library = gate_api.get("/api/v1/library/tracks", params={"q": "Walking Skeleton"})
+        assert library.status_code == 200
+        assert library.json()["items"][0]["title"] == "Radio Javan Walking Skeleton"
+
+
 class TestCatalogSearch:
     def test_all_catalog_search_uses_available_providers(self, gate_api: TestClient) -> None:
         response = gate_api.get(

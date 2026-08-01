@@ -31,6 +31,7 @@ export const queryKeys = {
    * presses the button, and the token is what separates the two.
    */
   catalogSearch: (submission: string) => ["search", "catalog", submission] as const,
+  radioJavanSearch: (submission: string) => ["search", "radio-javan", submission] as const,
   downloads: (state?: string) => ["downloads", "list", state ?? "all"] as const,
   download: (jobId: string) => ["downloads", "detail", jobId] as const,
   /**

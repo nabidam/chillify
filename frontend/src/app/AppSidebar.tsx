@@ -1,4 +1,13 @@
-import { Download, Library, ListMusic, Plus, Search, Settings, UserRound } from "lucide-react";
+import {
+  Download,
+  Library,
+  ListMusic,
+  Plus,
+  Radio,
+  Search,
+  Settings,
+  UserRound,
+} from "lucide-react";
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router";
 import { useActiveProfile } from "@/app/activeProfile";
@@ -23,6 +32,7 @@ import { cn } from "@/lib/cn";
 const navigation = [
   { to: routes.library, label: "Library", icon: Library },
   { to: routes.search, label: "Search", icon: Search },
+  { to: routes.radioJavan, label: "Radio Javan", icon: Radio },
   { to: routes.playlists, label: "Playlists", icon: ListMusic },
   { to: routes.downloads, label: "Downloads", icon: Download },
   { to: routes.settings, label: "Settings", icon: Settings },

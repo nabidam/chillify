@@ -123,6 +123,133 @@ def test_round_trip_restores_an_identical_schema_and_preserves_prior_data(
     assert surviving == [("pre-upgrade",)]
 
 
+def test_radio_javan_migration_preserves_legacy_jobs_and_events(
+    alembic_config: tuple[Config, Path],
+) -> None:
+    config, database_path = alembic_config
+
+    command.upgrade(config, "0004_catalog_track_sources")
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute(
+            """
+            INSERT INTO download_jobs (
+                id, provider, source_type, source_ref, dedupe_key, request_json,
+                state, phase, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "legacy-job",
+                "deezer",
+                "deezer_result",
+                "legacy-source",
+                "legacy-dedupe",
+                "{}",
+                "completed",
+                "completed",
+                "2026-08-01T00:00:00Z",
+                "2026-08-01T00:00:00Z",
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO job_events (
+                job_id, sequence, state, phase, progress_percent, payload_json, occurred_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "legacy-job",
+                1,
+                "completed",
+                "completed",
+                100.0,
+                '{"origin":"legacy"}',
+                "2026-08-01T00:00:00Z",
+            ),
+        )
+        connection.commit()
+
+    command.upgrade(config, "head")
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute(
+            """
+            INSERT INTO tracks (
+                id, title, artist, normalized_artist, normalized_title, normalized_album,
+                file_relpath, file_size_bytes, content_sha256, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "radiojavan-track",
+                "Radio Javan migration fixture",
+                "Fixture Artist",
+                "fixture artist",
+                "radio javan migration fixture",
+                "",
+                "music/fixture.mp3",
+                1,
+                "a" * 64,
+                "2026-08-01T00:00:00Z",
+                "2026-08-01T00:00:00Z",
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO track_sources (id, track_id, provider, source_id, source_url, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "radiojavan-source",
+                "radiojavan-track",
+                "radiojavan",
+                "rj-source",
+                "https://play.radiojavan.com/song/rj-source",
+                "2026-08-01T00:00:00Z",
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO download_jobs (
+                id, provider, source_type, source_ref, dedupe_key, request_json,
+                state, phase, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "radiojavan-job",
+                "radiojavan",
+                "radiojavan_track",
+                "rj-source",
+                "radiojavan-dedupe",
+                "{}",
+                "completed",
+                "completed",
+                "2026-08-01T00:00:00Z",
+                "2026-08-01T00:00:00Z",
+            ),
+        )
+        connection.commit()
+
+    with pytest.raises(RuntimeError, match="Radio Javan provenance"):
+        command.downgrade(config, "0004_catalog_track_sources")
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("DELETE FROM track_sources WHERE id = 'radiojavan-source'")
+        connection.commit()
+    with pytest.raises(RuntimeError, match="Radio Javan jobs"):
+        command.downgrade(config, "0004_catalog_track_sources")
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute("DELETE FROM download_jobs WHERE id = 'radiojavan-job'")
+        connection.commit()
+
+    command.downgrade(config, "0004_catalog_track_sources")
+    command.upgrade(config, "head")
+    with closing(sqlite3.connect(database_path)) as connection:
+        assert connection.execute(
+            "SELECT id, provider, source_type FROM download_jobs WHERE id = 'legacy-job'"
+        ).fetchall() == [("legacy-job", "deezer", "deezer_result")]
+        assert connection.execute(
+            "SELECT job_id, sequence, payload_json FROM job_events WHERE job_id = 'legacy-job'"
+        ).fetchall() == [("legacy-job", 1, '{"origin":"legacy"}')]
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
 def test_engine_applies_the_documented_pragmas(alembic_config: tuple[Config, Path]) -> None:
     config, database_path = alembic_config
     command.upgrade(config, "head")

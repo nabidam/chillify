@@ -13,6 +13,7 @@ import { DOWNLOADS_QUERY_PREFIX, queryKeys } from "@/api/queryKeys";
 export type TrackCandidate = components["schemas"]["TrackCandidateModel"];
 export type RemoteResult = components["schemas"]["RemoteResultModel"];
 export type DownloadJob = components["schemas"]["JobModel"];
+export type DownloadSourceType = components["schemas"]["DownloadRequestModel"]["source_type"];
 
 export const CATALOG_RESULT_LIMIT = 15;
 
@@ -43,7 +44,7 @@ export function useCatalogSearch(submission: string) {
 }
 
 /** Queue one acquisition. The durable job is the response, not a promise of one. */
-export function useQueueDownload() {
+export function useQueueDownload(sourceType: DownloadSourceType = "deezer_result") {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -53,7 +54,7 @@ export function useQueueDownload() {
           // The durable v1 wire value predates multi-catalog search. The
           // candidate's provider remains the authoritative source identity;
           // yt-dlp acquires every catalog result through the same path.
-          body: { source_type: "deezer_result", candidate },
+          body: { source_type: sourceType, candidate },
         }),
       ),
     onSuccess: () => {
