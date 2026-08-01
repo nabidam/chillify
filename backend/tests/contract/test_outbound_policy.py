@@ -11,7 +11,7 @@ contract: they never have traffic to route.
 from __future__ import annotations
 
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import httpx
@@ -22,6 +22,8 @@ from chillify.domain.errors import (
     AcquisitionCancelledError,
     AcquisitionLimitExceededError,
     ProviderResponseError,
+    ProxyConnectionError,
+    ProxyTimeoutError,
 )
 from chillify.domain.protocols import MetadataPatch, TrackCandidate
 from chillify.infrastructure.providers.deezer import DeezerDiscoveryProvider
@@ -201,6 +203,103 @@ class TestBoundedMediaTransfer:
                     progress=lambda _percent: None,
                 )
         assert not target.exists()
+
+    def test_retries_an_interrupted_stream_and_resumes_only_after_a_range_response(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "audio.mp3"
+        requested_ranges: list[str | None] = []
+
+        client = _ResumingClient(requested_ranges)
+        monkeypatch.setattr(OutboundHttp, "open", lambda _self: client)
+        written = OutboundHttp().stream_to_file(
+            "https://cdn.radiojavan.test/retry.mp3",
+            target,
+            headers={"Accept": "audio/mpeg"},
+            cancelled=lambda: False,
+            progress=lambda _percent: None,
+        )
+
+        assert written == 4
+        assert target.read_bytes() == b"abcd"
+        assert requested_ranges == [None, "bytes=2-"]
+
+    @pytest.mark.parametrize(
+        ("failure", "error"),
+        [
+            (httpx.ConnectTimeout("timed out"), ProxyTimeoutError),
+            (httpx.ConnectError("refused"), ProxyConnectionError),
+        ],
+    )
+    def test_streaming_proxy_transport_failures_remain_typed(
+        self,
+        tmp_path: Path,
+        failure: httpx.HTTPError,
+        error: type[Exception],
+    ) -> None:
+        target = tmp_path / "audio.mp3"
+        with respx.mock(assert_all_called=True) as router:
+            router.get("https://cdn.radiojavan.test/fail.mp3").mock(
+                side_effect=[failure] * _MAX_ATTEMPTS
+            )
+            with pytest.raises(error):
+                OutboundHttp(proxy=_PROXY).stream_to_file(
+                    "https://cdn.radiojavan.test/fail.mp3",
+                    target,
+                    headers={"Accept": "audio/mpeg"},
+                    cancelled=lambda: False,
+                    progress=lambda _percent: None,
+                )
+        assert not target.exists()
+
+
+class _ResumingClient:
+    def __init__(self, requested_ranges: list[str | None]) -> None:
+        self.requested_ranges = requested_ranges
+        self.calls = 0
+
+    def __enter__(self) -> _ResumingClient:
+        return self
+
+    def __exit__(self, *_exc: object) -> bool:
+        return False
+
+    def stream(self, _method: str, _url: str, *, headers: dict[str, str]) -> _ResponseContext:
+        self.requested_ranges.append(headers.get("Range"))
+        self.calls += 1
+        return _ResponseContext(_InterruptedResponse() if self.calls == 1 else _RangeResponse())
+
+
+class _ResponseContext:
+    def __init__(self, response: _InterruptedResponse | _RangeResponse) -> None:
+        self.response = response
+
+    def __enter__(self) -> _InterruptedResponse | _RangeResponse:
+        return self.response
+
+    def __exit__(self, *_exc: object) -> bool:
+        return False
+
+
+class _InterruptedResponse:
+    def __init__(self) -> None:
+        self.status_code = 200
+        self.headers = {"content-length": "4"}
+
+    def iter_raw(self, *, chunk_size: int) -> Iterator[bytes]:
+        del chunk_size
+        yield b"ab"
+        raise httpx.ReadError("connection lost")
+
+
+class _RangeResponse:
+    def __init__(self) -> None:
+        self.status_code = 206
+        self.headers = {"content-range": "bytes 2-3/4", "content-length": "2"}
+
+    def iter_raw(self, *, chunk_size: int) -> Iterator[bytes]:
+        del chunk_size
+        yield b"cd"
 
 
 class _CannedClient:
