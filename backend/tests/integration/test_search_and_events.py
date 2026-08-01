@@ -143,7 +143,19 @@ class TestRadioJavanWalkingSkeleton:
         assert completed["job"]["state"] == "completed"
         library = gate_api.get("/api/v1/library/tracks", params={"q": "Walking Skeleton"})
         assert library.status_code == 200
-        assert library.json()["items"][0]["title"] == "Radio Javan Walking Skeleton"
+        track = library.json()["items"][0]
+        assert track["title"] == "Radio Javan Walking Skeleton"
+
+        detail = gate_api.get(f"/api/v1/tracks/{track['id']}")
+
+        assert detail.status_code == 200
+        assert detail.json()["sources"] == [
+            {
+                "provider": "radiojavan",
+                "source_id": "900001",
+                "source_url": "https://play.radiojavan.com/song/900001",
+            }
+        ]
 
     def test_an_acquired_search_result_links_to_its_local_duplicate(
         self, gate_api: TestClient, gate_downloads: DownloadService
