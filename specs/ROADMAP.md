@@ -36,7 +36,11 @@ Add a dedicated anonymous Radio Javan search/explore experience for Featured and
 Trending tracks, backed by exact direct Radio Javan acquisition rather than
 cross-catalog results or yt-dlp matching. See `specs/004-radio-javan/PLAN.md`.
 
-**Status:** Planned 2026-08-01; implementation has not started.
+**Status:** Completed and operator-tested 2026-08-02. Migration
+`0005_radio_javan` extends the track-source, job-provider, and source-type
+checks with Radio Javan identities.
+
+**Next active cycle:** 005 — Existing library integration.
 
 ## 005 — Existing library integration
 
