@@ -304,10 +304,9 @@ class DownloadService:
     ) -> Track:
         adapter = self.registry.require_acquisition(job.provider)
 
-        def report(percent: float | None) -> None:
-            self._record(job.id, JobPhase.DOWNLOADING, percent)
+        def report(phase: JobPhase, percent: float | None) -> None:
+            self._record(job.id, phase, percent)
 
-        self._record(job.id, JobPhase.DOWNLOADING, None)
         # The adapter consults both channels: the in-process signal stops a
         # same-process cancel immediately, and the durable flag catches a cancel
         # committed by another process between the adapter's checks.
@@ -320,7 +319,6 @@ class DownloadService:
                 lambda: signal.requested or self._is_cancel_requested(job.id),
             )
 
-        self._record(job.id, JobPhase.CONVERTING, None)
         self._record(job.id, JobPhase.ENRICHING, None)
         candidate, enrichment_payload = self._enrich(candidate)
         artwork = self._fetch_artwork(candidate, workspace)

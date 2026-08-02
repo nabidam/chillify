@@ -14,7 +14,7 @@ This living document defines the interactive desktop experience for milestone 00
 
 Screens S2–S12 share four stable regions:
 
-1. **Sidebar:** active profile switcher; Library, Search, Playlists, Downloads, and Settings; personal playlist shortcuts; Add Music action.
+1. **Sidebar:** active profile switcher; Library, Search, Radio Javan, Playlists, Downloads, and Settings; personal playlist shortcuts; Add Music action.
 2. **Top bar:** back/forward navigation, current view title or contextual search, provider/degraded-state summary.
 3. **Content viewport:** the active screen; only this region changes during navigation.
 4. **Bottom player:** cover, title/artist, play/pause, previous/next, elapsed/remaining time, seek, volume, and Queue action. It stays mounted so navigation never interrupts audio.
@@ -41,6 +41,8 @@ A compact global job indicator stays visible whenever work is queued or running.
 | S14 | Queue drawer | Inspect and edit the browser-session playback queue | Bottom-player Queue action |
 | S15 | Delete-track confirmation | Confirm permanent shared-media deletion and disclose impact | Delete action in S13 |
 | S16 | Playlist editor dialog | Create or rename a personal playlist | S9 create action; S10 overflow action |
+| S17 | Radio Javan Explore | Browse Featured and Trending Radio Javan tracks and start direct downloads | Radio Javan sidebar item |
+| S18 | Radio Javan Search | Search Radio Javan for a track on its own deep-linkable route | Search field in S17 |
 
 ## Navigation map
 
@@ -56,12 +58,14 @@ S1 Profile chooser
        │                         └─ catalog result → S11 Downloads
        ├─ S4 Add by Link ────────┬─ Spotify reference → choose catalog match → S11
        │                         └─ YouTube → S5 Review → S11 Downloads
+       ├─ S17 Radio Javan ───────┬─ Featured/Trending result → S11 Downloads
+       │                         └─ S18 Radio Javan Search → S11 Downloads
        ├─ S9 Playlists ──────────┬─ S16 Create
        │                         └─ S10 Playlist detail ── S16 Rename
        ├─ S11 Downloads
        └─ S12 Settings
 
-Persistent from S2–S12:
+Persistent from S2–S12 and S17–S18:
  bottom player ↔ S14 Queue drawer
  profile switcher → S1
  Add Music → S4

@@ -22,14 +22,11 @@
 # household `.env`, or a gate-shaped one that was hand-edited to point at real
 # household storage, is refused before a single container starts.
 #
-# `--no-live-success` skips *requiring* the live outbound reachability probe to
-# succeed — Task 20's own preflight environment has no guaranteed egress. The
-# probe still runs and its result is still reported either way. Without the
-# flag, a reachability failure is a canary failure with no fallback: it is
-# reported and the script exits non-zero, never silently downgraded to a
-# partial pass. `CHILLIFY_CANARY_LIVE_URL` overrides the probed URL (default
-# `https://api.deezer.com/`, the same keyless discovery adapter production
-# binds), which is what makes the network-failure path deterministic to test.
+# `--no-live-success` proves only the offline part of the release contract:
+# real-adapter binding and a healthy production composition. Without it, the
+# canary also drives Chillify's real Radio Javan Featured API path. A provider
+# failure remains explicit and exits non-zero; it is never replaced by a
+# fixture response or a direct request to the provider.
 
 set -Eeuo pipefail
 
@@ -142,8 +139,9 @@ fi
 CONTAINMENT_LABEL="production_canary" assert_roots_under \
     "$DISPOSABLE_ROOT" "$ENV_FILE" CHILLIFY_DATA_ROOT CHILLIFY_MUSIC_ROOT
 
-BASE_URL="${CHILLIFY_CANARY_BASE_URL:-http://localhost:${BIND_PORT}}"
-LIVE_URL="${CHILLIFY_CANARY_LIVE_URL:-https://api.deezer.com/}"
+CANARY_BASE_URL="http://localhost:${BIND_PORT}"
+BASE_URL="${CHILLIFY_CANARY_BASE_URL:-$CANARY_BASE_URL}"
+FEATURED_URL="${BASE_URL}/api/v1/radio-javan/tracks?section=featured"
 
 CLEANED_UP=0
 cleanup() {
@@ -212,26 +210,70 @@ then
     exit 1
 fi
 
-printf 'production_canary: probing live reachability at %s\n' "$LIVE_URL"
-LIVE_OK=1
-if HTTP_CODE="$(curl -sS -m 8 -o /dev/null -w '%{http_code}' "$LIVE_URL" 2>/dev/null)"; then
-    if [[ "$HTTP_CODE" =~ ^[23] ]]; then
-        printf 'production_canary: live reachability ok (%s -> HTTP %s)\n' "$LIVE_URL" "$HTTP_CODE"
-        LIVE_OK=0
-    else
-        printf 'production_canary: live reachability failed (%s -> HTTP %s)\n' "$LIVE_URL" "$HTTP_CODE" >&2
-        LIVE_OK=1
+# Test-only failure seam: persist an unreachable *valid* proxy in this
+# disposable composition, then call the normal Featured URL below. The request
+# therefore reaches SearchService and the real Radio Javan adapter before its
+# outbound boundary fails; it cannot turn into a direct provider request.
+if [[ -n "${CHILLIFY_CANARY_FAILURE_PROXY:-}" ]]; then
+    if [[ "$BASE_URL" != "$CANARY_BASE_URL" ]]; then
+        printf 'production_canary: the disposable failure probe requires the canary localhost URL\n' >&2
+        exit 1
     fi
-else
-    printf 'production_canary: live reachability failed (%s unreachable)\n' "$LIVE_URL" >&2
-    LIVE_OK=1
+    SETTINGS_JSON="$(curl -fsS -m 5 "$BASE_URL/api/v1/settings" 2>/dev/null)" || {
+        printf 'production_canary: could not read settings for the disposable failure probe\n' >&2
+        exit 1
+    }
+    PROXY_BODY="$(python3 - "$SETTINGS_JSON" "$CHILLIFY_CANARY_FAILURE_PROXY" <<'PYEOF'
+import json
+import sys
+
+settings = json.loads(sys.argv[1])
+revision = settings.get("proxy", {}).get("revision")
+if not isinstance(revision, int) or revision < 1:
+    sys.exit(1)
+print(json.dumps({"url": sys.argv[2], "revision": revision, "clear": False}))
+PYEOF
+)" || {
+        printf 'production_canary: could not prepare the disposable failure probe\n' >&2
+        exit 1
+    }
+    if ! curl -fsS -m 5 -X PATCH "$BASE_URL/api/v1/settings/proxy" \
+        -H 'Content-Type: application/json' --data "$PROXY_BODY" >/dev/null 2>&1; then
+        printf 'production_canary: could not configure the disposable failure probe\n' >&2
+        exit 1
+    fi
 fi
 
-if [[ "$LIVE_OK" -ne 0 ]]; then
+printf 'production_canary: calling the real Radio Javan Featured API at %s\n' "$FEATURED_URL"
+FEATURED_OK=1
+if FEATURED_JSON="$(curl -fsS -m 15 "$FEATURED_URL" 2>/dev/null)" && python3 - "$FEATURED_JSON" <<'PYEOF'
+import json
+import sys
+
+try:
+    payload = json.loads(sys.argv[1])
+except json.JSONDecodeError:
+    sys.exit(1)
+
+if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+    sys.exit(1)
+if payload.get("next_cursor") is not None:
+    sys.exit(1)
+PYEOF
+then
+    printf 'production_canary: Radio Javan Featured API succeeded through the real adapter\n'
+    FEATURED_OK=0
+else
+    # Do not print a provider body: it could contain URLs or other upstream
+    # material that the Radio Javan boundary intentionally keeps out of logs.
+    printf 'production_canary: Radio Javan Featured API failed through the real adapter\n' >&2
+fi
+
+if [[ "$FEATURED_OK" -ne 0 ]]; then
     if [[ "$NO_LIVE_SUCCESS" -eq 1 ]]; then
-        printf 'production_canary: live reachability not required (--no-live-success); continuing\n'
+        printf 'production_canary: Radio Javan Featured success not required (--no-live-success); continuing\n'
     else
-        printf 'production_canary: FAILED — live reachability is required and was not satisfied; pass --no-live-success to skip this requirement\n' >&2
+        printf 'production_canary: FAILED — Radio Javan Featured success is required and was not satisfied; pass --no-live-success to prove offline binding only\n' >&2
         exit 1
     fi
 fi

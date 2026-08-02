@@ -186,6 +186,39 @@ Skeletons match final row/card geometry. Spinners are reserved for compact actio
 - Dialogs use the smallest width that preserves form labels and art preview. Destructive confirmation remains visually separate from ordinary Save.
 - The bottom player divides identity, transport, and volume/queue into stable regions; transport remains the visual center even when metadata truncates.
 
+## Radio Javan discovery experience
+
+Radio Javan is a separate top-level destination inside the persistent Chillify
+shell. It does not appear as another badge in the existing combined catalog
+Search: its catalog and direct-download workflow are distinct, while completed
+tracks join the same local library and player.
+
+- **Visual direction:** an artwork-led, editorial record shelf using the existing
+  neutral surfaces. Provider artwork supplies variety; no Radio Javan brand color,
+  copied mark, gradient wash, or competing theme is introduced. `color.info`
+  identifies remote provenance, while `color.accent` appears only after the person
+  queues work or the resulting local track is active.
+- **Explore:** the labeled search field precedes a Featured/Trending Tabs control
+  and a media grid. Artwork has a reserved square ratio, lazy loading, and a
+  placeholder that preserves geometry. At desktop widths the grid may vary column
+  span to create an editorial rhythm without changing reading or tab order; below
+  the desktop breakpoint it becomes one readable column.
+- **Search:** a submitted query owns a deep-linkable route. The visible query,
+  result count, loading skeleton, no-results guidance, and scoped Retry remain in
+  one predictable reading order. Browser Back restores the prior Explore state.
+- **Remote track action:** every card exposes title, artist, optional album/duration,
+  Radio Javan provenance, and one primary action. A remote item offers Download,
+  a queueing item exposes its pending state, and a local duplicate links to the
+  library. A remote Play action is forbidden.
+- **Interaction:** Tabs, cards, links, and Download/Retry controls use installed
+  Shadcn behavior and visible focus. Queue acknowledgement is announced without
+  moving focus. Reduced motion removes grid/card translation and uses color/opacity
+  only. No capability depends on hover, artwork, or color alone.
+- **Data states:** Explore sections and Search fail independently. Skeletons match
+  final artwork/card geometry; an empty state names the active section/query and a
+  recovery action; provider/proxy failure preserves the shell, player, and any
+  already rendered local content.
+
 ## Hard rules
 
 - Tokens only in product components. Raw visual values outside the token source are a verification failure.

@@ -188,6 +188,13 @@ class AcquisitionFailedError(ChillifyError):
     retryable = True
 
 
+class AcquisitionLimitExceededError(AcquisitionFailedError):
+    """A bounded acquisition exceeded a local safety budget."""
+
+    code = "acquisition_limit_exceeded"
+    retryable = False
+
+
 class AcquisitionCancelledError(ChillifyError):
     """The person asked to cancel while an adapter was working.
 

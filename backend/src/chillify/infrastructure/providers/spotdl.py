@@ -36,6 +36,7 @@ from chillify.domain.errors import (
     UnsupportedEntityError,
     ValidationFailedError,
 )
+from chillify.domain.jobs import JobPhase
 from chillify.domain.normalization import collapse_whitespace, normalize_isrc
 from chillify.domain.protocols import (
     AudioArtifact,
@@ -427,7 +428,7 @@ class SpotdlAcquisitionProvider:
             )
 
         audio_path, duration_ms = single_valid_mp3(workspace_path, provider=self.name)
-        progress(100.0)
+        progress(JobPhase.DOWNLOADING, 100.0)
         logger.info("spotify acquisition complete", extra={"provider": self.name})
         return AudioArtifact(
             location=str(audio_path),

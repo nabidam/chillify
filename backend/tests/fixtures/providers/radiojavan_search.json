@@ -1,0 +1,15 @@
+{
+  "mp3s": [
+    {
+      "id": 900001,
+      "artist": "Radio Javan Ensemble",
+      "title": "Radio Javan Walking Skeleton",
+      "album": {"title": "Chillify Fixtures"},
+      "duration": 12,
+      "share_link": "https://play.radiojavan.com/song/900001"
+    },
+    {"artist": "Ignored Fixture", "title": "No stable id"}
+  ],
+  "videos": [{"id": 700001, "artist": "Not a track", "title": "Video"}],
+  "podcasts": [{"id": 800001, "title": "Podcast"}]
+}

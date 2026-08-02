@@ -35,7 +35,7 @@ PhaseLiteral = Literal[
     "failed",
     "cancelled",
 ]
-SourceTypeLiteral = Literal["deezer_result", "spotify_track", "youtube_video"]
+SourceTypeLiteral = Literal["deezer_result", "radiojavan_track", "spotify_track", "youtube_video"]
 
 
 class TrackCandidateModel(BaseModel):
@@ -169,7 +169,7 @@ class JobModel(BaseModel):
     """One download as the Downloads screen and the job indicator render it."""
 
     id: str
-    provider: Literal["deezer", "spotdl", "yt_dlp"]
+    provider: Literal["deezer", "radiojavan", "spotdl", "yt_dlp"]
     source_type: SourceTypeLiteral
     state: JobStateLiteral
     display_state: DisplayStateLiteral = Field(

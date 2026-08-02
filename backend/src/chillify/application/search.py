@@ -28,6 +28,7 @@ from chillify.infrastructure.providers.registry import ProviderRegistry
 logger = logging.getLogger(__name__)
 
 DEEZER_PROVIDER = "deezer"
+RADIO_JAVAN_PROVIDER = "radiojavan"
 CATALOG_PROVIDERS = ("musicbrainz", "apple", DEEZER_PROVIDER)
 
 
@@ -80,6 +81,27 @@ class SearchService:
         while the household is trying to play music.
         """
         return self.search_catalog(query, provider=DEEZER_PROVIDER, limit=limit)
+
+    def search_radio_javan(
+        self, query: str, *, limit: int = DISCOVERY_LIMIT_DEFAULT
+    ) -> tuple[RemoteResult, ...]:
+        """Search only Radio Javan; it never joins the catalog search path."""
+        return self.search_catalog(query, provider=RADIO_JAVAN_PROVIDER, limit=limit)
+
+    def browse_radio_javan(self, section: str) -> tuple[RemoteResult, ...]:
+        """Browse one explicit Radio Javan section without using catalog search."""
+        candidates = self.registry.require_browse(RADIO_JAVAN_PROVIDER).browse(
+            section, self.proxy_provider()
+        )
+        with self._transaction() as session:
+            tracks = TrackRepository(session)
+            return tuple(
+                RemoteResult(
+                    candidate=candidate,
+                    existing_track_id=_existing_track_id(tracks, candidate),
+                )
+                for candidate in candidates
+            )
 
     def search_catalog(
         self,

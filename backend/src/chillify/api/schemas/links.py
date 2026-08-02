@@ -31,6 +31,7 @@ InspectionPhaseLiteral = Literal[
     "failed",
     "done",
 ]
+InspectionProviderLiteral = Literal["deezer", "spotdl", "yt_dlp"]
 
 
 class LinkInspectionRequest(BaseModel):
@@ -76,7 +77,7 @@ class LinkInspectionModel(BaseModel):
     """
 
     source_type: SourceTypeLiteral
-    provider: Literal["deezer", "spotdl", "yt_dlp"]
+    provider: InspectionProviderLiteral
     review_required: bool = Field(
         description="True when S5 metadata review must precede queueing, as for YouTube.",
     )
@@ -94,7 +95,7 @@ class LinkInspectionModel(BaseModel):
     def of(cls, inspection: LinkInspection) -> LinkInspectionModel:
         return cls(
             source_type=inspection.source_type.value,
-            provider=inspection.provider.value,
+            provider=cast(InspectionProviderLiteral, inspection.provider.value),
             review_required=inspection.review_required,
             candidate=TrackCandidateModel.of(inspection.candidate),
             existing_track_id=(

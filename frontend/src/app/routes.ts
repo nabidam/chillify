@@ -8,6 +8,7 @@ export const routes = {
   profiles: "/profiles",
   library: "/library",
   search: "/search",
+  radioJavan: "/radio-javan",
   playlists: "/playlists",
   downloads: "/downloads",
   settings: "/settings",

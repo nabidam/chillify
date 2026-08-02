@@ -28,12 +28,24 @@ collection tracks. See `specs/003-free-discovery/PLAN.md`.
 **Status:** Completed and operator-tested 2026-07-29. Migration
 `0004_catalog_track_sources` preserves Apple and MusicBrainz provenance.
 
-**Next active cycle:** 004 — Existing library integration.
+**Next active cycle:** 004 — Radio Javan discovery and direct acquisition.
 
-## 004 — Existing library integration
+## 004 — Radio Javan discovery and direct acquisition
+
+Add a dedicated anonymous Radio Javan search/explore experience for Featured and
+Trending tracks, backed by exact direct Radio Javan acquisition rather than
+cross-catalog results or yt-dlp matching. See `specs/004-radio-javan/PLAN.md`.
+
+**Status:** Completed and operator-tested 2026-08-02. Migration
+`0005_radio_javan` extends the track-source, job-provider, and source-type
+checks with Radio Javan identities.
+
+**Next active cycle:** 005 — Existing library integration.
+
+## 005 — Existing library integration
 
 Import, scan, and reconcile existing music folders while preserving user files, detecting duplicates, and surfacing metadata conflicts safely.
 
-## 005 — Playback and client expansion
+## 006 — Playback and client expansion
 
 Add mobile-browser UX, shuffle/repeat, crossfade and gapless guarantees, restored queues, and packaging/support beyond Arch Linux.

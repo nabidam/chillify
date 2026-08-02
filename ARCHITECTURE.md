@@ -203,6 +203,7 @@ The initial registry is:
 | Deezer | `DiscoveryProvider` | keyless matching-track search and metadata; never audio |
 | MusicBrainz | `DiscoveryProvider` | primary keyless/open recording search; never audio |
 | Apple iTunes Search | `DiscoveryProvider` | fast keyless song metadata, artwork, and store provenance; never previews or audio |
+| Radio Javan | `DiscoveryProvider`, `AcquisitionProvider` | anonymous Featured/Trending browse and search, plus exact direct MP3 acquisition of that same track; never a yt-dlp match and never a cross-catalog result |
 | Spotify oEmbed | reference resolver | one public Spotify track title/reference without credentials; never a complete candidate or audio |
 | SpotDL | `LinkInspector`, `AcquisitionProvider` | historical/advanced Spotify compatibility behind the isolated CLI boundary; not the supported UI path |
 | yt-dlp | `LinkInspector`, `AcquisitionProvider` | one YouTube video, or one audio match for a catalog candidate |
@@ -262,7 +263,7 @@ CREATE TABLE track_sources (
     id TEXT PRIMARY KEY,
     track_id TEXT NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
     provider TEXT NOT NULL CHECK (
-        provider IN ('deezer', 'spotify', 'youtube', 'apple', 'musicbrainz')
+        provider IN ('deezer', 'spotify', 'youtube', 'apple', 'musicbrainz', 'radiojavan')
     ),
     source_id TEXT,
     source_url TEXT NOT NULL,
@@ -301,8 +302,8 @@ CREATE INDEX ix_playlist_tracks_track ON playlist_tracks(track_id);
 
 CREATE TABLE download_jobs (
     id TEXT PRIMARY KEY,
-    provider TEXT NOT NULL CHECK (provider IN ('deezer', 'spotdl', 'yt_dlp')),
-    source_type TEXT NOT NULL CHECK (source_type IN ('deezer_result', 'spotify_track', 'youtube_video')),
+    provider TEXT NOT NULL CHECK (provider IN ('deezer', 'spotdl', 'yt_dlp', 'radiojavan')),
+    source_type TEXT NOT NULL CHECK (source_type IN ('deezer_result', 'radiojavan_track', 'spotify_track', 'youtube_video')),
     source_ref TEXT NOT NULL,
     dedupe_key TEXT NOT NULL,
     request_json TEXT NOT NULL,
@@ -497,6 +498,8 @@ Idempotency responses are retained for 24 hours in `api_idempotency` and pruned 
 | `DELETE /tracks/{id}` | `If-Match` → `204` | S15 |
 | `GET /search/deezer` | `q, limit<=50` → normalized remote candidates + duplicate link | S3 |
 | `GET /search/catalog` | `q, provider=all|musicbrainz|apple|deezer, limit<=50` → normalized remote candidates + duplicate link | S3 |
+| `GET /radio-javan/tracks` | `section=featured|trending` → normalized Radio Javan candidates + duplicate link | S17 |
+| `GET /radio-javan/search` | `q, limit<=50` → normalized Radio Javan candidates + duplicate link | S18 |
 | `POST /links/spotify/matches` | `{url}` → limited oEmbed reference + independent catalog candidates | S4 |
 | `POST /links/inspect` | `{url}` → detected candidate/review requirement | S4, S5 |
 | `POST /downloads` | source/candidate/review + optional `artwork_stage_id` + idempotency → job | S3, S4, S5 |
@@ -1102,6 +1105,25 @@ replacement provider can report per-item phases through the same stream without
 a second idiom. Do not make later work depend on this cancelled API path.
 
 ## Decision log
+
+### 2026-08-02 — Cycle 004 released with direct Radio Javan acquisition
+
+Radio Javan is a separate top-level destination rather than another badge in the
+combined catalog Search: its catalog and its exact direct-download workflow are
+distinct, while completed tracks join the ordinary library, queue, and player.
+The adapter implements both `DiscoveryProvider` and `AcquisitionProvider` and
+downloads the identified track itself, so acquisition never degrades to a yt-dlp
+match of a different recording. Migration `0005_radio_javan` rebuilds the
+constrained provenance, job, and event tables to admit `radiojavan` and
+`radiojavan_track` while preserving rows and indexes; downgrade refuses to
+discard records using either new value. A third runtime environment, `release`,
+runs the unchanged production composition with real adapters on a provably
+disposable, seedable tree, which is what the release gate needs: `is_gate`
+(fixture adapters) and `is_disposable` (seeding permitted) are separate
+properties and disagree only here. The production canary proves live success by
+calling Chillify's own Featured route rather than the provider directly, so the
+proof covers the application's real adapter binding; live media download is
+deliberately not a release canary because it would acquire third-party content.
 
 ### 2026-07-29 — Cycle 003 released with durable catalog provenance
 

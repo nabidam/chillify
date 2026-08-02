@@ -15,11 +15,16 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
+from chillify.domain.jobs import JobPhase
+
 # Reports downloaded fraction as 0..100, or None when the provider genuinely
 # does not know. A None argument means "unknown", never "zero": the UI must not
 # invent progress it was not given. A caller with nothing to report passes a
 # no-op rather than None, so no adapter has to branch on the callback itself.
-ProgressCallback = Callable[[float | None], None]
+# Each progress update belongs to the stage that is actually executing.  This
+# keeps durable job history truthful: a native MP3 never briefly appears to be
+# converted after it has already been acquired.
+ProgressCallback = Callable[[JobPhase, float | None], None]
 
 # Consulted between phases and inside downloader hooks. True means the person
 # asked to cancel and the adapter must stop and clean up.
@@ -104,6 +109,16 @@ class DiscoveryProvider(Protocol):
     def name(self) -> str: ...
 
     def search(self, query: str, limit: int, proxy: str | None) -> Sequence[TrackCandidate]: ...
+
+
+@runtime_checkable
+class BrowseProvider(Protocol):
+    """One named, first-page remote browse capability."""
+
+    @property
+    def name(self) -> str: ...
+
+    def browse(self, section: str, proxy: str | None) -> Sequence[TrackCandidate]: ...
 
 
 @runtime_checkable

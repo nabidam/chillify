@@ -29,6 +29,7 @@ from chillify.api.routes import (
     links,
     playlists,
     profiles,
+    radio_javan,
     search,
     system,
     tracks,
@@ -196,6 +197,7 @@ def create_app() -> FastAPI:
     app.include_router(artwork.router, prefix=API_PREFIX)
     app.include_router(playlists.router, prefix=API_PREFIX)
     app.include_router(search.router, prefix=API_PREFIX)
+    app.include_router(radio_javan.router, prefix=API_PREFIX)
     app.include_router(links.router, prefix=API_PREFIX)
     app.include_router(downloads.router, prefix=API_PREFIX)
     app.include_router(settings_routes.router, prefix=API_PREFIX)

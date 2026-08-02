@@ -490,6 +490,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/radio-javan/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Radio Javan for MP3 tracks */
+        get: operations["search_radio_javan_api_v1_radio_javan_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/radio-javan/tracks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Browse first-page Radio Javan tracks */
+        get: operations["browse_radio_javan_api_v1_radio_javan_tracks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search/catalog": {
         parameters: {
             query?: never;
@@ -1029,7 +1063,7 @@ export interface components {
              * Source Type
              * @enum {string}
              */
-            source_type: "deezer_result" | "spotify_track" | "youtube_video";
+            source_type: "deezer_result" | "radiojavan_track" | "spotify_track" | "youtube_video";
         };
         /** ErrorBody */
         ErrorBody: {
@@ -1203,7 +1237,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "deezer" | "spotdl" | "yt_dlp";
+            provider: "deezer" | "radiojavan" | "spotdl" | "yt_dlp";
             /** Restart Count */
             restart_count: number;
             /** Result Track Id */
@@ -1212,7 +1246,7 @@ export interface components {
              * Source Type
              * @enum {string}
              */
-            source_type: "deezer_result" | "spotify_track" | "youtube_video";
+            source_type: "deezer_result" | "radiojavan_track" | "spotify_track" | "youtube_video";
             /** Started At */
             started_at: string | null;
             /**
@@ -2840,6 +2874,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlaylistModel"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    search_radio_javan_api_v1_radio_javan_search_get: {
+        parameters: {
+            query: {
+                /** @description The submitted query. */
+                q: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageModel_RemoteResultModel_"];
+                };
+            };
+            /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    browse_radio_javan_api_v1_radio_javan_tracks_get: {
+        parameters: {
+            query: {
+                /** @description The Radio Javan section to browse. */
+                section: "featured" | "trending";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageModel_RemoteResultModel_"];
                 };
             };
             /** @description Error envelope */

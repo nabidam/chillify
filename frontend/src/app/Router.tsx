@@ -10,6 +10,7 @@ import { LibraryPage } from "@/features/library/LibraryPage";
 import { PlaylistPage } from "@/features/playlists/PlaylistPage";
 import { PlaylistsPage } from "@/features/playlists/PlaylistsPage";
 import { ProfileChooser } from "@/features/profiles/ProfileChooser";
+import { RadioJavanPage } from "@/features/radioJavan/RadioJavanPage";
 import { SearchPage } from "@/features/search/SearchPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 
@@ -40,6 +41,8 @@ export function AppRoutes() {
             <Route path="/library/albums/:contextKey" element={<ContextPage kind="album" />} />
             <Route path="/library/years/:contextKey" element={<ContextPage kind="year" />} />
             <Route path={routes.search} element={<SearchPage />} />
+            <Route path={routes.radioJavan} element={<RadioJavanPage />} />
+            <Route path={`${routes.radioJavan}/search`} element={<RadioJavanPage />} />
             <Route path={routes.playlists} element={<PlaylistsPage />} />
             <Route path={`${routes.playlists}/:playlistId`} element={<PlaylistPage />} />
             <Route path={routes.downloads} element={<DownloadsPage />} />

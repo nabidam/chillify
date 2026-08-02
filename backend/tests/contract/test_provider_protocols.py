@@ -121,7 +121,7 @@ class TestAcquisitionProviderContract:
         workspace.mkdir()
 
         artifact = factory(fixture_root).acquire(
-            a_candidate(), str(workspace), None, lambda _percent: None, lambda: False
+            a_candidate(), str(workspace), None, lambda _phase, _percent: None, lambda: False
         )
 
         acquired = Path(artifact.location)
@@ -141,7 +141,11 @@ class TestAcquisitionProviderContract:
         reported: list[float | None] = []
 
         factory(fixture_root).acquire(
-            a_candidate(), str(workspace), None, reported.append, lambda: False
+            a_candidate(),
+            str(workspace),
+            None,
+            lambda _phase, percent: reported.append(percent),
+            lambda: False,
         )
 
         known = [value for value in reported if value is not None]
@@ -160,7 +164,7 @@ class TestAcquisitionProviderContract:
 
         with pytest.raises(AcquisitionCancelledError):
             factory(fixture_root).acquire(
-                a_candidate(), str(workspace), None, lambda _percent: None, lambda: True
+                a_candidate(), str(workspace), None, lambda _phase, _percent: None, lambda: True
             )
 
         assert list(workspace.iterdir()) == []

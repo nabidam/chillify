@@ -114,6 +114,85 @@ class TestDeezerSearch:
         assert counted_discovery.calls == []
 
 
+class TestRadioJavanWalkingSkeleton:
+    def test_search_queue_publish_and_local_playback_use_the_dedicated_source(
+        self, gate_api: TestClient, gate_downloads: DownloadService
+    ) -> None:
+        """The dedicated route reaches the direct fixture adapter, never yt-dlp."""
+        searched = gate_api.get("/api/v1/radio-javan/search", params={"q": "walking"})
+
+        assert searched.status_code == 200
+        result = searched.json()["items"][0]
+        candidate = result["candidate"]
+        assert candidate["provider"] == "radiojavan"
+        assert candidate["source_id"] == "900001"
+        assert candidate["acquisition_locator"] == "900001"
+
+        queued = gate_api.post(
+            "/api/v1/downloads",
+            json={"source_type": "radiojavan_track", "candidate": candidate},
+        )
+
+        assert queued.status_code == 201
+        job = queued.json()
+        assert job["provider"] == "radiojavan"
+        assert job["source_type"] == "radiojavan_track"
+        gate_downloads.run_job(JobId(str(job["id"])))
+
+        completed = gate_api.get(f"/api/v1/downloads/{job['id']}").json()
+        assert completed["job"]["state"] == "completed"
+        library = gate_api.get("/api/v1/library/tracks", params={"q": "Walking Skeleton"})
+        assert library.status_code == 200
+        track = library.json()["items"][0]
+        assert track["title"] == "Radio Javan Walking Skeleton"
+
+        detail = gate_api.get(f"/api/v1/tracks/{track['id']}")
+
+        assert detail.status_code == 200
+        assert detail.json()["sources"] == [
+            {
+                "provider": "radiojavan",
+                "source_id": "900001",
+                "source_url": "https://play.radiojavan.com/song/900001",
+            }
+        ]
+
+    def test_an_acquired_search_result_links_to_its_local_duplicate(
+        self, gate_api: TestClient, gate_downloads: DownloadService
+    ) -> None:
+        """A revisited Radio Javan result offers the published local track, never another job."""
+        candidate = gate_api.get("/api/v1/radio-javan/search", params={"q": "walking"}).json()[
+            "items"
+        ][0]["candidate"]
+        created = gate_api.post(
+            "/api/v1/downloads", json={"source_type": "radiojavan_track", "candidate": candidate}
+        ).json()
+        gate_downloads.run_job(JobId(str(created["id"])))
+
+        revisited = gate_api.get("/api/v1/radio-javan/search", params={"q": "walking"}).json()[
+            "items"
+        ][0]
+
+        assert revisited["existing_track_id"] is not None
+        library = gate_api.get("/api/v1/library/tracks").json()["items"]
+        assert [track["id"] for track in library] == [revisited["existing_track_id"]]
+
+
+class TestRadioJavanExplore:
+    def test_featured_and_trending_use_the_dedicated_first_page_endpoint(
+        self, gate_api: TestClient
+    ) -> None:
+        featured = gate_api.get("/api/v1/radio-javan/tracks", params={"section": "featured"})
+        trending = gate_api.get("/api/v1/radio-javan/tracks", params={"section": "trending"})
+
+        assert featured.status_code == 200
+        assert featured.json()["next_cursor"] is None
+        assert featured.json()["items"][0]["candidate"]["title"] == "Featured Fixture"
+        assert trending.status_code == 200
+        assert trending.json()["next_cursor"] is None
+        assert trending.json()["items"][0]["candidate"]["title"] == "Trending Fixture"
+
+
 class TestCatalogSearch:
     def test_all_catalog_search_uses_available_providers(self, gate_api: TestClient) -> None:
         response = gate_api.get(

@@ -55,6 +55,7 @@ class JobProvider(StrEnum):
     """The adapter that will perform the acquisition."""
 
     DEEZER = "deezer"
+    RADIOJAVAN = "radiojavan"
     SPOTDL = "spotdl"
     YT_DLP = "yt_dlp"
 
@@ -63,6 +64,7 @@ class SourceType(StrEnum):
     """The kind of thing the person asked Chillify to acquire."""
 
     DEEZER_RESULT = "deezer_result"
+    RADIOJAVAN_TRACK = "radiojavan_track"
     SPOTIFY_TRACK = "spotify_track"
     YOUTUBE_VIDEO = "youtube_video"
 
@@ -94,6 +96,7 @@ ACQUISITION_PHASES: Final = (
 # mapping is an entity Chillify does not acquire.
 PROVIDER_FOR_SOURCE: Final = {
     SourceType.DEEZER_RESULT: JobProvider.YT_DLP,
+    SourceType.RADIOJAVAN_TRACK: JobProvider.RADIOJAVAN,
     SourceType.YOUTUBE_VIDEO: JobProvider.YT_DLP,
     SourceType.SPOTIFY_TRACK: JobProvider.SPOTDL,
 }
